@@ -66,9 +66,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@babel/parser": "^7.29.2",
+    "@babel/parser": "^8.0.4",
     "@tailwindcss/vite": "^4.3.3",
-    "@vitejs/plugin-react": "^4.3.3",
+    "@vitejs/plugin-react": "^6.0.5",
     "chalk": "^6.0.0",
     "clsx": "^2.1.1",
     "commander": "^15.0.0",
@@ -81,14 +81,14 @@
     "react-router-dom": "^7.18.1",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",
-    "vite": "^5.4.10"
+    "vite": "^8.2.1"
   },
   "devDependencies": {
     "@playwright/test": "~1.56.1",
     "@types/node": "^22.19.17",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "tsdown": "^0.9.9",
+    "tsdown": "^0.22.14",
     "typescript": "^5.9.3"
   }
 }

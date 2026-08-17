@@ -10,6 +10,10 @@ export default defineConfig({
   format: 'esm',
   target: 'node18',
   platform: 'node',
+  // tsdown >=0.22 defaults fixedExtension to true on platform 'node', which
+  // renames the output to .mjs/.d.mts. The package is already ESM-only, so keep
+  // the plain .js/.d.ts names the exports map and bin point at.
+  fixedExtension: false,
   clean: true,
   dts: true,
   shims: false,
