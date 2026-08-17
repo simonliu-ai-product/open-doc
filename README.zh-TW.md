@@ -39,7 +39,7 @@ Scaffolder 內建這些 skill：
 
 ### 🔌 MCP server，任何 agent framework 都能接
 
-`open-doc dev --mcp` 會在 UI 旁邊掛上 MCP 端點——18 個工具，涵蓋文件、精準的文字編輯、themes、assets 與資料夾。它是無狀態的 Streamable HTTP，client 直接指向 `http://localhost:5273/mcp` 即可，不需要 session handshake。
+`open-doc dev --mcp` 會在 UI 旁邊掛上 MCP 端點——19 個工具，涵蓋文件、精準的文字編輯、themes、assets 與資料夾。它是無狀態的 Streamable HTTP，client 直接指向 `http://localhost:5273/mcp` 即可，不需要 session handshake。
 
 這些工具和瀏覽器共用同一份實作，所以 `write_document` / `write_text` 會接收你上次讀到的內容，遇到已被改動的檔案時回 `409` 拒絕寫入，而不是覆蓋掉先到的人。詳見 [packages/mcp](packages/mcp)。
 

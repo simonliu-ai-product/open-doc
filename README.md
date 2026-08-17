@@ -39,7 +39,7 @@ Skills ship with the scaffolder:
 
 ### 🔌 An MCP server, so any agent framework can drive it
 
-`open-doc dev --mcp` mounts an MCP endpoint next to the UI — 18 tools covering documents, surgical text edits, themes, assets, and folders. It is stateless Streamable HTTP, so a client just points at `http://localhost:5273/mcp` with no session handshake.
+`open-doc dev --mcp` mounts an MCP endpoint next to the UI — 19 tools covering documents, surgical text edits, themes, assets, and folders. It is stateless Streamable HTTP, so a client just points at `http://localhost:5273/mcp` with no session handshake.
 
 The tools and the browser share one implementation, so `write_document` / `write_text` take the content you last read and refuse a stale write with `409` rather than overwriting whoever got there first. See [packages/mcp](packages/mcp).
 
