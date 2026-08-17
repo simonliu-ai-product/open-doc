@@ -31,10 +31,11 @@ npx @open-document/cli init my-docs
 
 ### 🤖 為 agent 設計的撰寫流程
 
-Scaffolder 內建兩個 skill：
+Scaffolder 內建這些 skill：
 
 - **`/create-doc`** — 從頭到尾起草一份文件。先確立主題、讀者與**素材來源**（它不會杜撰你的數字），問四個界定範圍的問題，規劃頁面，然後寫出來。
 - **`/doc-authoring`** — 技術參考：檔案契約、頁面畫布、列印字級、決定分頁位置的垂直預算、表格、圖表、素材。
+- **`/current-doc`** — 解析「這一頁」「這個元素」。Dev server 會把你正在讀的位置寫進 `node_modules/.open-doc/current.json`，agent 就會改你正在看的那張紙，而不是反問你指的是哪一頁。
 
 ### 🔌 MCP server，任何 agent framework 都能接
 

@@ -14,6 +14,7 @@ You author **documents** here — reports, proposals, whitepapers, memos. Each d
 | --- | --- |
 | `create-doc` | Drafting a new document end to end — scoping questions, page plan, then the file. |
 | `doc-authoring` | The technical reference: file contract, page canvas, print type scale, vertical budget, tables, TOC, page numbers. Read before any edit under `docs/`. |
+| `current-doc` | Resolving "this page" / "this element" — reads the cursor the dev server writes to `node_modules/.open-doc/current.json`. |
 
 ## Commands
 

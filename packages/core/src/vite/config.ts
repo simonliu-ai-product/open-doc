@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import type { InlineConfig } from 'vite';
 import { apiPlugin } from './api-plugin.ts';
+import { currentPlugin } from './current-plugin.ts';
 import { designPlugin } from './design-plugin.ts';
 import { locTagsPlugin } from './loc-tags-plugin.ts';
 import { mcpPlugin } from './mcp-plugin.ts';
@@ -64,6 +65,7 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
       themesPlugin({ userCwd, config }),
       designPlugin({ userCwd, docsDir }),
       apiPlugin({ userCwd, docsDir, assetsDir, coreVersion: CORE_VERSION }),
+      currentPlugin({ userCwd, docsDir }),
       ...(opts.mcp ? [mcpPlugin({ userCwd, docsDir, assetsDir, coreVersion: CORE_VERSION })] : []),
     ],
     resolve: {

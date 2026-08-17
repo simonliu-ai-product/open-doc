@@ -180,6 +180,22 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
     };
   }, [container, insidePanel, onExit, selected]);
 
+  // Report the pick to the dev server so `current.json` can answer "this
+  // element" for an agent. Clearing the selection clears it there too.
+  useEffect(() => {
+    if (!import.meta.hot) return;
+    import.meta.hot.send('open-doc:current', {
+      selection: selected
+        ? {
+            line: selected.line,
+            column: selected.column,
+            tagName: selected.anchor.tagName.toLowerCase(),
+            text: normalize(selected.anchor.textContent ?? '').slice(0, 120),
+          }
+        : null,
+    });
+  }, [selected]);
+
   // Read the element's text from source, not from the DOM: only source can say
   // whether it is a single editable text child or markup we must not touch.
   useEffect(() => {

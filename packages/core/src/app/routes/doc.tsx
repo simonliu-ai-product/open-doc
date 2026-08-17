@@ -230,6 +230,19 @@ export function Doc() {
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
+  // Tell the dev server where the reader is, so an agent can resolve "this
+  // page" from node_modules/.open-doc/current.json. See vite/current-plugin.ts.
+  useEffect(() => {
+    if (!import.meta.hot) return;
+    if (!docId || !doc || pages.length === 0) return;
+    import.meta.hot.send('open-doc:current', {
+      docId,
+      pageIndex: currentPage - 1,
+      totalPages: pages.length,
+      docTitle: doc.meta?.title ?? docId,
+    });
+  }, [docId, doc, currentPage, pages.length]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;

@@ -31,10 +31,11 @@ Every page component renders into a true sheet: A4 (794 × 1123 px @96dpi), Lett
 
 ### 🤖 Agent-native authoring
 
-Two skills ship with the scaffolder:
+Skills ship with the scaffolder:
 
 - **`/create-doc`** — drafts a document end to end. Establishes topic, audience, and *source material* first (it will not invent your numbers), asks four scoping questions, plans the pages, then writes them.
 - **`/doc-authoring`** — the technical reference: file contract, page canvas, print type scale, the vertical budget that decides where pages break, tables, charts, assets.
+- **`/current-doc`** — resolves "this page" and "this element". The dev server publishes where you are reading to `node_modules/.open-doc/current.json`, so your agent edits the sheet you are looking at instead of asking which one you mean.
 
 ### 🔌 An MCP server, so any agent framework can drive it
 
