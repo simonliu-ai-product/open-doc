@@ -67,7 +67,7 @@
   "dependencies": {
     "@babel/parser": "^7.29.2",
     "@tailwindcss/vite": "^4.3.3",
-    "@vitejs/plugin-react": "^4.3.3",
+    "@vitejs/plugin-react": "^6.0.5",
     "chalk": "^6.0.0",
     "clsx": "^2.1.1",
     "commander": "^15.0.0",
