@@ -65,7 +65,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@babel/parser": "^7.29.2",
+    "@babel/parser": "^8.0.4",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^4.3.3",
     "chalk": "^6.0.0",
