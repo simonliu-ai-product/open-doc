@@ -163,13 +163,13 @@ const First: DocPage = () => (
     <Field label="發文字號">範例字第1150000000號</Field>
     <Field label="速別">普通件</Field>
     <Field label="密等及解密條件或保密期限">普通</Field>
-    <Field label="附件">如文</Field>
+    <Field label="附件">如主旨</Field>
 
-    <Section name="主旨">檢送本機關「範例作業要點」修正草案1份，請查照惠予卓參。</Section>
+    <Section name="主旨">檢送本機關「範例作業要點」修正草案1份，請查照。</Section>
 
     <Section name="說明">
-      <Item no="一、">依本機關115年度工作計畫辦理。</Item>
-      <Item no="二、">本要點自發布日施行，原要點同時停止適用；相關配套措施如說明三。</Item>
+      <Item no="一、">依據本機關115年度工作計畫辦理。</Item>
+      <Item no="二、">旨開要點自發布日施行，原要點同時停止適用。</Item>
       <Item no="三、">後續作業時程請參照續頁所列各項期程辦理。</Item>
     </Section>
 
