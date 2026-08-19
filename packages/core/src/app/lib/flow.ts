@@ -38,6 +38,8 @@ export function isFlowSection(entry: DocEntry): entry is FlowSection {
 
 export type BlockMetrics = {
   height: number;
+  /** Height this block's footnotes add to the foot of whatever page it lands on. */
+  footnoteHeight?: number;
   /** A heading must not be the last block on a page. */
   keepWithNext?: boolean;
   /** A caption must not open a page without the figure it belongs to. */
@@ -53,33 +55,54 @@ export type PaginationResult = {
   overflowing: number[];
 };
 
+export type PaginateOptions = {
+  /** Rule and padding a page's footnote area costs before its first note. */
+  footnoteOverhead?: number;
+};
+
 /**
  * Greedy top-to-bottom packing: fill a page until the next block would cross
  * the bottom edge, then push that block — plus anything glued to it — onto the
  * next page. Blocks are atomic; nothing is split mid-block.
+ *
+ * Footnotes are packed from the same budget: a block that carries notes brings
+ * their height with it, because those notes print at the foot of whichever page
+ * the block lands on.
  */
-export function paginateBlocks(blocks: BlockMetrics[], available: number): PaginationResult {
+export function paginateBlocks(
+  blocks: BlockMetrics[],
+  available: number,
+  opts: PaginateOptions = {},
+): PaginationResult {
+  const overhead = opts.footnoteOverhead ?? 0;
   const pages: number[][] = [];
   const overflowing: number[] = [];
   let current: number[] = [];
   let used = 0;
+  let notes = 0;
 
   const heightOf = (indices: number[]) =>
     indices.reduce((sum, index) => sum + (blocks[index]?.height ?? 0), 0);
+  const notesOf = (indices: number[]) =>
+    indices.reduce((sum, index) => sum + (blocks[index]?.footnoteHeight ?? 0), 0);
+  /** A page with no notes pays nothing; the first note also pays for the rule. */
+  const reserve = (total: number) => (total > 0 ? total + overhead : 0);
 
   const closePage = () => {
     if (current.length === 0) return;
     pages.push(current);
     current = [];
     used = 0;
+    notes = 0;
   };
 
   blocks.forEach((block, index) => {
-    if (block.height > available) overflowing.push(index);
+    const own = block.footnoteHeight ?? 0;
+    if (block.height + reserve(own) > available) overflowing.push(index);
 
     if (block.breakBefore) closePage();
 
-    if (current.length > 0 && used + block.height > available) {
+    if (current.length > 0 && used + block.height + reserve(notes + own) > available) {
       // Everything glued to this block travels with it: trailing headings
       // (keep-with-next) and, when this block is a caption, its figure.
       let splitAt = current.length;
@@ -91,6 +114,7 @@ export function paginateBlocks(blocks: BlockMetrics[], available: number): Pagin
         pages.push(current.slice(0, splitAt));
         current = moved;
         used = heightOf(moved);
+        notes = notesOf(moved);
       } else {
         closePage();
       }
@@ -98,6 +122,7 @@ export function paginateBlocks(blocks: BlockMetrics[], available: number): Pagin
 
     current.push(index);
     used += block.height;
+    notes += own;
   });
 
   closePage();

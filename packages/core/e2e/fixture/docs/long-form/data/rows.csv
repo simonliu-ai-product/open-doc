@@ -1,0 +1,4 @@
+service,requests,cost
+alpha-api,1200,"3,400"
+beta-api,900,2100
+gamma-api,,1750

@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { DesignSystem } from './design.ts';
+import type { LabelVocabulary } from './labels.ts';
 
 export type PageSizeName = 'A4' | 'Letter' | 'A5' | 'Legal';
 
@@ -54,6 +55,8 @@ export type DocMeta = {
   theme?: string;
   /** ISO 8601 timestamp. Set once at scaffold time; used to sort the doc list. */
   createdAt?: string;
+  /** What numbered items are called — `圖`/`表` instead of `Figure`/`Table`. */
+  labels?: Partial<LabelVocabulary>;
 };
 
 export type FolderIcon = { type: 'emoji'; value: string } | { type: 'color'; value: string };

@@ -2,7 +2,8 @@ import { createElement, type ReactNode, useEffect, useMemo, useState } from 'rea
 import { FlowPage } from '../components/flow-page';
 import type { DesignSystem } from './design';
 import { type DocEntry, type FlowSection, isFlowSection, paginateBlocks } from './flow';
-import { measureFlowSections } from './flow-measure';
+import { type MeasurableSection, measureFlowSections } from './flow-measure';
+import { extractSectionFootnotes, notesForPage, type PreparedSection } from './footnotes';
 import type { DocModule, PageGeometry } from './sdk';
 
 export type ExpandedPage = {
@@ -17,6 +18,11 @@ type Plan = {
 };
 
 const EMPTY_PLAN: Plan = { bySection: [], overflowing: [] };
+
+/** A plan is only current for the sections it was measured from. */
+type Measured = { plan: Plan; sections: FlowSection[] | null };
+
+const NOT_MEASURED: Measured = { plan: EMPTY_PLAN, sections: null };
 
 function entriesOf(doc: DocModule | null): DocEntry[] {
   return (doc?.default ?? []) as DocEntry[];
@@ -35,39 +41,60 @@ export function useDocPages(
   const sections = useMemo(() => entries.filter(isFlowSection), [entries]);
   const design = doc?.design as DesignSystem | undefined;
 
-  const [plan, setPlan] = useState<Plan>(EMPTY_PLAN);
-  const [measuring, setMeasuring] = useState(sections.length > 0);
+  // Footnotes come out of the blocks before anything is measured: what they
+  // cost at the foot of a page is part of that page's budget.
+  const prepared = useMemo<PreparedSection[]>(
+    () => sections.map((section, index) => extractSectionFootnotes(section.blocks, index)),
+    [sections],
+  );
+  const measurable = useMemo<MeasurableSection[]>(
+    () =>
+      sections.map((section, index) => ({
+        blocks: prepared[index].blocks,
+        notesByBlock: prepared[index].notesByBlock,
+        ...(section.padding !== undefined ? { padding: section.padding } : {}),
+      })),
+    [sections, prepared],
+  );
+
+  const [state, setState] = useState<Measured>(NOT_MEASURED);
+  // Derived, not stored: a `measuring` flag set from an effect stays false for
+  // one commit after the document loads, and anything reading the page list in
+  // that window — the outline scan, the headless bridge — sees a whole flow
+  // section as one unpaginated page.
+  const measuring = sections.length > 0 && state.sections !== sections;
 
   useEffect(() => {
     if (sections.length === 0) {
-      setPlan(EMPTY_PLAN);
-      setMeasuring(false);
+      setState({ plan: EMPTY_PLAN, sections });
       return;
     }
     let cancelled = false;
-    setMeasuring(true);
-    measureFlowSections(sections, { geometry, design })
+    measureFlowSections(measurable, { geometry, design })
       .then((measurements) => {
         if (cancelled) return;
         const bySection: number[][][] = [];
         const overflowing: Plan['overflowing'] = [];
         measurements.forEach((measurement, sectionIndex) => {
-          const result = paginateBlocks(measurement.metrics, measurement.available);
+          const result = paginateBlocks(measurement.metrics, measurement.available, {
+            footnoteOverhead: measurement.footnoteOverhead,
+          });
           bySection.push(result.pages);
           for (const block of result.overflowing) {
             overflowing.push({ section: sectionIndex, block });
           }
         });
-        setPlan({ bySection, overflowing });
-        setMeasuring(false);
+        setState({ plan: { bySection, overflowing }, sections });
       })
       .catch(() => {
-        if (!cancelled) setMeasuring(false);
+        if (!cancelled) setState({ plan: EMPTY_PLAN, sections });
       });
     return () => {
       cancelled = true;
     };
-  }, [sections, geometry, design]);
+  }, [sections, measurable, geometry, design]);
+
+  const plan = state.plan;
 
   const pages = useMemo(() => {
     const out: ExpandedPage[] = [];
@@ -81,19 +108,27 @@ export function useDocPages(
       }
       sectionIndex++;
       const section = entry as FlowSection;
+      const ready = prepared[sectionIndex];
+      const blocks = ready?.blocks ?? section.blocks;
       // Before measurement lands, render the section as a single page so the
       // viewer shows something rather than flashing empty.
-      const chunks = plan.bySection[sectionIndex] ?? [section.blocks.map((_, i) => i)];
+      const chunks = plan.bySection[sectionIndex] ?? [blocks.map((_, i) => i)];
       chunks.forEach((blockIndices, pageIndex) => {
         out.push({
           key: `f${entryIndex}-${pageIndex}`,
-          content: createElement(FlowPage, { section, design, blockIndices }),
+          content: createElement(FlowPage, {
+            section,
+            design,
+            blockIndices,
+            blocks,
+            notes: ready ? notesForPage(ready.notesByBlock, blockIndices) : [],
+          }),
         });
       });
     });
 
     return out;
-  }, [entries, plan, design]);
+  }, [entries, plan, prepared, design]);
 
   return { pages, measuring, overflowing: plan.overflowing };
 }

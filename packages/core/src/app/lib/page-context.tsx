@@ -1,4 +1,5 @@
 import { type Context, createContext, type ReactNode, useContext, useMemo } from 'react';
+import { FootnoteCollector } from '../components/footnote';
 
 type PageContextValue = { index: number; total: number };
 
@@ -22,7 +23,11 @@ export function DocPageProvider({
   children,
 }: PageContextValue & { children?: ReactNode }) {
   const value = useMemo(() => ({ index, total }), [index, total]);
-  return <PageContext.Provider value={value}>{children}</PageContext.Provider>;
+  return (
+    <PageContext.Provider value={value}>
+      <FootnoteCollector>{children}</FootnoteCollector>
+    </PageContext.Provider>
+  );
 }
 
 /** 1-based page number of the page currently rendering. `0` outside a page. */

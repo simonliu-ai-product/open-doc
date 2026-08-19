@@ -1,0 +1,6 @@
+service,requests,p99_ms,error_rate,monthly_cost
+checkout-api,18402111,412,0.0021,48120
+search-api,9120004,188,0.0009,21400
+auth-api,24001900,61,0.0004,15980
+media-api,3401288,940,0.0135,33750
+notify-api,7712045,122,0.0011,9240

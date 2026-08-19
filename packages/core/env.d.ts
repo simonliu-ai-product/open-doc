@@ -1,4 +1,5 @@
-// Ambient module declarations for assets imported from `docs/<id>/assets/`.
+// Ambient module declarations for assets imported from `docs/<id>/assets/`
+// and for the data files the framework parses at build time.
 // Mirrors Vite's default asset handling (default export = resolved URL).
 //
 // Consumers opt in via tsconfig:
@@ -48,4 +49,18 @@ declare module '*.ttf' {
 declare module '*.otf' {
   const src: string;
   export default src;
+}
+
+// Parsed by the `open-doc:data` Vite plugin — the default export is the rows.
+declare module '*.csv' {
+  type CellValue = string | number | null;
+  export const columns: string[];
+  export const rows: Array<Record<string, CellValue>>;
+  export default rows;
+}
+declare module '*.tsv' {
+  type CellValue = string | number | null;
+  export const columns: string[];
+  export const rows: Array<Record<string, CellValue>>;
+  export default rows;
 }

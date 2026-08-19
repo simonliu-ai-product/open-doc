@@ -1,9 +1,10 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { designToCssVars } from './design';
-import { collectOutline, getOutline, PAGE_ATTR, PAGE_INDEX_ATTR, setOutline } from './outline';
+import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
 import { nextFrame, waitForFonts, waitForImages } from './print-ready';
+import { captureScan, restoreScan, scanDocument } from './scan';
 import { type DocModule, type PageGeometry, resolvePageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
@@ -11,12 +12,23 @@ type AssetEntry = { name: string; bytes: Uint8Array };
 
 const ASSET_EXT_RE = /\.(?:png|jpe?g|gif|svg|webp|avif|woff2?|ttf|otf)(?:\?[^#]*)?(?:#.*)?$/i;
 
-export async function exportDocAsHtml(
+export type HtmlBundle = {
+  filename: string;
+  mimeType: 'text/html' | 'application/zip';
+  bytes: Uint8Array;
+};
+
+/**
+ * Serializes the document into a self-contained page — a plain `.html` when
+ * nothing is referenced, a zip alongside its assets when something is. The
+ * browser downloads it; the headless exporter writes it to disk.
+ */
+export async function buildDocHtmlBundle(
   doc: DocModule,
   docId: string,
   pages: ExpandedPage[],
-): Promise<void> {
-  if (pages.length === 0) return;
+): Promise<HtmlBundle | null> {
+  if (pages.length === 0) return null;
 
   const title = doc.meta?.title ?? docId;
   const geometry = resolvePageGeometry(doc.meta);
@@ -53,8 +65,7 @@ export async function exportDocAsHtml(
   const htmlBytes = new TextEncoder().encode(html);
 
   if (assets.size === 0) {
-    downloadBlob(new Blob([htmlBytes as BlobPart], { type: 'text/html' }), `${docId}.html`);
-    return;
+    return { filename: `${docId}.html`, mimeType: 'text/html', bytes: htmlBytes };
   }
 
   const { zipSync } = await import('fflate');
@@ -65,8 +76,21 @@ export async function exportDocAsHtml(
   for (const { name, bytes } of assets.values()) {
     (zipTree.assets as Record<string, Uint8Array>)[name] = bytes;
   }
-  const zipped = zipSync(zipTree as Parameters<typeof zipSync>[0]);
-  downloadBlob(new Blob([zipped as BlobPart], { type: 'application/zip' }), `${docId}.zip`);
+  return {
+    filename: `${docId}.zip`,
+    mimeType: 'application/zip',
+    bytes: zipSync(zipTree as Parameters<typeof zipSync>[0]),
+  };
+}
+
+export async function exportDocAsHtml(
+  doc: DocModule,
+  docId: string,
+  pages: ExpandedPage[],
+): Promise<void> {
+  const bundle = await buildDocHtmlBundle(doc, docId, pages);
+  if (!bundle) return;
+  downloadBlob(new Blob([bundle.bytes as BlobPart], { type: bundle.mimeType }), bundle.filename);
 }
 
 async function renderPagesToHtml(
@@ -87,7 +111,7 @@ async function renderPagesToHtml(
   const designVars = doc.design ? designToCssVars(doc.design) : null;
   const roots: Root[] = [];
   const hosts: HTMLElement[] = [];
-  const previousOutline = getOutline();
+  const previousScan = captureScan();
 
   try {
     for (let i = 0; i < pages.length; i++) {
@@ -111,7 +135,7 @@ async function renderPagesToHtml(
     await nextFrame();
     await waitForFonts();
     await waitForImages(container);
-    setOutline(collectOutline(container));
+    scanDocument(container, doc.meta);
     await nextFrame();
     await nextFrame();
 
@@ -119,7 +143,7 @@ async function renderPagesToHtml(
   } finally {
     for (const root of roots) root.unmount();
     container.remove();
-    setOutline(previousOutline);
+    restoreScan(previousScan);
   }
 }
 

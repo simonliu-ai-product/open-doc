@@ -62,3 +62,49 @@ describe('paginateBlocks', () => {
     expect(paginateBlocks([], 1000)).toEqual({ pages: [], overflowing: [] });
   });
 });
+
+describe('paginateBlocks with footnotes', () => {
+  const block = (height: number, footnoteHeight = 0): BlockMetrics => ({ height, footnoteHeight });
+
+  it('gives a page less body room when its blocks carry notes', () => {
+    // Three 300px blocks fit 1000px on their own.
+    expect(paginateBlocks([block(300), block(300), block(300)], 1000).pages).toEqual([[0, 1, 2]]);
+
+    // Add 100px of notes to the first block plus 20px of area chrome and the
+    // third no longer fits: notes print on the page their marker landed on.
+    const withNotes = paginateBlocks([block(300, 100), block(300), block(300)], 1000, {
+      footnoteOverhead: 20,
+    });
+    expect(withNotes.pages).toEqual([[0, 1], [2]]);
+  });
+
+  it('charges the area chrome once per page, not once per note', () => {
+    const blocks = [block(300, 50), block(300, 50), block(300)];
+    // 900 body + 100 notes + 20 chrome = 1020 > 1000.
+    expect(paginateBlocks(blocks, 1000, { footnoteOverhead: 20 }).pages).toEqual([[0, 1], [2]]);
+    // Without the chrome it is exactly 1000 and all three stay together.
+    expect(paginateBlocks(blocks, 1000, { footnoteOverhead: 0 }).pages).toEqual([[0, 1, 2]]);
+  });
+
+  it('recomputes the notes budget for blocks that move to the next page', () => {
+    const blocks: BlockMetrics[] = [
+      { height: 300, footnoteHeight: 100 },
+      { height: 100, keepWithNext: true },
+      { height: 700 },
+    ];
+    const result = paginateBlocks(blocks, 1000, { footnoteOverhead: 20 });
+    // The heading travels with the block it introduces, and its page's budget
+    // is recomputed without the first block's notes.
+    expect(result.pages).toEqual([[0], [1, 2]]);
+  });
+
+  it('flags a block whose own notes make it taller than a page', () => {
+    const result = paginateBlocks([block(900, 200)], 1000, { footnoteOverhead: 20 });
+    expect(result.overflowing).toEqual([0]);
+  });
+
+  it('leaves documents without notes packing exactly as before', () => {
+    const blocks = [block(400), block(400), block(400)];
+    expect(paginateBlocks(blocks, 1000, { footnoteOverhead: 20 }).pages).toEqual([[0, 1], [2]]);
+  });
+});

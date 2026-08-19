@@ -21,6 +21,7 @@ Read the matching reference **before** using a primitive:
 | Vertical budget (fixed pages) | laying out a cover or divider by hand | `references/pagination.md` |
 | Tables, stat rows, inline charts | rendering data of any kind | `references/tables-and-charts.md` |
 | Assets + `<ImagePlaceholder>` | importing images or leaving a placeholder | `references/assets.md` |
+| Footnotes, `<Figure>`, `<Ref>`, `<DataTable>` | any note, numbered figure, cross-reference, or `.csv` | `references/long-form.md` |
 
 ## Themes
 
@@ -96,6 +97,7 @@ You design as if the viewport is literally the page in CSS pixels. The viewer on
 - Use **absolute pixel values** for `font-size`, padding, and positioning. No `rem`, no `vw`/`vh`, no `%` for type.
 - Each page's root element must fill the sheet: `width: '100%'; height: '100%'`.
 - Prefer inline `style={{ … }}`. Any CSS you load is global — scope classnames carefully.
+- The viewer's CSS reset strips list markers. A `<ul>`/`<ol>` needs an explicit `listStyle: 'disc outside'` / `'decimal outside'` or it renders as unindented plain lines.
 - **1pt ≈ 1.333px.** Body copy at 14px prints as ~10.5pt; anything under 12px (9pt) is uncomfortable in print, and under 10px (7.5pt) is unreadable.
 
 ### Print type scale (start here)
@@ -134,6 +136,23 @@ The framework builds the document outline by scanning rendered pages for `h1`, `
 - Conversely, don't use heading tags for decorative text (a cover eyebrow, a stat label). Mark those `<div data-od-outline="skip">` if you must use a heading tag for styling reasons.
 - **The cover title and the word "Contents" both carry `data-od-outline="skip"`.** A contents list that opens with the cover and lists itself reads as a bug.
 - Override the listed text with `data-od-heading="Short title"` when the visible heading is long or contains markup.
+
+## Footnotes, numbering, and data
+
+Four primitives resolve themselves from the rendered pages, the same way the
+contents list does. Read `references/long-form.md` before using any of them.
+
+- **`<Footnote>`** — numbered by position, printed at the foot of the page its
+  marker landed on, and its height is taken out of that page's budget before the
+  packer breaks. On a fixed page, add `<Footnotes />` where they should print.
+- **`<Figure caption id>`** — a numbered figure (or `kind="table"`), caption and
+  content in one unbreakable block. `<ListOfFigures />` / `<ListOfTables />`
+  build the lists.
+- **`<Ref to="id" />`** — "Figure 3", plus the page when the target is elsewhere.
+- **`<DataTable rows={…}>`** — a print-shaped table from an imported `.csv`.
+
+`meta.labels` sets what they are called (`圖`, `表`) — the numbering itself is
+structural.
 
 ## Table of contents
 
@@ -302,6 +321,7 @@ A document is not a slide deck. Long-form copy is the point — but it still has
 - **Assets panel** (`/assets` in the dev UI): upload, rename, and delete files in the global `assets/` folder or any document's `assets/` folder, with an "unused" badge and a copy-ready import line. Files you reference in source are what it scans, so an import you write by hand shows up there immediately.
 - **Inspect mode** (the "Inspect" button, dev only): click any element on a page to edit its text in place — the change is written straight back into `docs/<id>/index.tsx` — or leave a note for the agent, which is stored as a `@doc-comment` marker and processed by the `apply-comments` skill.
 - **Download menu** — PDF (true page size) and self-contained HTML.
+- **Headless render** — `open-doc export <id> --format pdf|html|png` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
 - **Design panel** (the "Design" button in the document view, dev only): live-tweaks the `design` const — palette, fonts, type scale, margin, leading, radius — previewing on the real pages and writing the values back into `docs/<id>/index.tsx` on save.
 
 ### Writing for the inspector
@@ -325,8 +345,27 @@ The panel rewrites the `design` object in place through an AST edit, so keep its
 - Values you want tweakable live *in* the const. A hex you inline into a style is invisible to the panel.
 - If the document has no `design` const, saving from the panel creates one (and adds the `DesignSystem` type import). Anything the panel can't parse is reported in the panel instead of being silently overwritten.
 
+## Check the layout before you call it done
+
+You cannot see the pages you just wrote. The framework can:
+
+```bash
+open-doc check <id>     # every document if you omit the id; exits non-zero on errors
+```
+
+It renders each sheet at true page size and reports what a reader would call a
+mistake — content clipped by the page edge, a blank sheet, a heading stranded at
+the foot of a page, type too small to print, an image that never loaded — each
+with the `line:column` in your source. Agents driving the MCP server call
+`check_layout` for the same report, and `render_page` for a PNG of one sheet.
+
+**Run it after writing a document and after any edit that changes how much text
+is on a page.** The checklist below is what you reason about; `check` is what
+confirms it.
+
 ## Self-review before finishing
 
+- [ ] `open-doc check <id>` reports no errors.
 - [ ] `docs/<id>/index.tsx` `export default`s a non-empty `DocEntry[]`, with body content in a `flow()` section rather than hand-split pages.
 - [ ] Every page's root fills `100% × 100%` and sets `boxSizing: 'border-box'` with the margin as padding.
 - [ ] **For every fixed page, sum (font_size × line_height × lines) + gaps + 2×margin ≤ page height.** If close, split — or move the content into the flow section. No `overflow: auto` escape hatches.
@@ -337,6 +376,8 @@ The panel rewrites the `design` object in place through an AST edit, so keep its
 - [ ] Page numbers come from `useDocPageNumber()` / `useDocPageCount()`.
 - [ ] Document declares a top-level `export const design: DesignSystem` and pages consume `var(--od-*)`.
 - [ ] Tables have a header row, aligned numerals (`fontVariantNumeric: 'tabular-nums'`), and fit the text block width.
+- [ ] Numbers that refer to other things — figures, tables, notes, pages — come from `<Ref>` / `<Figure>` / `<Footnote>`, never typed in.
+- [ ] Any data that exists as a file is imported, not retyped into JSX.
 - [ ] All imported assets exist on disk (`docs/<id>/assets/`, or root `assets/` via `@assets/...`).
 - [ ] Every `<ImagePlaceholder>` marks a real image the user must supply — not decorative filler.
 - [ ] Nothing outside `docs/<id>/` was edited.
@@ -347,6 +388,8 @@ The panel rewrites the `design` object in place through an AST edit, so keep its
 - ❌ `overflow: auto` / `scroll` / `hidden` to "fit" more. The sheet doesn't scroll; you've hidden the bug.
 - ❌ Shrinking body type below 13px or margins below 60px to cram content in.
 - ❌ Hand-written contents lists or hardcoded page numbers — they go stale the moment a page is added.
+- ❌ "See Figure 3 on page 12" written by hand, or a figure caption numbered `Figure 3` in the copy. Use `<Ref>` and `<Figure>`.
+- ❌ Retyping a CSV the user already has into a JSX table.
 - ❌ Fake headings (`<div>` styled like a title) — they vanish from the outline.
 - ❌ A slide-deck voice: 6-word bullets and 100px type. This is a document.
 - ❌ Tables built from `%` widths that overflow the text block, or with more than ~7 columns on portrait A4.

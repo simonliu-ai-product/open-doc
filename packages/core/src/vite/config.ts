@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 import type { InlineConfig } from 'vite';
 import { apiPlugin } from './api-plugin.ts';
 import { currentPlugin } from './current-plugin.ts';
+import { dataPlugin } from './data-plugin.ts';
 import { designPlugin } from './design-plugin.ts';
 import { locTagsPlugin } from './loc-tags-plugin.ts';
 import { mcpPlugin } from './mcp-plugin.ts';
@@ -58,6 +59,7 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
     configFile: false,
     envDir: userCwd,
     plugins: [
+      dataPlugin(),
       locTagsPlugin({ userCwd, docsDir }),
       react(),
       tailwindcss(),

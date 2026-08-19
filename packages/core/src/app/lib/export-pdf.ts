@@ -1,13 +1,15 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { designToCssVars } from './design';
-import { collectOutline, getOutline, PAGE_ATTR, PAGE_INDEX_ATTR, setOutline } from './outline';
+import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
 import { nextFrame, sleep, waitForDataWaitfor, waitForFonts, waitForImages } from './print-ready';
+import { captureScan, restoreScan, scanDocument } from './scan';
 import { type DocModule, resolvePageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
-const PRINT_ROOT_ID = 'od-print-root';
+export const PRINT_ROOT_ID = 'od-print-root';
+export const PRINT_PAGE_CLASS = 'od-print-page';
 const PRINT_STYLE_ID = 'od-print-style';
 
 function printStyles(geometry: { width: number; height: number; css: string }): string {
@@ -38,7 +40,7 @@ function printStyles(geometry: { width: number; height: number; css: string }): 
     pointer-events: auto !important;
     background: #fff !important;
   }
-  #${PRINT_ROOT_ID} .od-print-page {
+  #${PRINT_ROOT_ID} .${PRINT_PAGE_CLASS} {
     width: ${geometry.width}px !important;
     height: ${geometry.height}px !important;
     overflow: hidden;
@@ -50,7 +52,7 @@ function printStyles(geometry: { width: number; height: number; css: string }): 
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  #${PRINT_ROOT_ID} .od-print-page:last-child {
+  #${PRINT_ROOT_ID} .${PRINT_PAGE_CLASS}:last-child {
     page-break-after: auto;
     break-after: auto;
   }
@@ -70,14 +72,24 @@ export type PdfExportProgress = {
   percent: number;
 };
 
-export async function exportDocAsPdf(
+export type PrintCopy = {
+  /** The offscreen container holding one `.od-print-page` per sheet, at true size. */
+  root: HTMLElement;
+  dispose: () => void;
+};
+
+/**
+ * Renders every page into an offscreen copy laid out at the real sheet size,
+ * with the print stylesheet installed. Callers decide what to do with it —
+ * hand it to the print engine, screenshot it, or measure it — and must call
+ * `dispose()` when done.
+ */
+export async function mountPrintCopy(
   doc: DocModule,
   docId: string,
   pages: ExpandedPage[],
   onProgress?: (progress: PdfExportProgress) => void,
-): Promise<void> {
-  if (pages.length === 0) return;
-
+): Promise<PrintCopy> {
   const total = pages.length;
   const geometry = resolvePageGeometry(doc.meta);
   onProgress?.({ phase: 'rendering', current: 0, total, percent: 0 });
@@ -99,7 +111,7 @@ export async function exportDocAsPdf(
     const page = pages[i];
     if (!page) continue;
     const host = document.createElement('div');
-    host.className = 'od-print-page';
+    host.className = PRINT_PAGE_CLASS;
     host.setAttribute(PAGE_ATTR, '');
     host.setAttribute(PAGE_INDEX_ATTR, String(i));
     host.style.width = `${geometry.width}px`;
@@ -122,8 +134,16 @@ export async function exportDocAsPdf(
   }
 
   const previousTitle = document.title;
-  const previousOutline = getOutline();
+  const previousScan = captureScan();
   document.title = doc.meta?.title ?? docId;
+
+  const dispose = () => {
+    document.title = previousTitle;
+    for (const r of reactRoots) r.unmount();
+    root.remove();
+    style.remove();
+    restoreScan(previousScan);
+  };
 
   try {
     await nextFrame();
@@ -131,24 +151,39 @@ export async function exportDocAsPdf(
     await waitForImages(root);
     await waitForDataWaitfor(root);
 
-    // A `<TableOfContents>` reads the outline store, which is only filled by a
-    // DOM scan. Scan the print copy and let React commit the filled TOC before
-    // handing the pages to the print engine.
-    setOutline(collectOutline(root));
+    // A `<TableOfContents>`, a `<Ref>`, a figure's number: all of them read a
+    // store that only a DOM scan fills. Scan the print copy and let React commit
+    // the resolved values before handing the pages to whoever asked for them.
+    scanDocument(root, doc.meta);
     await nextFrame();
     await sleep(50);
+  } catch (err) {
+    dispose();
+    throw err;
+  }
 
+  return { root, dispose };
+}
+
+export async function exportDocAsPdf(
+  doc: DocModule,
+  docId: string,
+  pages: ExpandedPage[],
+  onProgress?: (progress: PdfExportProgress) => void,
+): Promise<void> {
+  if (pages.length === 0) return;
+
+  const total = pages.length;
+  const copy = await mountPrintCopy(doc, docId, pages, onProgress);
+
+  try {
     onProgress?.({ phase: 'printing', current: total, total, percent: 99 });
     const printDone = waitForAfterPrint();
     window.print();
     await printDone;
   } finally {
     onProgress?.({ phase: 'done', current: total, total, percent: 100 });
-    document.title = previousTitle;
-    for (const r of reactRoots) r.unmount();
-    root.remove();
-    style.remove();
-    setOutline(previousOutline);
+    copy.dispose();
   }
 }
 
