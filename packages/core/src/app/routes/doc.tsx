@@ -22,10 +22,12 @@ import { DocSidebar } from '../components/doc-sidebar';
 import { Inspector } from '../components/inspector/inspector';
 import { PageFrame } from '../components/page-frame';
 import { Menu, MenuItem } from '../components/ui/menu';
+import { useAgentBridge } from '../lib/agent-bridge';
 import { exportDocAsHtml } from '../lib/export-html';
 import { exportDocAsPdf } from '../lib/export-pdf';
-import { collectOutline, type OutlineEntry, setOutline, useDocOutline } from '../lib/outline';
+import { type OutlineEntry, useDocOutline } from '../lib/outline';
 import { nextFrame, waitForFonts } from '../lib/print-ready';
+import { scanDocument } from '../lib/scan';
 import { resolvePageGeometry } from '../lib/sdk';
 import { useDocModule } from '../lib/use-doc-module';
 import { useDocPages } from '../lib/use-doc-pages';
@@ -71,8 +73,10 @@ export function Doc() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const geometry = useMemo(() => resolvePageGeometry(doc?.meta), [doc?.meta]);
-  const { pages, measuring } = useDocPages(doc, geometry);
+  const { pages, measuring, overflowing } = useDocPages(doc, geometry);
   const outline = useDocOutline();
+
+  useAgentBridge({ docId: docId ?? '', doc, pages, geometry, measuring, oversized: overflowing });
 
   const clamp = (value: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
   const fitWidthScale = available.width ? clamp(available.width / geometry.width) : 1;
@@ -108,7 +112,6 @@ export function Doc() {
   // Headings only exist once the pages are in the DOM at their final metrics,
   // so the scan waits for fonts — a late-loading face reflows headings and
   // would otherwise strand the outline on stale text.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `doc` re-scans on hot reload, when the module identity changes but the status stays 'ready'.
   useEffect(() => {
     if (state.status !== 'ready' || measuring) return;
     let cancelled = false;
@@ -118,7 +121,7 @@ export function Doc() {
       await nextFrame();
       const root = pagesRef.current;
       if (cancelled || !root) return;
-      setOutline(collectOutline(root));
+      scanDocument(root, doc?.meta);
     })();
     return () => {
       cancelled = true;

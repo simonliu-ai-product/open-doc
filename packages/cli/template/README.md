@@ -31,8 +31,37 @@ docs/
     assets/        # optional images
 ```
 
+## Starting from Markdown
+
+```bash
+open-doc import notes.md --id my-report --contents
+```
+
+Turns a Markdown file into a real document — cover page, self-filling contents, tables, and any local images copied into the document's own `assets/`.
+
+## Checking the layout
+
+```bash
+open-doc check              # every document; add an id to narrow it
+```
+
+Renders each sheet at true page size and reports what a reader would call a mistake: content clipped by the page edge, a blank sheet, a heading stranded at the foot of a page, type too small to print. It exits non-zero on errors, so it works in CI. Your agent should run it after writing or editing a document — it cannot see the pages otherwise.
+
 ## Exporting
 
 The toolbar in the document view has **PDF** (prints at the true page size — pick "Save as PDF" in the print dialog) and **HTML** (a self-contained file, or a zip when the document has assets).
+
+Without a browser:
+
+```bash
+open-doc export my-report --format pdf   # or html, or one png per page
+open-doc export --all --out-dir out
+```
+
+`check` and `export` render in headless Chromium, so they need Playwright once:
+
+```bash
+pnpm add -D playwright && pnpm exec playwright install chromium
+```
 
 `pnpm build` produces a static site you can deploy anywhere.

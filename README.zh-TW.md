@@ -39,7 +39,7 @@ Scaffolder 內建這些 skill：
 
 ### 🔌 MCP server，任何 agent framework 都能接
 
-`open-doc dev --mcp` 會在 UI 旁邊掛上 MCP 端點——19 個工具，涵蓋文件、精準的文字編輯、themes、assets 與資料夾。它是無狀態的 Streamable HTTP，client 直接指向 `http://localhost:5273/mcp` 即可，不需要 session handshake。
+`open-doc dev --mcp` 會在 UI 旁邊掛上 MCP 端點——23 個工具，涵蓋文件、精準的文字編輯、版面檢查與單頁截圖、Markdown 匯入、匯出、themes、assets 與資料夾。它是無狀態的 Streamable HTTP，client 直接指向 `http://localhost:5273/mcp` 即可，不需要 session handshake。
 
 這些工具和瀏覽器共用同一份實作，所以 `write_document` / `write_text` 會接收你上次讀到的內容，遇到已被改動的檔案時回 `409` 拒絕寫入，而不是覆蓋掉先到的人。詳見 [packages/mcp](packages/mcp)。
 
@@ -54,6 +54,67 @@ Scaffolder 內建這些 skill：
 ```tsx
 export default [Cover, Contents, flow(<>…</>, { footer: Footer })] satisfies DocEntry[];
 ```
+
+### 🔢 長文件該有的東西，framework 幫你維護
+
+註腳、圖表編號、交叉引用，全都由渲染後的頁面掃描而來——和填目錄的是同一次掃描：
+
+```tsx
+<p style={p}>
+  本季支出季增 8%
+  <Footnote>帳務匯出，2026-10-02，不含邊緣層。</Footnote>，幾乎全來自單一服務。
+</p>
+
+<Figure id="topology" caption="服務拓撲">…</Figure>
+
+<p style={p}><Ref to="topology" /> 呈現的形狀，正是表格看不出來的。</p>
+```
+
+`<Footnote>` 會印在**標記實際落到的那一頁**底部，而且它佔掉的高度會在分頁器決定斷點**之前**先從該頁預算扣掉——註腳排版最麻煩的循環相依，framework 吃掉了。`<Ref>` 渲染成 `圖 3`，只有當目標在別頁時才補上頁碼。在文件中間插入一張圖，後面所有編號與引用都會跟著移動。`<ListOfFigures />`、`<ListOfTables />` 產生清單；`meta.labels` 決定它們叫什麼（`圖`、`表`）。
+
+### 🧮 表格來自資料檔，不是重打一遍
+
+```tsx
+import services from './data/services.csv';
+
+<DataTable id="tier" caption="平台層，2026 Q3" rows={services}
+  columns={[{ key: 'service' }, { key: 'requests', format: 'integer' }, { key: 'error_rate', format: 'percent' }]} />
+```
+
+`.csv`／`.tsv` 在 build time 解析成物件陣列——含引號欄位、內嵌換行都處理——所以表格裡的數字和周圍的文字一樣是同步的，在 dev server 與靜態 build 都一樣。整欄都是數字的欄位會自動靠右並套用 `tabular-nums`。改檔案，報告就跟著改。
+
+### 👁️ 版面體檢——因為 agent 看不到頁面
+
+寫 React 的 agent 不會知道自己剛加的那段文字把最後三行擠出了紙張邊界。`open-doc check` 用真實頁面尺寸把每一頁算出來，然後告訴它：
+
+```
+$ open-doc check q3-infra-review
+q3-infra-review 9 pages — 2 error(s), 1 warning(s)
+  ✗ p.4   Content runs 37px past the bottom of the sheet and is clipped in the PDF.
+          p: Spend grew 8% quarter over quarter, driven by…  @ 214:6
+  ✗ p.7   Image failed to load: ./assets/topology.png
+  ! p.6   Heading ends the page — the section it opens starts on the next sheet.
+          h2: 4. Recommendations  @ 388:4
+```
+
+被裁掉的內容、空白頁、落在頁尾的孤立標題、小到印不出來的字級、載入失敗的圖——每一項都附上原始碼的 `line:column`（inspector 本來就在那裡蓋了標記）。它以非零狀態碼結束，可以直接當 CI 關卡；agent 則呼叫同一套邏輯的 `check_layout`，需要親眼看一頁時用 `render_page`。
+
+### ⌨️ 無頭匯出——不開瀏覽器的下載選單
+
+```bash
+open-doc export q3-infra-review --format pdf   # 也可以是 html，或每頁一張 png
+open-doc export --all --out-dir out
+```
+
+和工具列走同一條 render pipeline，只是改由腳本驅動——報告因此可以由 CI 定時產出，而不是靠人去點。需要安裝 `playwright`（`pnpm add -D playwright && pnpm exec playwright install chromium`）；它是選用的 peer dependency，不是相依套件。
+
+### 📥 Markdown 進來，文件出去
+
+```bash
+open-doc import notes.md --id q3-notes --contents
+```
+
+多數報告一開始都是 Markdown。匯入會把它變成一份真正的文件——`flow()` 內文、封面頁、會自己填的目錄、透過樣式化 `Th`/`Td` 呈現的 GFM 表格、本地圖片複製進該文件自己的 `assets/`——而且產出的就是一般手寫的 TSX，大綱、inspector 與設計面板全都照常運作。
 
 ### 🗂️ 是工作區，不是檔案清單
 
@@ -99,6 +160,14 @@ pnpm dev
 ```
 
 開啟 http://localhost:5273。接著就透過你的 agent 操作它——或直接編輯 `docs/<id>/index.tsx`。
+
+| 指令 | 作用 |
+| --- | --- |
+| `open-doc dev` | 開發伺服器與檢視器（`--mcp` 會掛上 MCP 端點） |
+| `open-doc build` / `preview` | 靜態網站 |
+| `open-doc check [ids…]` | 回報版面問題，有錯誤時以非零狀態碼結束 |
+| `open-doc export [ids…]` | 無頭產出 PDF / HTML / PNG |
+| `open-doc import <file.md>` | Markdown → `docs/` 下的一份文件 |
 
 ## 檔案契約
 

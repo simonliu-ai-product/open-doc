@@ -39,7 +39,7 @@ Skills ship with the scaffolder:
 
 ### 🔌 An MCP server, so any agent framework can drive it
 
-`open-doc dev --mcp` mounts an MCP endpoint next to the UI — 19 tools covering documents, surgical text edits, themes, assets, and folders. It is stateless Streamable HTTP, so a client just points at `http://localhost:5273/mcp` with no session handshake.
+`open-doc dev --mcp` mounts an MCP endpoint next to the UI — 23 tools covering documents, surgical text edits, layout checks and page screenshots, Markdown import, export, themes, assets, and folders. It is stateless Streamable HTTP, so a client just points at `http://localhost:5273/mcp` with no session handshake.
 
 The tools and the browser share one implementation, so `write_document` / `write_text` take the content you last read and refuse a stale write with `409` rather than overwriting whoever got there first. See [packages/mcp](packages/mcp).
 
@@ -54,6 +54,67 @@ Wrap body content in `flow(<>…</>)` and the framework measures it in the real 
 ```tsx
 export default [Cover, Contents, flow(<>…</>, { footer: Footer })] satisfies DocEntry[];
 ```
+
+### 🔢 A long document's furniture, maintained for you
+
+Footnotes, figure and table numbers, and cross-references all resolve from the rendered pages — the same scan that fills the contents list:
+
+```tsx
+<p style={p}>
+  Spend grew 8% quarter over quarter
+  <Footnote>Billing export, 2026-10-02. Excludes the edge tier.</Footnote>, driven by one service.
+</p>
+
+<Figure id="topology" caption="Service topology">…</Figure>
+
+<p style={p}>The shape in <Ref to="topology" /> is what the table hides.</p>
+```
+
+A `<Footnote>` prints at the foot of **whatever page its marker landed on**, and the space it needs is taken out of that page's budget *before* the packer decides where to break — the circular part of footnote layout, handled. `<Ref>` renders `Figure 3`, and adds `(p. 12)` only when the target is on another sheet. Insert a figure in the middle of the document and every number and reference after it moves. `<ListOfFigures />` and `<ListOfTables />` build the lists; `meta.labels` sets what they are called (`圖`, `表`).
+
+### 🧮 Tables from data files, not retyped
+
+```tsx
+import services from './data/services.csv';
+
+<DataTable id="tier" caption="Platform tier, Q3 2026" rows={services}
+  columns={[{ key: 'service' }, { key: 'requests', format: 'integer' }, { key: 'error_rate', format: 'percent' }]} />
+```
+
+`.csv`/`.tsv` resolve to arrays of objects at build time — quoted fields, embedded newlines and all — so a table's numbers are as synchronous as the prose around them, in the dev server and in a static build. A column of numbers aligns right with `tabular-nums` without being told. Change the file, the report changes.
+
+### 👁️ Layout checks, because an agent can't see the page
+
+An agent writing React has no idea whether the paragraph it just added pushed the last three lines off the sheet. `open-doc check` renders every page at true size and tells it:
+
+```
+$ open-doc check q3-infra-review
+q3-infra-review 9 pages — 2 error(s), 1 warning(s)
+  ✗ p.4   Content runs 37px past the bottom of the sheet and is clipped in the PDF.
+          p: Spend grew 8% quarter over quarter, driven by…  @ 214:6
+  ✗ p.7   Image failed to load: ./assets/topology.png
+  ! p.6   Heading ends the page — the section it opens starts on the next sheet.
+          h2: 4. Recommendations  @ 388:4
+```
+
+Clipped content, blank sheets, stranded headings, type too small to print, images that never loaded — each with the `line:column` in your source, because the inspector already stamps it there. It exits non-zero, so it works as a CI gate; agents call the same thing as the `check_layout` tool, and `render_page` when they need to look at a sheet.
+
+### ⌨️ Headless export — the Download menu without a browser
+
+```bash
+open-doc export q3-infra-review --format pdf   # or html, or one png per page
+open-doc export --all --out-dir out
+```
+
+Same render pipeline as the toolbar, driven from a script — so a report can be produced by CI on a schedule instead of by a person clicking. Needs `playwright` installed (`pnpm add -D playwright && pnpm exec playwright install chromium`); it is an optional peer, not a dependency.
+
+### 📥 Markdown in, document out
+
+```bash
+open-doc import notes.md --id q3-notes --contents
+```
+
+Most reports start life as Markdown. The importer turns one into a real document — `flow()` body, cover page, self-filling contents, GFM tables through styled `Th`/`Td`, local images copied into the document's own `assets/` — and the output is ordinary authored TSX, so the outline, the inspector, and the design panel all work on it exactly as on a hand-written page.
 
 ### 🗂️ A workspace, not a file list
 
@@ -99,6 +160,14 @@ pnpm dev
 ```
 
 Open http://localhost:5273. From there, drive it through your agent — or edit `docs/<id>/index.tsx` directly.
+
+| Command | What it does |
+| --- | --- |
+| `open-doc dev` | Dev server + viewer (`--mcp` to mount the MCP endpoint) |
+| `open-doc build` / `preview` | Static site |
+| `open-doc check [ids…]` | Report layout faults; non-zero exit on errors |
+| `open-doc export [ids…]` | Headless PDF / HTML / PNG |
+| `open-doc import <file.md>` | Markdown → a document under `docs/` |
 
 ## The file contract
 

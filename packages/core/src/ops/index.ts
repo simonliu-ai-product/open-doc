@@ -20,6 +20,22 @@ export {
   writeDocument,
 } from './documents.ts';
 export {
+  type ImportMarkdownOptions,
+  type ImportResult,
+  importMarkdown,
+  slugify,
+} from './import.ts';
+export {
+  checkLayout,
+  closeRenderSession,
+  type ExportFormat,
+  type ExportResult,
+  exportDocument,
+  type LayoutFinding,
+  type LayoutReport,
+  renderDocPage,
+} from './layout.ts';
+export {
   type AssetSummary,
   createFolder,
   deleteAsset,

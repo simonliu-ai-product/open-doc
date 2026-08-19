@@ -33,6 +33,12 @@ Point a client at `http://localhost:5273/mcp`. There is no session handshake —
 | `list_themes` / `read_theme` | The house styles, and the full theme document. |
 | `list_assets` / `upload_asset` / `find_asset_usages` / `delete_asset` | Images per document or `global`. |
 | `list_folders` / `create_folder` / `file_document` | The folder manifest. |
+| `check_layout` | Render the sheets and report layout faults, with source locations. |
+| `render_page` | PNG of one sheet at true page size. |
+| `export_document` | Write pdf / html / png to disk, headlessly. |
+| `import_markdown` | Turn Markdown into a document under `docs/`. |
+
+The last four render the document in a headless browser and need `playwright` in the workspace (`pnpm add -D playwright && pnpm exec playwright install chromium`). They reuse the running dev server, so repeat calls are cheap.
 
 ## Writing a document
 
@@ -43,6 +49,10 @@ A document is a React module, not a form. The flow that works:
 3. Look at it in the browser; the dev server already reloaded.
 
 For edits, prefer `read_text` → `write_text` over rewriting the file: it touches one text run and leaves the markup untouched.
+
+4. **`check_layout`.** You cannot see the pages you wrote. It reports content clipped by the page edge, blank sheets, headings stranded at the foot of a page, and type too small to print — each with the `line:column` to fix. `render_page` gives you a picture of one sheet when the report is not enough.
+
+Starting from Markdown the user already has? `import_markdown` writes the whole document — `flow()` body, cover, contents, images — and you refine from there.
 
 ## Concurrent edits
 

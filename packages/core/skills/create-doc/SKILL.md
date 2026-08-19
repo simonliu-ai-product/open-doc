@@ -9,6 +9,8 @@ This skill owns the **workflow** for drafting a new document. The technical refe
 
 You only write files under `docs/<id>/`. Never modify `package.json`, `open-doc.config.ts`, or existing documents.
 
+**If the user already has the content written as Markdown, don't retype it into JSX.** `open-doc import <file.md> --id <id>` produces a real document — `flow()` body, cover, contents, local images copied into the document's assets — which you then refine. Steps 0–2 still apply for the parts the import cannot know (theme, page size, visual direction).
+
 ## Step 0 — Pick a theme
 
 List files under `themes/`. If any theme markdown exists (anything other than `README.md`), call `AskUserQuestion` with each theme id as an option plus a final **"no theme — design from scratch"** option. (`AskUserQuestion` holds at most 4 options — with 4+ themes, offer the 3 most relevant plus "no theme"; the auto-added "Other" lets the user name an omitted one.)
@@ -87,7 +89,9 @@ While writing:
 
 ## Step 7 — Self-review
 
-Run the checklist in `doc-authoring` ("Self-review before finishing"). Then re-read the prose once as a reader: does the summary state the conclusion? Does every claim have a source? Is any page over budget?
+**Run `open-doc check <id>` first.** You cannot see the sheets you produced; it renders them at true page size and reports clipped content, blank pages, stranded headings, and unreadable type, each with a source location. Fix every error before moving on. (Driving the MCP server instead? `check_layout`, and `render_page` when you need to look at a sheet.)
+
+Then run the checklist in `doc-authoring` ("Self-review before finishing"), and re-read the prose once as a reader: does the summary state the conclusion? Does every claim have a source?
 
 ## Step 8 — Hand off
 
@@ -96,7 +100,7 @@ Tell the user:
 - The doc id and file path.
 - That the dev server hot-reloads — open `http://localhost:5273/d/<id>` (or refresh the home page).
 - **Every placeholder and `TODO:` you left**, and what data each one needs.
-- That "Export PDF" in the toolbar prints at the true page size, and "HTML" downloads a self-contained copy.
+- That "Export PDF" in the toolbar prints at the true page size, and "HTML" downloads a self-contained copy — or `open-doc export <id>` for the same files without a browser.
 - That the **Design** button live-tweaks the palette and type scale and writes the result back to the source, and that images they want to drop in go through the **Assets** page.
 
 Don't run the dev server yourself unless asked.

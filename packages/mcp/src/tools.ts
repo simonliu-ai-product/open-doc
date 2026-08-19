@@ -3,13 +3,16 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import {
   type ApiContext,
   addComment,
+  checkLayout,
   createDocument,
   createFolder,
   deleteAsset,
   deleteDocument,
   duplicateDocument,
+  exportDocument,
   fileDocument,
   findAssetUsages,
+  importMarkdown,
   listAssets,
   listDocuments,
   listFolders,
@@ -19,6 +22,7 @@ import {
   readText,
   readTheme,
   renameDocument,
+  renderDocPage,
   writeAsset,
   writeDocument,
   writeText,
@@ -297,5 +301,88 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
     },
     ({ docId, folderId }) =>
       run(() => fileDocument(ctx, docId, folderId).then(() => ({ ok: true }))),
+  );
+
+  server.registerTool(
+    'check_layout',
+    {
+      title: 'Check the layout',
+      description:
+        'Renders the document at true page size and reports what is wrong with the sheets — content clipped by the page edge, a blank page, a heading stranded at the foot of a page, unreadable type, an image that failed to load. Findings carry a `loc` (line:column) pointing at the source. Run this after writing or editing a document: it is the only way to see what you actually produced.',
+      inputSchema: z.object({ docId: z.string() }),
+    },
+    ({ docId }) => run(() => checkLayout(ctx, docId)),
+  );
+
+  server.registerTool(
+    'render_page',
+    {
+      title: 'Screenshot a page',
+      description:
+        'A PNG of one sheet at true page size, exactly as it prints. Use it when check_layout reports something you need to look at, or to confirm a design change landed.',
+      inputSchema: z.object({
+        docId: z.string(),
+        page: z.number().int().positive().describe('1-based page number'),
+      }),
+    },
+    async ({ docId, page }) => {
+      try {
+        const shot = await renderDocPage(ctx, docId, page);
+        return {
+          content: [
+            { type: 'image' as const, data: shot.base64, mimeType: shot.mimeType },
+            {
+              type: 'text' as const,
+              text: `${docId} page ${shot.page} of ${shot.pageCount}`,
+            },
+          ],
+        };
+      } catch (err) {
+        if (err instanceof OpsError) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: `${err.status}: ${err.message}` }],
+          };
+        }
+        throw err;
+      }
+    },
+  );
+
+  server.registerTool(
+    'export_document',
+    {
+      title: 'Export a document',
+      description:
+        'Writes the document to disk headlessly — pdf, html, or one png per page. The output directory must stay inside the workspace.',
+      inputSchema: z.object({
+        docId: z.string(),
+        format: z.enum(['pdf', 'html', 'png']).default('pdf'),
+        outDir: z.string().optional().describe('relative to the workspace root; defaults to `out`'),
+      }),
+    },
+    ({ docId, format, outDir }) => run(() => exportDocument(ctx, docId, { format, outDir })),
+  );
+
+  server.registerTool(
+    'import_markdown',
+    {
+      title: 'Import Markdown',
+      description:
+        'Turns Markdown into a real document under docs/ — flow() body, cover page, local images copied into the document’s assets. Use this instead of hand-writing TSX when the user already has the content written.',
+      inputSchema: z.object({
+        markdown: z.string().optional().describe('the Markdown itself'),
+        file: z.string().optional().describe('path to a .md file inside the workspace'),
+        docId: z.string().optional().describe('defaults to a slug of the title'),
+        title: z.string().optional(),
+        subtitle: z.string().optional(),
+        author: z.string().optional(),
+        theme: z.string().optional(),
+        pageSize: z.enum(['A4', 'Letter', 'A5', 'Legal']).optional(),
+        cover: z.boolean().optional().describe('open with a title page; defaults to true'),
+        contents: z.boolean().optional().describe('add a self-filling contents page'),
+      }),
+    },
+    (args) => run(() => importMarkdown(ctx, args)),
   );
 }

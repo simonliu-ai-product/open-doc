@@ -134,6 +134,9 @@ importers:
       '@types/react-dom':
         specifier: ^18.3.1
         version: 18.3.7(@types/react@18.3.31)
+      playwright:
+        specifier: ~1.56.1
+        version: 1.56.1
       tsdown:
         specifier: ^0.22.14
         version: 0.22.14(typescript@5.9.3)

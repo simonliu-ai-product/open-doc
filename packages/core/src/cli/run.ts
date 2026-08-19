@@ -40,6 +40,28 @@ interface SyncFlags {
   dryRun?: boolean;
 }
 
+interface ExportFlags {
+  format?: string;
+  outDir?: string;
+  all?: boolean;
+}
+
+interface CheckFlags {
+  all?: boolean;
+  json?: boolean;
+}
+
+interface ImportFlags {
+  id?: string;
+  title?: string;
+  subtitle?: string;
+  author?: string;
+  theme?: string;
+  pageSize?: string;
+  cover?: boolean;
+  contents?: boolean;
+}
+
 function resolveBuiltinSkillsDir(): string {
   // dist/cli/bin.js → ../../skills (package root + /skills)
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -132,6 +154,44 @@ export async function run(argv: string[]): Promise<void> {
     .action(async (flags: ServerFlags) => {
       const { preview } = await import('./preview.ts');
       await preview(flags);
+    });
+
+  program
+    .command('export [docIds...]')
+    .description('Render documents headlessly to PDF, HTML, or PNG')
+    .addOption(new Option('-f, --format <format>', 'output format').choices(['pdf', 'html', 'png']))
+    .option('-o, --out-dir <dir>', 'directory to write into (defaults to `out`)')
+    .option('--all', 'export every document under docs/')
+    .action(async (docIds: string[], flags: ExportFlags) => {
+      const { exportDocs } = await import('./export.ts');
+      await exportDocs(docIds, flags as Parameters<typeof exportDocs>[1]);
+    });
+
+  program
+    .command('check [docIds...]')
+    .description('Report layout faults — clipped content, blank sheets, stranded headings')
+    .option('--json', 'print the full report as JSON')
+    .action(async (docIds: string[], flags: CheckFlags) => {
+      const { checkDocs } = await import('./check.ts');
+      await checkDocs(docIds, flags);
+    });
+
+  program
+    .command('import <file>')
+    .description('Turn a Markdown file into a document under docs/')
+    .option('--id <id>', 'document id (defaults to a slug of the title)')
+    .option('--title <title>', 'override the title')
+    .option('--subtitle <subtitle>', 'subtitle, also used as the cover eyebrow')
+    .option('--author <author>', 'author line on the cover')
+    .option('--theme <theme>', 'theme id to back-link from meta.theme')
+    .addOption(
+      new Option('--page-size <size>', 'page size').choices(['A4', 'Letter', 'A5', 'Legal']),
+    )
+    .option('--no-cover', 'skip the title page')
+    .option('--contents', 'add a self-filling contents page')
+    .action(async (file: string, flags: ImportFlags) => {
+      const { importDoc } = await import('./import.ts');
+      await importDoc(file, flags);
     });
 
   program

@@ -12,6 +12,11 @@ export type ApiContext = {
   /** `docs/.folders.json` — the folder manifest, versioned alongside the docs. */
   manifestPath: string;
   coreVersion: string;
+  /**
+   * Origin of a dev server already serving this workspace. Headless rendering
+   * reuses it instead of booting a second one; absent, it boots its own.
+   */
+  serverOrigin?: string;
 };
 
 export type ApiPluginOptions = {
@@ -19,6 +24,7 @@ export type ApiPluginOptions = {
   docsDir?: string;
   assetsDir?: string;
   coreVersion: string;
+  serverOrigin?: string;
 };
 
 export function makeContext(opts: ApiPluginOptions): ApiContext {
@@ -33,6 +39,7 @@ export function makeContext(opts: ApiPluginOptions): ApiContext {
     globalAssetsRoot: path.resolve(userCwd, assetsDir),
     manifestPath: path.join(docsRoot, '.folders.json'),
     coreVersion: opts.coreVersion,
+    ...(opts.serverOrigin !== undefined ? { serverOrigin: opts.serverOrigin } : {}),
   };
 }
 

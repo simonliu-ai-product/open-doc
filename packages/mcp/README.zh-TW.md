@@ -33,6 +33,12 @@ open-doc dev --mcp
 | `list_themes` / `read_theme` | 可用的家族風格，以及完整的 theme 文件。 |
 | `list_assets` / `upload_asset` / `find_asset_usages` / `delete_asset` | 各文件或 `global` 範圍的圖片。 |
 | `list_folders` / `create_folder` / `file_document` | 資料夾清單與歸檔。 |
+| `check_layout` | 算出每一頁並回報版面問題，附上原始碼位置。 |
+| `render_page` | 以真實頁面尺寸截下某一頁的 PNG。 |
+| `export_document` | 無頭寫出 pdf / html / png。 |
+| `import_markdown` | 把 Markdown 變成 `docs/` 下的一份文件。 |
+
+最後四個會在無頭瀏覽器裡算出文件，需要工作區內有 `playwright`（`pnpm add -D playwright && pnpm exec playwright install chromium`）。它們會沿用正在跑的 dev server，所以連續呼叫很便宜。
 
 ## 撰寫一份文件
 
@@ -43,6 +49,10 @@ open-doc dev --mcp
 3. 到瀏覽器看結果；dev server 已經重新載入了。
 
 要修改時，優先用 `read_text` → `write_text` 而不是整份重寫：它只碰一個文字段落，周圍的標記原封不動。
+
+4. **`check_layout`。** 你看不到自己寫出來的頁面。它會回報被頁緣裁掉的內容、空白頁、落在頁尾的孤立標題、小到印不出來的字級——每一項都附上要修的 `line:column`。報告不夠時，用 `render_page` 直接看那一頁。
+
+使用者手上已經有 Markdown？`import_markdown` 會把整份文件寫好——`flow()` 內文、封面、目錄、圖片——你從那裡開始細修。
 
 ## 同時編輯
 

@@ -17,6 +17,11 @@ export type OpenDocMcpOptions = {
   assetsDir?: string;
   version?: string;
   /**
+   * Origin of the dev server serving this workspace. The rendering tools reuse
+   * it instead of booting a private Vite server per call.
+   */
+  serverOrigin?: string;
+  /**
    * Extra hostnames allowed in Host/Origin headers. Loopback is always allowed;
    * add to this only when the endpoint is deliberately exposed.
    */
@@ -29,6 +34,7 @@ function contextFor(opts: OpenDocMcpOptions): ApiContext {
     docsDir: opts.docsDir,
     assetsDir: opts.assetsDir,
     coreVersion: opts.version ?? '0.0.0',
+    ...(opts.serverOrigin !== undefined ? { serverOrigin: opts.serverOrigin } : {}),
   });
 }
 
