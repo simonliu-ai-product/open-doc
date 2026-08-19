@@ -8,6 +8,7 @@ import { apiPlugin } from './api-plugin.ts';
 import { currentPlugin } from './current-plugin.ts';
 import { dataPlugin } from './data-plugin.ts';
 import { designPlugin } from './design-plugin.ts';
+import { diagramPlugin } from './diagram-plugin.ts';
 import { locTagsPlugin } from './loc-tags-plugin.ts';
 import { mcpPlugin } from './mcp-plugin.ts';
 import { loadUserConfig, type OpenDocConfig, openDocPlugin } from './open-doc-plugin.ts';
@@ -66,6 +67,7 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
     envDir: userCwd,
     plugins: [
       dataPlugin(),
+      diagramPlugin(),
       locTagsPlugin({ userCwd, docsDir }),
       react(),
       tailwindcss(),

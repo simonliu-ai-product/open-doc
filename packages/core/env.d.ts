@@ -64,3 +64,20 @@ declare module '*.tsv' {
   export const rows: Array<Record<string, CellValue>>;
   export default rows;
 }
+
+// Compiled by the `open-doc:diagram` Vite plugin — the default export is the
+// themed SVG and its natural size, ready for `<Diagram chart={…} />`.
+declare module '*.mmd' {
+  export const svg: string;
+  export const width: number;
+  export const height: number;
+  const chart: { svg: string; width: number; height: number };
+  export default chart;
+}
+declare module '*.mermaid' {
+  export const svg: string;
+  export const width: number;
+  export const height: number;
+  const chart: { svg: string; width: number; height: number };
+  export default chart;
+}

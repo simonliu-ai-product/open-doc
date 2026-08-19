@@ -5,6 +5,8 @@ export type {
   DataTableProps,
 } from './app/components/data-table.tsx';
 export { DataTable } from './app/components/data-table.tsx';
+export type { DiagramProps, DiagramSource } from './app/components/diagram.tsx';
+export { Diagram } from './app/components/diagram.tsx';
 export type { FootnoteProps, FootnotesProps } from './app/components/footnote.tsx';
 export { Footnote, Footnotes } from './app/components/footnote.tsx';
 export type { ImagePlaceholderProps } from './app/components/image-placeholder.tsx';
@@ -41,3 +43,5 @@ export { DEFAULT_PAGE_SIZE, PAGE_SIZES, resolvePageGeometry } from './app/lib/sd
 export type { OpenDocBuildConfig, OpenDocConfig } from './config.ts';
 export type { CellValue, DelimitedTable } from './data/delimited.ts';
 export { parseDelimited } from './data/delimited.ts';
+export type { CompiledDiagram, CompileOptions } from './diagram/index.ts';
+export { compileDiagram, DiagramSyntaxError } from './diagram/index.ts';
