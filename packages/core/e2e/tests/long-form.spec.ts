@@ -22,9 +22,15 @@ test.describe('long-form document layer', () => {
   test('a footnote prints on the sheet its marker landed on', async ({ page }) => {
     await openDoc(page, 'long-form');
     await expect(pages(page).first()).toBeVisible();
-    // The numbers arrive with the scan, one pass after the pages render.
+    // The numbers arrive with the scan, one pass after the pages render. Waiting
+    // for a marker to *exist* is not enough — until the scan lands it carries a
+    // placeholder, and every assertion below is about the numbers themselves.
     await expect
-      .poll(async () => (await footnotesByPage(page)).some((sheet) => sheet.markers.length > 0))
+      .poll(async () => {
+        const sheets = await footnotesByPage(page);
+        const markers = sheets.flatMap((sheet) => sheet.markers);
+        return markers.length > 0 && markers.every((marker) => /^\d+$/.test(marker));
+      })
       .toBe(true);
 
     const sheets = await footnotesByPage(page);

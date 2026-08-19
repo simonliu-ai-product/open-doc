@@ -12,6 +12,9 @@ import {
 } from 'react';
 import { LABEL_ATTR, LABEL_ID_ATTR, useDocLabel, useLabelVocabulary } from '../lib/labels';
 
+/** Stands in for a number the scan has not produced yet, or never will. */
+const UNNUMBERED = '\u2022';
+
 export type CollectedNote = { id: string; content: ReactNode };
 
 type Collector = {
@@ -88,12 +91,20 @@ export function markerStyle(): CSSProperties {
   };
 }
 
-/** The superscript in the text. Its position in the document decides the number. */
+/**
+ * The superscript in the text. Its position in the document decides the number.
+ *
+ * The placeholder is the one the printed note uses, and deliberately not an
+ * empty string: the two describe the same unresolved state, a note whose number
+ * never arrives has to be visible in both places rather than silently blank,
+ * and the packer measures this glyph — an empty marker is narrower than the
+ * digit that replaces it.
+ */
 export function FootnoteMarker({ id }: { id: string }) {
   const entry = useDocLabel(id);
   return (
     <sup {...{ [LABEL_ATTR]: 'footnote', [LABEL_ID_ATTR]: id }} style={markerStyle()}>
-      {entry?.number ?? ''}
+      {entry?.number ?? UNNUMBERED}
     </sup>
   );
 }
@@ -158,7 +169,7 @@ export function FootnoteRow({ id, content }: CollectedNote) {
           color: 'var(--od-accent)',
         }}
       >
-        {entry?.number ?? '•'}
+        {entry?.number ?? UNNUMBERED}
       </span>
       <span style={{ minWidth: 0 }}>{content}</span>
     </div>
