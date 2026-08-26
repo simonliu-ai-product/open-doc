@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/preview-dark.png">
+  <img src=".github/assets/preview.png" alt="open-doc — the document framework built for agents." width="100%">
+</picture>
+
 # open-doc
 
 [![CI](https://github.com/simonliu-ai-product/open-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/simonliu-ai-product/open-doc/actions/workflows/ci.yml)
@@ -5,7 +10,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/simonliu-ai-product/open-doc?style=flat)](https://github.com/simonliu-ai-product/open-doc/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](https://opensource.org/licenses/MIT)
 
-**English** · [繁體中文](README.zh-TW.md)
+**English** · [繁體中文](README.zh-TW.md) · [costaffs.app/tools/open-doc](https://costaffs.app/tools/open-doc/)
 
 **The document framework built for agents.** Describe the report you need in natural language — your coding agent writes the React. open-doc handles the page geometry, the outline, the table of contents, page numbers, print layout, and export.
 
