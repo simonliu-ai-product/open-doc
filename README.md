@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/preview-dark.png">
+  <img src=".github/assets/preview.png" alt="open-doc — the document framework built for agents." width="100%">
+</picture>
+
 # open-doc
 
 [![CI](https://github.com/simonliu-ai-product/open-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/simonliu-ai-product/open-doc/actions/workflows/ci.yml)
