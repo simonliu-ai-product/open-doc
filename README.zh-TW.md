@@ -10,7 +10,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/simonliu-ai-product/open-doc?style=flat)](https://github.com/simonliu-ai-product/open-doc/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](https://opensource.org/licenses/MIT)
 
-[English](README.md) · **繁體中文**
+[English](README.md) · **繁體中文** · [costaffs.app/tools/open-doc](https://costaffs.app/zhtw/tools/open-doc/)
 
 **為 agent 打造的文件框架。** 用自然語言描述你要的報告，你的 coding agent 負責寫 React，open-doc 負責頁面尺寸、大綱、目錄、頁碼、列印版面與匯出。
 
