@@ -1,5 +1,61 @@
 # @open-document/core
 
+## 0.4.0
+
+### Minor Changes
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Restrict page sizes to A4, B4 and A3, portrait or landscape — and fix the landscape `@page` descriptor
+  
+  A document could previously be laid out on A4, Letter, A5 or Legal. The set is
+  now A4, JIS B4 (257 × 364mm) and A3 — six sheets counting orientation, all
+  metric, all sold by the same print shop.
+  
+  `PAGE_SIZE_NAMES` is exported as the single source of truth and `PageSizeName`
+  is derived from it, so the CLI's `--page-size`, the MCP `import_markdown`
+  schema, and `ops/import.ts` all read one list instead of restating it.
+  `open-doc import` also gained `--orientation`, and `import_markdown` an
+  `orientation` argument; both reject a size or orientation off the list, as does
+  a `pageSize:` in imported Markdown frontmatter.
+  
+  Landscape documents printed at the wrong sheet size. `resolvePageGeometry()`
+  emitted `@page { size: 210mm 297mm landscape }`, but the `landscape` keyword is
+  only valid beside a page-size *name* — Chromium dropped the whole descriptor and
+  printed at whatever the dialog defaulted to, while the content was laid out
+  1123 × 794. The descriptor now carries the swapped millimetres (`297mm 210mm`),
+  which Chromium accepts.
+  
+  `PAGE_SIZES` entries therefore expose `mm: [width, height]` (portrait) in place
+  of the old pre-rendered `css` string; `resolvePageGeometry().css` is unchanged
+  as the way to get an `@page` descriptor.
+  
+  `resolvePageGeometry()` still falls back to portrait A4 for an unrecognised
+  value, so a document that already says `pageSize: 'Letter'` renders as A4
+  rather than breaking — but the type no longer accepts it.
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Add `home` to the config: the viewer's back arrow points at that URL instead of the app's own document browser. A viewer mounted under a larger site can now return to that site rather than to its own index.
+
+### Patch Changes
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Fix the core version reported by the dev API, the MCP server, and `cliContext` — it resolved `package.json` at a fixed depth, which the bundler's chunk placement made wrong, so it silently fell back to `0.0.0`.
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Hide the document header's back arrow when there is nowhere for it to go — no
+  `home` configured and `showDocBrowser: false`, where `/` renders "not found".
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Centre the document title in the viewer header and drop the subtitle line
+  
+  The header laid the title out in a `flex-1` block right after the back link, so
+  it sat at the centre of the *leftover* space — visibly left of the bar's centre,
+  because the control cluster on the right is many times wider than the back link.
+  The header is now a three-column grid with equal `1fr` rails, which puts the
+  title at the true centre whenever the controls fit their share, and slides it
+  rather than colliding when they don't.
+  
+  `meta.subtitle` no longer renders in the header. It was a second line of small
+  grey text competing with the page it describes; the document browser still shows
+  it, and it still belongs on a cover page.
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Show the theme toggle in the document viewer when the document browser is not built. The browser's sidebar was the only place it lived, so a viewer mounted on its own left a reader with no way to switch between light and dark.
+
 ## 0.3.0
 
 ### Minor Changes
