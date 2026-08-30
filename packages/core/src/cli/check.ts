@@ -3,7 +3,6 @@ import { checkLayout, closeRenderSession, type LayoutFinding, listDocIds } from 
 import { cliContext } from './context.ts';
 
 export interface CheckOptions {
-  all?: boolean;
   json?: boolean;
 }
 

@@ -1,6 +1,6 @@
 ---
 name: doc-authoring
-description: Technical reference for writing or editing open-doc pages — file contract, the A4/Letter page canvas, print type scale, the vertical budget that decides where a page breaks, tables, charts, table of contents, page numbers, running headers/footers, and assets. Consult this whenever you are about to write or modify any file under `docs/<id>/`, including from inside the `create-doc` workflow, or for any ad-hoc document edit. Triggers on phrases like "edit the report", "fix this page", "add a section", "change the margins", "add a table", "page numbers", "table of contents", "how do documents work here".
+description: Technical reference for writing or editing open-doc pages — file contract, the A4/B4/A3 page canvas, print type scale, the vertical budget that decides where a page breaks, tables, charts, table of contents, page numbers, running headers/footers, and assets. Consult this whenever you are about to write or modify any file under `docs/<id>/`, including from inside the `create-doc` workflow, or for any ad-hoc document edit. Triggers on phrases like "edit the report", "fix this page", "add a section", "change the margins", "add a table", "page numbers", "table of contents", "how do documents work here".
 ---
 
 # Authoring open-doc pages
@@ -59,7 +59,7 @@ export default [Cover, Body] satisfies DocPage[];
 
 - `export default` is a **non-empty array of entries**. An entry is either a zero-prop React component (one fixed page) or a `flow(<>…</>)` section the framework paginates by measuring. Mix them freely — the usual shape is a fixed cover, a fixed contents page, then one flow section for the body.
 - **Default to `flow()` for body content.** Hand-splitting prose into fixed pages produces documents where every heading starts a half-empty page. Read `references/pagination.md` before writing either kind.
-- `meta.pageSize` is `'A4' | 'Letter' | 'A5' | 'Legal'` (default `'A4'`), `meta.orientation` is `'portrait' | 'landscape'` (default portrait). The same value drives the on-screen page, the `@page` size when printing, and the HTML export.
+- `meta.pageSize` is `'A4' | 'B4' | 'A3'` (default `'A4'`) and `meta.orientation` is `'portrait' | 'landscape'` (default portrait). **These six combinations are the only sheets there are** — there is no Letter, no A5, no custom size, and no way to set a page's dimensions by hand. The same value drives the on-screen page, the `@page` size when printing, and the HTML export.
 - `meta.createdAt` is an **ISO 8601 string literal** set once when the doc is scaffolded — the home page sorts on it. **Immediately before writing the file, run `node -e "console.log(new Date().toISOString())"` and paste the exact output.** It must stay a plain string literal (no `new Date(...)`): the framework reads it with a regex at build time, it never evaluates the module.
 
 ## Two ways to fill pages
@@ -87,10 +87,11 @@ Fixed `DocPage` components remain the right tool for the cover, a contents page,
 
 | Size | Portrait px (96dpi) | Text block at 76px margins |
 | --- | --- | --- |
-| A4 | 794 × 1123 | 642 × 971 |
-| Letter | 816 × 1056 | 664 × 904 |
-| A5 | 559 × 794 | 407 × 642 |
-| Legal | 816 × 1344 | 664 × 1192 |
+| A4 (210 × 297mm) | 794 × 1123 | 642 × 971 |
+| B4 (JIS, 257 × 364mm) | 971 × 1376 | 819 × 1224 |
+| A3 (297 × 420mm) | 1123 × 1587 | 971 × 1435 |
+
+Landscape swaps the two numbers. B4 and A3 are for wide tables, plans, and posters — a body of prose set the full width of an A3 sheet is unreadable, so give a large sheet columns or wider margins.
 
 You design as if the viewport is literally the page in CSS pixels. The viewer only scales the whole sheet.
 

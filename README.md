@@ -32,7 +32,7 @@ Reports are the output nobody wants to format. Agents write excellent prose and 
 
 ### 📄 Real page geometry
 
-Every page component renders into a true sheet: A4 (794 × 1123 px @96dpi), Letter, A5, or Legal, portrait or landscape. What you see on screen is what the PDF contains — the `@page` size matches, so nothing is rescaled at print time.
+Every page component renders into a true sheet: A4 (794 × 1123 px @96dpi), JIS B4, or A3, portrait or landscape — those six combinations and nothing else, so a document always maps onto paper someone can actually buy. What you see on screen is what the PDF contains — the `@page` size matches, so nothing is rescaled at print time.
 
 ### 🤖 Agent-native authoring
 

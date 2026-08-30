@@ -1,3 +1,4 @@
+import appConfig from 'virtual:open-doc/config';
 import {
   ArrowLeft,
   Check,
@@ -21,6 +22,7 @@ import { DesignProvider } from '../components/design-panel/design-provider';
 import { DocSidebar } from '../components/doc-sidebar';
 import { Inspector } from '../components/inspector/inspector';
 import { PageFrame } from '../components/page-frame';
+import { ThemeToggle } from '../components/theme-toggle';
 import { Menu, MenuItem } from '../components/ui/menu';
 import { useAgentBridge } from '../lib/agent-bridge';
 import { exportDocAsHtml } from '../lib/export-html';
@@ -51,6 +53,34 @@ const HEADING_TOP_INSET = 28;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 2;
 const PAGE_GAP = 24;
+
+const BACK_CLASS =
+  'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground';
+
+/**
+ * `config.home` leaves the router on purpose. A `<Link>` resolves inside the
+ * app's basename, which is exactly wrong when the viewer is mounted under a
+ * larger site and "back" means that site.
+ *
+ * With no `home` and no document browser there is nowhere to go: `/` renders
+ * "not found". A control that leads nowhere is worse than no control, and a
+ * host that mounts the viewer this way is providing its own way back.
+ */
+const HeaderBackLink = () => {
+  if (appConfig.home !== undefined) {
+    return (
+      <a href={appConfig.home} className={BACK_CLASS} aria-label="Back to workspace">
+        <ArrowLeft className="size-4" />
+      </a>
+    );
+  }
+  if (!appConfig.build.showDocBrowser) return null;
+  return (
+    <Link to="/" className={BACK_CLASS} aria-label="Back to documents">
+      <ArrowLeft className="size-4" />
+    </Link>
+  );
+};
 
 export function Doc() {
   const { docId } = useParams<{ docId: string }>();
@@ -280,129 +310,134 @@ export function Doc() {
 
   const view = (
     <div ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
-      <header className="flex h-12 flex-none items-center gap-3 border-b border-border px-3">
-        <Link
-          to="/"
-          className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label="Back to documents"
-        >
-          <ArrowLeft className="size-4" />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate font-medium text-sm">{doc.meta?.title ?? docId}</h1>
-          {doc.meta?.subtitle && (
-            <p className="truncate text-muted-foreground text-xs">{doc.meta.subtitle}</p>
-          )}
+      {/* Equal `1fr` rails put the title at the true centre of the bar rather
+          than the centre of what is left over, which is where a flex row would
+          drop it — the control cluster is many times wider than the back link.
+          The control rail keeps its automatic minimum — no `min-w-0` — so when
+          it outgrows its share the title truncates and slides instead of being
+          overlapped by it. */}
+      <header className="grid h-12 flex-none grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-3 border-b border-border px-3">
+        <div className="flex min-w-0 items-center">
+          <HeaderBackLink />
         </div>
 
-        <span className="hidden font-mono text-muted-foreground text-xs tabular-nums sm:inline">
-          {currentPage} / {pages.length}
-        </span>
+        <h1 className="truncate text-center font-medium text-sm">{doc.meta?.title ?? docId}</h1>
 
-        <div className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
-          <IconButton label="Zoom out" onClick={() => zoom(-0.1)}>
-            <Minus className="size-3.5" />
-          </IconButton>
-          <button
-            type="button"
-            onClick={actualSize}
-            title="Actual size (100%)"
-            className="w-11 rounded text-center font-mono text-[11px] tabular-nums transition-colors hover:bg-accent"
-          >
-            {Math.round(scale * 100)}%
-          </button>
-          <IconButton label="Zoom in" onClick={() => zoom(0.1)}>
-            <Plus className="size-3.5" />
-          </IconButton>
-          <IconButton
-            label="Fit width"
-            onClick={() => fitTo('fit-width')}
-            active={manualScale === null && zoomMode === 'fit-width'}
-          >
-            <MoveHorizontal className="size-3.5" />
-          </IconButton>
-          <IconButton
-            label="Fit page"
-            onClick={() => fitTo('fit-page')}
-            active={manualScale === null && zoomMode === 'fit-page'}
-          >
-            <Scan className="size-3.5" />
-          </IconButton>
-        </div>
+        <div className="flex items-center justify-end gap-3">
+          <span className="hidden whitespace-nowrap font-mono text-muted-foreground text-xs tabular-nums sm:inline">
+            {currentPage} / {pages.length}
+          </span>
 
-        <IconButton
-          label={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
-          onClick={toggleFullscreen}
-        >
-          {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
-        </IconButton>
-
-        {import.meta.env.DEV && (
-          <button
-            type="button"
-            onClick={() => setInspecting((on) => !on)}
-            title="Inspect and edit on the page"
-            className={cn(
-              'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
-              inspecting && 'border-transparent bg-[#3b82f6] text-white hover:bg-[#3b82f6]',
-            )}
-          >
-            <MousePointerClick className="size-3.5" />
-            Inspect
-          </button>
-        )}
-        {import.meta.env.DEV && (
-          <button
-            type="button"
-            onClick={() => setDesignOpen((open) => !open)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
-              designOpen && 'bg-accent',
-            )}
-          >
-            <Palette className="size-3.5" />
-            Design
-          </button>
-        )}
-        <Menu
-          trigger={(props) => (
+          <div className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+            <IconButton label="Zoom out" onClick={() => zoom(-0.1)}>
+              <Minus className="size-3.5" />
+            </IconButton>
             <button
               type="button"
-              disabled={download !== null}
-              className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-70 aria-expanded:opacity-90"
-              {...props}
+              onClick={actualSize}
+              title="Actual size (100%)"
+              className="w-11 rounded text-center font-mono text-[11px] tabular-nums transition-colors hover:bg-accent"
             >
-              {download ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : downloaded ? (
-                <Check className="size-3.5" />
-              ) : (
-                <Download className="size-3.5" />
+              {Math.round(scale * 100)}%
+            </button>
+            <IconButton label="Zoom in" onClick={() => zoom(0.1)}>
+              <Plus className="size-3.5" />
+            </IconButton>
+            <IconButton
+              label="Fit width"
+              onClick={() => fitTo('fit-width')}
+              active={manualScale === null && zoomMode === 'fit-width'}
+            >
+              <MoveHorizontal className="size-3.5" />
+            </IconButton>
+            <IconButton
+              label="Fit page"
+              onClick={() => fitTo('fit-page')}
+              active={manualScale === null && zoomMode === 'fit-page'}
+            >
+              <Scan className="size-3.5" />
+            </IconButton>
+          </div>
+
+          <IconButton
+            label={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+            onClick={toggleFullscreen}
+          >
+            {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+          </IconButton>
+
+          {/* The document browser normally carries this. A viewer mounted with
+            `showDocBrowser: false` never shows that shell, and without it a
+            reader has no way to change the theme at all. */}
+          {!appConfig.build.showDocBrowser && <ThemeToggle />}
+
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={() => setInspecting((on) => !on)}
+              title="Inspect and edit on the page"
+              className={cn(
+                'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                inspecting && 'border-transparent bg-[#3b82f6] text-white hover:bg-[#3b82f6]',
               )}
-              {download
-                ? `${DOWNLOAD_LABEL[download.format]} ${Math.round(download.percent)}%`
-                : 'Download'}
+            >
+              <MousePointerClick className="size-3.5" />
+              Inspect
             </button>
           )}
-        >
-          {(close) =>
-            DOWNLOAD_FORMATS.map(({ format, label, hint, icon: Icon }) => (
-              <MenuItem
-                key={format}
-                onClick={() => {
-                  close();
-                  void runDownload(format);
-                }}
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={() => setDesignOpen((open) => !open)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                designOpen && 'bg-accent',
+              )}
+            >
+              <Palette className="size-3.5" />
+              Design
+            </button>
+          )}
+          <Menu
+            trigger={(props) => (
+              <button
+                type="button"
+                disabled={download !== null}
+                className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-70 aria-expanded:opacity-90"
+                {...props}
               >
-                <Icon className="size-3.5 flex-none" />
-                <span className="flex-1">
-                  {label}
-                  <span className="block text-[10px] text-muted-foreground">{hint}</span>
-                </span>
-              </MenuItem>
-            ))
-          }
-        </Menu>
+                {download ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : downloaded ? (
+                  <Check className="size-3.5" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                {download
+                  ? `${DOWNLOAD_LABEL[download.format]} ${Math.round(download.percent)}%`
+                  : 'Download'}
+              </button>
+            )}
+          >
+            {(close) =>
+              DOWNLOAD_FORMATS.map(({ format, label, hint, icon: Icon }) => (
+                <MenuItem
+                  key={format}
+                  onClick={() => {
+                    close();
+                    void runDownload(format);
+                  }}
+                >
+                  <Icon className="size-3.5 flex-none" />
+                  <span className="flex-1">
+                    {label}
+                    <span className="block text-[10px] text-muted-foreground">{hint}</span>
+                  </span>
+                </MenuItem>
+              ))
+            }
+          </Menu>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -492,9 +527,14 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 function BackLink() {
-  return (
-    <Link to="/" className="mt-4 inline-block text-muted-foreground text-xs underline">
+  const className = 'mt-4 inline-block text-muted-foreground text-xs underline';
+  return appConfig.home === undefined ? (
+    <Link to="/" className={className}>
       Back to documents
     </Link>
+  ) : (
+    <a href={appConfig.home} className={className}>
+      Back to workspace
+    </a>
   );
 }

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { isOrientation, isPageSizeName, ORIENTATIONS, PAGE_SIZE_NAMES } from '../app/lib/sdk.ts';
 import { validateAssetName } from '../files/assets.ts';
 import { parseMarkdown } from '../import/markdown.ts';
 import { collectImageSources, generateDocumentSource, type ImportImage } from '../import/to-tsx.ts';
@@ -91,6 +92,21 @@ export async function importMarkdown(
   if (markdown.trim() === '') throw new OpsError(422, 'the markdown is empty');
 
   const parsed = parseMarkdown(markdown);
+
+  const pageSize = opts.pageSize ?? parsed.frontmatter.pageSize;
+  if (pageSize !== undefined && !isPageSizeName(pageSize)) {
+    throw new OpsError(
+      422,
+      `unsupported pageSize \`${pageSize}\` — use ${PAGE_SIZE_NAMES.join(', ')}`,
+    );
+  }
+  const orientation = opts.orientation ?? parsed.frontmatter.orientation;
+  if (orientation !== undefined && !isOrientation(orientation)) {
+    throw new OpsError(
+      422,
+      `unsupported orientation \`${orientation}\` — use ${ORIENTATIONS.join(', ')}`,
+    );
+  }
 
   const fallbackName = sourceFile ? path.basename(sourceFile).replace(/\.mdx?$/i, '') : 'document';
   const requestedId = opts.docId ?? slugify(opts.title ?? parsed.frontmatter.title ?? fallbackName);

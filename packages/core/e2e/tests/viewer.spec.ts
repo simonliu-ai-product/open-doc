@@ -12,8 +12,20 @@ test.describe('document viewer', () => {
   test('the header shows the title and the page counter', async ({ page }) => {
     await openDoc(page, 'alpha');
     await expect(page.getByRole('heading', { name: 'Alpha Report' })).toBeVisible();
-    await expect(page.getByText('Fixture document one')).toBeVisible();
     await expect(page.locator('header').getByText(/^\d+ \/ 3$/)).toBeVisible();
+  });
+
+  test('the title sits at the centre of the header, not of the leftover space', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openDoc(page, 'alpha');
+
+    const header = await page.locator('header').boundingBox();
+    const title = await page.locator('header h1').boundingBox();
+    if (!header || !title) throw new Error('header or title not rendered');
+
+    expect(Math.abs(title.x + title.width / 2 - (header.x + header.width / 2))).toBeLessThan(2);
   });
 
   test('a sheet is a real A4 box at 96dpi', async ({ page }) => {
