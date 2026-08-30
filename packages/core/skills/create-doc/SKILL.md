@@ -37,7 +37,7 @@ Ask these in a single `AskUserQuestion` call (multi-question form). Skip a quest
    - *"our new product for enterprise buyers"* → **whitepaper** (problem, approach, evidence, references) · **sales proposal** (scope, deliverables, timeline, price) · **one-pager** (positioning + proof + CTA)
    Mark the best fit "(Recommended)".
 2. **Length** — offer brackets: 2–4 pages (brief), 5–10 (standard report), 11–25 (deep dive). The auto-added "Other" covers custom counts.
-3. **Page size** — A4 (default, metric/international) · Letter (US) · A4 landscape (data-heavy, wide tables). Skip if the user already said.
+3. **Page size** — A4 portrait (default) · A4 landscape (data-heavy, wide tables) · B4 or A3 (plans, posters, very wide tables). The only sizes are A4, B4 and A3, each portrait or landscape. Skip if the user already said.
 4. **Visual direction** — 3 options tailored to the audience, each naming a palette + typographic cue: e.g. **corporate neutral** (near-white, single blue accent, sans throughout) · **editorial serif** (serif headings, generous leading, hairline rules) · **technical mono-accent** (mono labels, dense tables, monochrome + one signal color).
 
 Ask about brand colors, a logo, or required sections only if still unclear afterwards.

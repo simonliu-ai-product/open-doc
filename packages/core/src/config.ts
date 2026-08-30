@@ -7,6 +7,12 @@ export type OpenDocBuildConfig = {
 
 export type OpenDocConfig = {
   base?: string;
+  /**
+   * Where the viewer's back affordance goes. Unset it points at this app's own
+   * document browser; set it to escape the app entirely — a viewer mounted
+   * under a larger site needs to return to that site, not to its own index.
+   */
+  home?: string;
   docsDir?: string;
   themesDir?: string;
   assetsDir?: string;

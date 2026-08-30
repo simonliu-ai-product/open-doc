@@ -1,18 +1,11 @@
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import * as readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { Command, Option } from 'commander';
+import { ORIENTATIONS, PAGE_SIZE_NAMES } from '../app/lib/sdk.ts';
+import { readCoreVersion } from './package-version.ts';
 import { detectSkillsDrift, syncSkills } from './sync.ts';
-
-async function readVersion(): Promise<string> {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  // dist/cli/bin.js → ../../package.json
-  const pkgPath = path.resolve(here, '..', '..', 'package.json');
-  const raw = await readFile(pkgPath, 'utf8');
-  return (JSON.parse(raw) as { version: string }).version;
-}
 
 export function parsePort(value: string): number {
   const n = Number(value);
@@ -47,7 +40,6 @@ interface ExportFlags {
 }
 
 interface CheckFlags {
-  all?: boolean;
   json?: boolean;
 }
 
@@ -58,6 +50,7 @@ interface ImportFlags {
   author?: string;
   theme?: string;
   pageSize?: string;
+  orientation?: string;
   cover?: boolean;
   contents?: boolean;
 }
@@ -110,7 +103,7 @@ async function runSkillsDriftCheck(skillsDir: string): Promise<void> {
 }
 
 export async function run(argv: string[]): Promise<void> {
-  const version = await readVersion();
+  const version = await readCoreVersion();
 
   const program = new Command();
   program
@@ -184,9 +177,8 @@ export async function run(argv: string[]): Promise<void> {
     .option('--subtitle <subtitle>', 'subtitle, also used as the cover eyebrow')
     .option('--author <author>', 'author line on the cover')
     .option('--theme <theme>', 'theme id to back-link from meta.theme')
-    .addOption(
-      new Option('--page-size <size>', 'page size').choices(['A4', 'Letter', 'A5', 'Legal']),
-    )
+    .addOption(new Option('--page-size <size>', 'page size').choices(PAGE_SIZE_NAMES))
+    .addOption(new Option('--orientation <orientation>', 'page orientation').choices(ORIENTATIONS))
     .option('--no-cover', 'skip the title page')
     .option('--contents', 'add a self-filling contents page')
     .action(async (file: string, flags: ImportFlags) => {
