@@ -4,21 +4,25 @@ import {
   Check,
   Download,
   FileCode2,
+  FileImage,
   FileText,
+  Image,
   Loader2,
   Maximize,
   Minimize,
   Minus,
   MousePointerClick,
   MoveHorizontal,
+  MoveVertical,
   Palette,
+  Percent,
   Plus,
-  Scan,
 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { DesignPanel } from '../components/design-panel/design-panel';
 import { DesignProvider } from '../components/design-panel/design-provider';
+import { DocSearch } from '../components/doc-search';
 import { DocSidebar } from '../components/doc-sidebar';
 import { Inspector } from '../components/inspector/inspector';
 import { PageFrame } from '../components/page-frame';
@@ -26,8 +30,10 @@ import { ThemeToggle } from '../components/theme-toggle';
 import { Menu, MenuItem } from '../components/ui/menu';
 import { useAgentBridge } from '../lib/agent-bridge';
 import { exportDocAsHtml } from '../lib/export-html';
+import { exportDocAsImages } from '../lib/export-image';
 import { exportDocAsPdf } from '../lib/export-pdf';
 import { type OutlineEntry, useDocOutline } from '../lib/outline';
+import { describeSelection, type PageSelection, resolveSelection } from '../lib/page-range';
 import { nextFrame, waitForFonts } from '../lib/print-ready';
 import { scanDocument } from '../lib/scan';
 import { resolvePageGeometry } from '../lib/sdk';
@@ -35,16 +41,20 @@ import { useDocModule } from '../lib/use-doc-module';
 import { useDocPages } from '../lib/use-doc-pages';
 import { cn } from '../lib/utils';
 
-type DownloadFormat = 'pdf' | 'html';
+type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg';
 
 const DOWNLOAD_LABEL: Record<DownloadFormat, string> = {
   pdf: 'PDF',
   html: 'HTML',
+  png: 'PNG',
+  svg: 'SVG',
 };
 
 const DOWNLOAD_FORMATS = [
   { format: 'pdf' as const, label: 'PDF', hint: 'True page size, print-ready', icon: FileText },
   { format: 'html' as const, label: 'HTML', hint: 'Self-contained, printable', icon: FileCode2 },
+  { format: 'png' as const, label: 'PNG', hint: 'Pixels, 2x — for slides and chat', icon: Image },
+  { format: 'svg' as const, label: 'SVG', hint: 'Vector, keeps text as text', icon: FileImage },
 ];
 
 const GUTTER = 48;
@@ -98,6 +108,8 @@ export function Doc() {
     null,
   );
   const [downloaded, setDownloaded] = useState<DownloadFormat | null>(null);
+  const [selection, setSelection] = useState<PageSelection>({ kind: 'all' });
+  const [customRange, setCustomRange] = useState('');
   const [designOpen, setDesignOpen] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -217,14 +229,33 @@ export function Doc() {
 
   const runDownload = async (format: DownloadFormat) => {
     if (!doc || !docId || download) return;
+
+    /*
+     * The pages are chosen here, once, and every exporter is handed the subset
+     * rather than the whole document plus a range to obey. An exporter that has
+     * to remember to filter is an exporter that will one day forget.
+     */
+    const wanted = resolveSelection(
+      selection.kind === 'custom' ? { kind: 'custom', text: customRange } : selection,
+      pages.length,
+      currentPage,
+    );
+    if (!wanted) return;
+    const chosen = wanted.map((index) => pages[index]).filter((page) => page !== undefined);
+    if (chosen.length === 0) return;
+
     setDownload({ format, percent: 0 });
     try {
       if (format === 'pdf') {
-        await exportDocAsPdf(doc, docId, pages, (progress) =>
+        await exportDocAsPdf(doc, docId, chosen, (progress) =>
           setDownload({ format, percent: progress.percent }),
         );
+      } else if (format === 'html') {
+        await exportDocAsHtml(doc, docId, chosen);
       } else {
-        await exportDocAsHtml(doc, docId, pages);
+        await exportDocAsImages(doc, docId, chosen, format, (progress) =>
+          setDownload({ format, percent: progress.percent }),
+        );
       }
       setDownloaded(format);
       setTimeout(() => setDownloaded(null), 2000);
@@ -232,6 +263,13 @@ export function Doc() {
       setDownload(null);
     }
   };
+
+  /* What the menu is about to do, so nobody has to count commas themselves. */
+  const chosenPages = describeSelection(
+    selection.kind === 'custom' ? { kind: 'custom', text: customRange } : selection,
+    pages.length,
+    currentPage,
+  );
 
   const zoom = (delta: number) => {
     setManualScale((prev) =>
@@ -324,8 +362,9 @@ export function Doc() {
         <h1 className="truncate text-center font-medium text-sm">{doc.meta?.title ?? docId}</h1>
 
         <div className="flex items-center justify-end gap-3">
-          <span className="hidden whitespace-nowrap font-mono text-muted-foreground text-xs tabular-nums sm:inline">
-            {currentPage} / {pages.length}
+          <span className="hidden items-center gap-1.5 sm:flex">
+            <PageJump page={currentPage} total={pages.length} onJump={scrollToPage} />
+            <DocSearch scrollRef={scrollRef} pagesRef={pagesRef} onFoundPage={setCurrentPage} />
           </span>
 
           <div className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
@@ -350,12 +389,19 @@ export function Doc() {
             >
               <MoveHorizontal className="size-3.5" />
             </IconButton>
+            {/* Fit-width moves the page sideways to the edges, fit-page moves it
+                up and down to them. Both used to be a square-ish glyph, and the
+                fit-page one was the same square as fullscreen — three controls,
+                two shapes, no way to tell which did what without clicking. */}
             <IconButton
               label="Fit page"
               onClick={() => fitTo('fit-page')}
               active={manualScale === null && zoomMode === 'fit-page'}
             >
-              <Scan className="size-3.5" />
+              <MoveVertical className="size-3.5" />
+            </IconButton>
+            <IconButton label="Actual size (100%)" onClick={actualSize}>
+              <Percent className="size-3.5" />
             </IconButton>
           </div>
 
@@ -419,23 +465,37 @@ export function Doc() {
               </button>
             )}
           >
-            {(close) =>
-              DOWNLOAD_FORMATS.map(({ format, label, hint, icon: Icon }) => (
-                <MenuItem
-                  key={format}
-                  onClick={() => {
-                    close();
-                    void runDownload(format);
-                  }}
-                >
-                  <Icon className="size-3.5 flex-none" />
-                  <span className="flex-1">
-                    {label}
-                    <span className="block text-[10px] text-muted-foreground">{hint}</span>
-                  </span>
-                </MenuItem>
-              ))
-            }
+            {(close) => (
+              <>
+                {/* Which pages, before which format. A reader who picks PDF and
+                    then discovers they exported forty pages has already waited
+                    for all forty. */}
+                <PageChoice
+                  selection={selection}
+                  custom={customRange}
+                  currentPage={currentPage}
+                  total={pages.length}
+                  onSelection={setSelection}
+                  onCustom={setCustomRange}
+                />
+                {DOWNLOAD_FORMATS.map(({ format, label, hint, icon: Icon }) => (
+                  <MenuItem
+                    key={format}
+                    disabled={!chosenPages.valid}
+                    onClick={() => {
+                      close();
+                      void runDownload(format);
+                    }}
+                  >
+                    <Icon className="size-3.5 flex-none" />
+                    <span className="flex-1">
+                      {label}
+                      <span className="block text-[10px] text-muted-foreground">{hint}</span>
+                    </span>
+                  </MenuItem>
+                ))}
+              </>
+            )}
           </Menu>
         </div>
       </header>
@@ -488,6 +548,144 @@ export function Doc() {
   // exists while `open-doc dev` is running.
   if (!import.meta.env.DEV || !docId) return view;
   return <DesignProvider docId={docId}>{view}</DesignProvider>;
+}
+
+/**
+ * 全部／此頁／自訂 —— 和列印對話框問的是同一件事，因為那是使用者已經會的問法。
+ *
+ * 自訂欄位只在被選中時出現。三個選項配一個永遠佔著位置的空欄位，會讓人以為那是
+ * 必填的。
+ */
+function PageChoice({
+  selection,
+  custom,
+  currentPage,
+  total,
+  onSelection,
+  onCustom,
+}: {
+  selection: PageSelection;
+  custom: string;
+  currentPage: number;
+  total: number;
+  onSelection: (selection: PageSelection) => void;
+  onCustom: (text: string) => void;
+}) {
+  const options = [
+    { kind: 'all' as const, label: 'All', hint: `${total}` },
+    { kind: 'current' as const, label: 'This page', hint: `${currentPage}` },
+    { kind: 'custom' as const, label: 'Custom', hint: '' },
+  ];
+  const chosen = describeSelection(
+    selection.kind === 'custom' ? { kind: 'custom', text: custom } : selection,
+    total,
+    currentPage,
+  );
+
+  return (
+    <div className="border-border border-b px-1 pt-1 pb-2">
+      <p className="px-1 pb-1 text-[10px] text-muted-foreground uppercase tracking-wide">Pages</p>
+      <div className="flex gap-0.5">
+        {options.map((option) => (
+          <button
+            key={option.kind}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelection(
+                option.kind === 'custom' ? { kind: 'custom', text: custom } : { kind: option.kind },
+              );
+            }}
+            className={cn(
+              'flex-1 rounded px-2 py-1 text-[11px] transition-colors hover:bg-accent',
+              selection.kind === option.kind && 'bg-accent text-foreground',
+            )}
+          >
+            {option.label}
+            {option.hint && (
+              <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                {option.hint}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      {selection.kind === 'custom' && (
+        <input
+          value={custom}
+          onChange={(event) => onCustom(event.target.value)}
+          onClick={(event) => event.stopPropagation()}
+          placeholder="e.g. 1-3, 5"
+          aria-label="Pages to download"
+          aria-invalid={!chosen.valid}
+          className={cn(
+            'mt-1.5 w-full rounded border border-border bg-transparent px-2 py-1 text-[11px] outline-none placeholder:text-muted-foreground focus:border-foreground/40',
+            !chosen.valid && custom !== '' && 'border-foreground/40',
+          )}
+        />
+      )}
+      <p className="px-1 pt-1.5 text-[10px] text-muted-foreground">
+        {chosen.valid
+          ? `${chosen.count} page${chosen.count === 1 ? '' : 's'} will be downloaded`
+          : 'Type page numbers, like 1-3, 5'}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 頁碼既是顯示也是輸入。
+ *
+ * 只在編輯時才變成受控欄位：一直受控的話，讀者捲動時每一次頁碼更新都會把游標推
+ * 回去，打到一半的數字就消失了。
+ */
+function PageJump({
+  page,
+  total,
+  onJump,
+}: {
+  page: number;
+  total: number;
+  onJump: (page: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = (raw: string) => {
+    const wanted = Number(raw.replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)));
+    setDraft(null);
+    if (!Number.isFinite(wanted) || wanted < 1) return;
+    onJump(Math.min(total, Math.round(wanted)));
+  };
+
+  return (
+    <span className="flex items-center whitespace-nowrap font-mono text-muted-foreground text-xs tabular-nums">
+      <input
+        value={draft ?? String(page)}
+        onChange={(event) => setDraft(event.target.value)}
+        onFocus={(event) => {
+          setDraft(String(page));
+          event.target.select();
+        }}
+        onBlur={(event) => commit(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+          if (event.key === 'Escape') {
+            setDraft(null);
+            event.currentTarget.blur();
+          }
+        }}
+        aria-label={`Page number, ${total} pages`}
+        title="Go to page"
+        inputMode="numeric"
+        className="w-7 rounded bg-transparent text-right outline-none transition-colors hover:bg-accent focus:bg-accent focus:text-foreground"
+      />
+      <span className="px-1">/</span>
+      <span>{total}</span>
+    </span>
+  );
 }
 
 function IconButton({
