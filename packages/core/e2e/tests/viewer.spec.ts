@@ -12,7 +12,9 @@ test.describe('document viewer', () => {
   test('the header shows the title and the page counter', async ({ page }) => {
     await openDoc(page, 'alpha');
     await expect(page.getByRole('heading', { name: 'Alpha Report' })).toBeVisible();
-    await expect(page.locator('header').getByText(/^\d+ \/ 3$/)).toBeVisible();
+    /* The counter is a field you can type a page into, so it is read by its
+       accessible name and its value rather than as loose text. */
+    await expect(page.getByLabel('Page number, 3 pages')).toBeVisible();
   });
 
   test('the title sits at the centre of the header, not of the leftover space', async ({
@@ -54,7 +56,7 @@ test.describe('document viewer', () => {
   test('the thumbnail rail jumps to a page', async ({ page }) => {
     await openDoc(page, 'alpha');
     await page.locator('[data-thumb-page="3"]').click();
-    await expect(page.locator('header').getByText('3 / 3')).toBeVisible();
+    await expect(page.getByLabel('Page number, 3 pages')).toHaveValue('3');
   });
 
   test('the outline lists headings with their page numbers', async ({ page }) => {
@@ -65,7 +67,7 @@ test.describe('document viewer', () => {
     await expect(outline.getByText('Alpha page two')).toBeVisible();
 
     await outline.getByText('Alpha page three').click();
-    await expect(page.locator('header').getByText('3 / 3')).toBeVisible();
+    await expect(page.getByLabel('Page number, 3 pages')).toHaveValue('3');
   });
 
   test('the back link returns to the browser', async ({ page }) => {

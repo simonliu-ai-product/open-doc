@@ -109,16 +109,19 @@ export function MenuItem({
   children,
   destructive = false,
   active = false,
+  disabled = false,
 }: {
   onClick: () => void;
   children: ReactNode;
   destructive?: boolean;
   active?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
+      disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -127,6 +130,7 @@ export function MenuItem({
         'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent',
         active && 'bg-accent',
         destructive && 'text-red-600 dark:text-red-400',
+        disabled && 'pointer-events-none opacity-40',
       )}
     >
       {children}

@@ -70,3 +70,28 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/* Search hits.
+ *
+ * Drawn with the CSS Custom Highlight API, so nothing in the page is wrapped or
+ * rewritten to show a match. Wrapping matches in <mark> would mean editing a
+ * tree React owns, and the next render would throw the marks away — or worse,
+ * keep them and lose the reader's place. Highlights are ranges held beside the
+ * DOM instead, which is what they are for.
+ *
+ * A browser without the API shows no highlight; the page-to-page jumping still
+ * works, so search degrades to "take me there" rather than breaking.
+ */
+/* Literal colours, deliberately. These paint the sheet, and the sheet is paper —
+   it does not follow the viewer's theme. A chrome token here resolves to
+   near-white in dark mode and disappears on a white page, which is the leak the
+   guidelines warn about, arriving as an invisible highlight rather than an
+   obviously wrong one. Amber is what every reader already reads as "found". */
+::highlight(od-search) {
+  background-color: rgb(255 214 0 / 0.42);
+  color: inherit;
+}
+::highlight(od-search-active) {
+  background-color: rgb(255 138 0 / 0.62);
+  color: inherit;
+}
