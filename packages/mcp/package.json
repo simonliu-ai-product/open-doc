@@ -1,6 +1,6 @@
 {
   "name": "@open-document/mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP server for open-doc — lets any agent framework list, read, write, and file documents over Streamable HTTP.",
   "type": "module",
   "exports": {
@@ -51,7 +51,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@open-document/core": "^0.4.0"
+    "@open-document/core": "^0.5.0"
   },
   "devDependencies": {
     "@open-document/core": "workspace:*",
