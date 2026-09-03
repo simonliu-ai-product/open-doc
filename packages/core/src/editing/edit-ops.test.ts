@@ -107,6 +107,208 @@ describe('text that comes from props', () => {
   });
 });
 
+// A helper that puts half its words in an attribute and half between its tags,
+// with a literal of its own in between. All three used to be resolved as one:
+// finding the colon meant the props were never looked for, so the inspector
+// offered the colon and nothing else.
+const VIA_CHILDREN = `const Section = ({ name, children }: { name: string; children: ReactNode }) => (
+  <div style={hang}>
+    {name}：{children}
+  </div>
+);
+
+const Page = () => (
+  <div>
+    <Section name="主旨">本府訂於115年10月14日辦理研習營。</Section>
+    <Section name="說明">依本府115年度數位人才培育計畫辦理。</Section>
+  </div>
+);
+`;
+
+const VIA_CHILDREN_DIV = { line: 2, column: 2 };
+
+// Five contact lines rendered by one element. The words are entries of an
+// array the call site passed, so the click resolves to an array element.
+const VIA_MAP = `const Contact = ({ lines }: { lines: string[] }) => (
+  <div style={caption}>
+    {lines.map((line) => (
+      <div key={line}>{line}</div>
+    ))}
+  </div>
+);
+
+const Page = () => (
+  <div>
+    <Contact lines={['地址：000範例市範例路1號', '承辦人：陳小華']} />
+  </div>
+);
+`;
+
+const VIA_MAP_DIV = { line: 4, column: 6 };
+
+const VIA_PAIRS = `const Fields = ({ rows }: { rows: [string, string][] }) => (
+  <div style={caption}>
+    {rows.map(([label, value]) => (
+      <div key={label}>
+        {label}：{value}
+      </div>
+    ))}
+  </div>
+);
+
+const Page = () => (
+  <div>
+    <Fields
+      rows={[
+        ['發文日期', '中華民國115年8月16日'],
+        ['速別', '普通件'],
+      ]}
+    />
+  </div>
+);
+`;
+
+const VIA_PAIRS_DIV = { line: 4, column: 6 };
+
+describe('text that arrives as children', () => {
+  it('offers the attribute, the literal and the children as three runs', () => {
+    const info = readTextAt(
+      VIA_CHILDREN,
+      VIA_CHILDREN_DIV,
+      '主旨：本府訂於115年10月14日辦理研習營。',
+    );
+    expect(info?.editable).toBe(true);
+    expect(info?.parts).toEqual([
+      { kind: 'text', index: 0, value: '主旨' },
+      { kind: 'text', index: 1, value: '：' },
+      { kind: 'text', index: 2, value: '本府訂於115年10月14日辦理研習營。' },
+    ]);
+  });
+
+  it('writes between the tags of the call site that is on screen', () => {
+    const out = replaceTextAt(VIA_CHILDREN, VIA_CHILDREN_DIV, '依規定辦理。', {
+      index: 2,
+      expected: '依本府115年度數位人才培育計畫辦理。',
+      shown: '說明：依本府115年度數位人才培育計畫辦理。',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.source).toContain('<Section name="說明">依規定辦理。</Section>');
+    expect(out.source).toContain('本府訂於115年10月14日辦理研習營。');
+  });
+
+  it('still writes the attribute half through the same element', () => {
+    const out = replaceTextAt(VIA_CHILDREN, VIA_CHILDREN_DIV, '辦法', {
+      index: 0,
+      expected: '主旨',
+      shown: '主旨：本府訂於115年10月14日辦理研習營。',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.source).toContain('<Section name="辦法">');
+  });
+});
+
+describe('text that comes from a mapped array', () => {
+  it('resolves one element of the array by what is on screen', () => {
+    const info = readTextAt(VIA_MAP, VIA_MAP_DIV, '承辦人：陳小華');
+    expect(info?.editable).toBe(true);
+    expect(info?.parts).toEqual([{ kind: 'text', index: 0, value: '承辦人：陳小華' }]);
+  });
+
+  it('writes that entry and leaves its neighbours alone', () => {
+    const out = replaceTextAt(VIA_MAP, VIA_MAP_DIV, '承辦人：王大明', {
+      index: 0,
+      expected: '承辦人：陳小華',
+      shown: '承辦人：陳小華',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.source).toContain("'承辦人：王大明'");
+    expect(out.source).toContain("'地址：000範例市範例路1號'");
+  });
+
+  it('escapes a quote that would end the string literal', () => {
+    const out = replaceTextAt(VIA_MAP, VIA_MAP_DIV, "it's here", {
+      index: 0,
+      shown: '承辦人：陳小華',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.source).toContain("'it\\'s here'");
+  });
+
+  it('refuses when nothing on screen says which entry was clicked', () => {
+    expect(readTextAt(VIA_MAP, VIA_MAP_DIV)?.editable).toBe(false);
+  });
+
+  it('destructures a pair into its own runs', () => {
+    const info = readTextAt(VIA_PAIRS, VIA_PAIRS_DIV, '發文日期：中華民國115年8月16日');
+    expect(info?.parts).toEqual([
+      { kind: 'text', index: 0, value: '發文日期' },
+      { kind: 'text', index: 1, value: '：' },
+      { kind: 'text', index: 2, value: '中華民國115年8月16日' },
+    ]);
+  });
+
+  it('writes the half of the pair that was edited', () => {
+    const out = replaceTextAt(VIA_PAIRS, VIA_PAIRS_DIV, '中華民國115年9月1日', {
+      index: 2,
+      expected: '中華民國115年8月16日',
+      shown: '發文日期：中華民國115年8月16日',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.source).toContain("['發文日期', '中華民國115年9月1日']");
+    expect(out.source).toContain("['速別', '普通件']");
+  });
+});
+
+// A code block: the words are a template literal handed to a helper as
+// children, so neither the element nor an attribute holds them.
+const VIA_TEMPLATE = [
+  'const Code = ({ children }: { children: ReactNode }) => (',
+  '  <pre style={mono}>{children}</pre>',
+  ');',
+  '',
+  'const Page = () => (',
+  '  <div>',
+  '    <Code>{`docs/',
+  '  my-report/',
+  '    index.tsx`}</Code>',
+  '  </div>',
+  ');',
+  '',
+].join('\n');
+
+const VIA_TEMPLATE_PRE = { line: 2, column: 2 };
+
+describe('text that is a template literal', () => {
+  it('offers a code block as one editable run', () => {
+    const info = readTextAt(VIA_TEMPLATE, VIA_TEMPLATE_PRE, 'docs/ my-report/ index.tsx');
+    expect(info?.editable).toBe(true);
+    expect(info?.parts).toEqual([
+      { kind: 'text', index: 0, value: 'docs/\n  my-report/\n    index.tsx' },
+    ]);
+  });
+
+  it('keeps the newlines and escapes what would end the literal', () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal ${ is the point
+    const typed = 'docs/\n  a-`b`-${c}';
+    const out = replaceTextAt(VIA_TEMPLATE, VIA_TEMPLATE_PRE, typed, {
+      index: 0,
+      shown: 'docs/ my-report/ index.tsx',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    // A backslash, a backtick and a substitution would each end or reopen the
+    // literal; all three come back escaped.
+    expect(out.source).toContain('{`docs/\n  a-');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: checking the escape, not a template
+    expect(out.source).toContain('a-\\`b\\`-\\${c}`}');
+  });
+});
+
 describe('readTextAt', () => {
   it('reports a single text child as one editable run', () => {
     const info = readTextAt(SOURCE, H1);
