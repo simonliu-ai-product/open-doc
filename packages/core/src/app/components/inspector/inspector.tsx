@@ -250,7 +250,7 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
   );
 
   const saveText = async () => {
-    if (!target || dirty.length === 0 || busy) return;
+    if (!target || !selected || dirty.length === 0 || busy) return;
     setBusy(true);
     try {
       for (const part of dirty) {
@@ -263,6 +263,7 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
             column: target.column,
             index: part.index,
             expected: part.value,
+            shown: normalize(selected.anchor.textContent ?? ''),
             text: drafts[part.index],
           }),
         });

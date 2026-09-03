@@ -36,6 +36,77 @@ const FIRST_TD = { line: 3, column: 4 };
 const SECOND_TD = { line: 3, column: 29 };
 const MIXED_P = { line: 4, column: 4 };
 
+// The shape that sends every government letter through a helper: the heading
+// holds no literal text at all, only the props its call site passes.
+const VIA_PROPS = `const Letterhead = ({ agency, kind }: { agency: string; kind: string }) => (
+  <h1 style={title}>
+    {agency}　{kind}
+  </h1>
+);
+
+const Page = () => (
+  <div>
+    <Letterhead agency="範例市政府" kind="函" />
+  </div>
+);
+`;
+
+const VIA_PROPS_H1 = { line: 2, column: 2 };
+
+const TWO_CALLS = `const Head = ({ name }: { name: string }) => <h2>{name}</h2>;
+
+const Page = () => (
+  <div>
+    <Head name="第一份" />
+    <Head name="第二份" />
+  </div>
+);
+`;
+
+const TWO_CALLS_H2 = { line: 1, column: 45 };
+
+describe('text that comes from props', () => {
+  it('follows the prop back to the call site and offers it', () => {
+    const info = readTextAt(VIA_PROPS, VIA_PROPS_H1, '範例市政府　函');
+    expect(info?.editable).toBe(true);
+    expect(info?.parts).toEqual([
+      { kind: 'text', index: 0, value: '範例市政府' },
+      { kind: 'text', index: 1, value: '函' },
+    ]);
+  });
+
+  it('writes the edit to the call site, leaving the expression alone', () => {
+    const out = replaceTextAt(VIA_PROPS, VIA_PROPS_H1, '新北市政府', {
+      index: 0,
+      expected: '範例市政府',
+      shown: '範例市政府　函',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.source).toContain('agency="新北市政府"');
+    expect(out.source).toContain('{agency}　{kind}');
+  });
+
+  // Two call sites render the same component with different words. Without the
+  // rendered text to tell them apart, a save would rewrite whichever came first.
+  it('picks the call site whose words are the ones on screen', () => {
+    const out = replaceTextAt(TWO_CALLS, TWO_CALLS_H2, '改過的', {
+      index: 0,
+      expected: '第二份',
+      shown: '第二份',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.source).toContain('name="第一份"');
+    expect(out.source).toContain('name="改過的"');
+  });
+
+  it('refuses when the rendered text cannot say which call site is meant', () => {
+    const info = readTextAt(TWO_CALLS, TWO_CALLS_H2);
+    expect(info?.editable).toBe(false);
+  });
+});
+
 describe('readTextAt', () => {
   it('reports a single text child as one editable run', () => {
     const info = readTextAt(SOURCE, H1);
