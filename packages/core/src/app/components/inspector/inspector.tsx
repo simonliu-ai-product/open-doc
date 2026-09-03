@@ -1,6 +1,7 @@
 import { Check, Loader2, MessageSquarePlus, X } from 'lucide-react';
 import {
   type CSSProperties,
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -42,7 +43,13 @@ function normalize(value: string): string {
 }
 
 function targetFrom(el: Element | null): InspectorTarget | null {
-  const host = (el as HTMLElement | null)?.closest?.(`[${LOC_ATTR}]`) as HTMLElement | null;
+  // A contents row is generated from a heading and written nowhere; the words
+  // to edit are the heading's. Clicking the row selects that instead, so the
+  // list stays what it is — a view — and still answers to a click.
+  const row = (el as HTMLElement | null)?.closest?.('[data-od-toc-entry]') as HTMLElement | null;
+  const heading = row?.dataset.odTocEntry ? document.getElementById(row.dataset.odTocEntry) : null;
+  const from = heading ?? el;
+  const host = (from as HTMLElement | null)?.closest?.(`[${LOC_ATTR}]`) as HTMLElement | null;
   const raw = host?.getAttribute(LOC_ATTR);
   if (!host || !raw) return null;
   const [line, column] = raw.split(':').map(Number);
@@ -136,6 +143,7 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => setContainer(containerRef.current), [containerRef]);
 
@@ -157,6 +165,12 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
       if (!target) return;
       e.preventDefault();
       e.stopPropagation();
+      // A contents row sends the selection to a heading pages away. Without
+      // this the panel fills in and the document sits where it was, which
+      // reads as nothing having happened.
+      if (!target.anchor.contains(e.target as Node)) {
+        target.anchor.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
       setSelected(target);
       setStatus(null);
       setNote('');
@@ -250,7 +264,7 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
   );
 
   const saveText = async () => {
-    if (!target || dirty.length === 0 || busy) return;
+    if (!target || !selected || dirty.length === 0 || busy) return;
     setBusy(true);
     try {
       for (const part of dirty) {
@@ -263,6 +277,7 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
             column: target.column,
             index: part.index,
             expected: part.value,
+            shown: normalize(selected.anchor.textContent ?? ''),
             text: drafts[part.index],
           }),
         });
@@ -360,18 +375,70 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
               </div>
             ) : target.editable ? (
               <>
-                <div className="mt-1 space-y-1.5">
-                  {target.parts.map((part, index) =>
-                    part.kind === 'markup' ? (
-                      <div
+                {/*
+                 * One field, not one per run. A sentence interrupted by five
+                 * <code> spans is still one sentence, and bordering each
+                 * fragment turned a paragraph into eleven stacked boxes.
+                 *
+                 * The runs are laid out as the sentence reads, with the markup
+                 * between them as inert chips. Nothing re-renders while typing:
+                 * the children never change, so React leaves the DOM — and the
+                 * caret — alone, and the text is read back out of it.
+                 */}
+                {target.parts.length > 1 ? (
+                  // biome-ignore lint/a11y/useSemanticElements: a textarea cannot hold the inert markup chips
+                  <div
+                    key={`${target.line}:${target.column}`}
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    role="textbox"
+                    tabIndex={0}
+                    aria-label="Text"
+                    onInput={() => {
+                      const host = editorRef.current;
+                      if (!host) return;
+                      const next: Record<number, string> = {};
+                      for (const run of host.querySelectorAll<HTMLElement>('[data-run]')) {
+                        next[Number(run.dataset.run)] = run.textContent ?? '';
+                      }
+                      setDrafts(next);
+                    }}
+                    onKeyDown={(e) => {
+                      // A newline would be a <br> the runs cannot carry.
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void saveText();
+                      }
+                    }}
+                    className="mt-1 rounded border border-border px-2 py-1.5 text-xs leading-relaxed outline-none focus-within:border-foreground/40"
+                  >
+                    {target.parts.map((part, index) =>
+                      part.kind === 'markup' ? (
+                        // A chip carries no whitespace, so `real<code>/<code>`
+                        // is one unbreakable word without these.
                         // biome-ignore lint/suspicious/noArrayIndexKey: parts are positional
-                        key={`m${index}`}
-                        className="rounded border border-border border-dashed px-2 py-1 font-mono text-[10px] text-muted-foreground"
-                        title="Markup is kept as written"
-                      >
-                        {part.label}
-                      </div>
-                    ) : (
+                        <Fragment key={`m${index}`}>
+                          <wbr />
+                          <span
+                            contentEditable={false}
+                            title="Markup is kept as written"
+                            className="mx-0.5 select-none rounded bg-muted px-1 py-px font-mono text-[10px] text-muted-foreground"
+                          >
+                            {part.label}
+                          </span>
+                          <wbr />
+                        </Fragment>
+                      ) : (
+                        <span key={`t${part.index}`} data-run={part.index}>
+                          {part.value}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                ) : (
+                  target.parts.map((part) =>
+                    part.kind === 'markup' ? null : (
                       <textarea
                         key={`t${part.index}`}
                         value={drafts[part.index] ?? part.value}
@@ -382,14 +449,22 @@ export function Inspector({ docId, containerRef, onExit }: Props) {
                           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void saveText();
                         }}
                         rows={Math.min(
-                          6,
-                          Math.ceil((drafts[part.index] ?? part.value).length / 28) + 1,
+                          14,
+                          Math.max(
+                            2,
+                            (drafts[part.index] ?? part.value).split('\n').length,
+                            Math.ceil((drafts[part.index] ?? part.value).length / 40),
+                          ),
                         )}
-                        className="w-full resize-y rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none focus:border-foreground/40"
+                        className={`mt-1 w-full resize-y rounded border border-border bg-transparent px-2 py-1.5 outline-none focus:border-foreground/40 ${
+                          selected?.tag === 'pre'
+                            ? 'whitespace-pre font-mono text-[11px]'
+                            : 'text-xs'
+                        }`}
                       />
                     ),
-                  )}
-                </div>
+                  )
+                )}
                 <button
                   type="button"
                   onClick={saveText}

@@ -66,6 +66,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         const result = replaceTextAt(source, loc, text, {
           index: typeof body.index === 'number' ? body.index : undefined,
           expected: typeof body.expected === 'string' ? body.expected : undefined,
+          shown: typeof body.shown === 'string' ? body.shown : undefined,
         });
         if (!result.ok) return json(res, result.status, { error: result.error });
         if (result.source !== source) await fs.writeFile(entry, result.source, 'utf8');
