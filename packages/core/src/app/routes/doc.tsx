@@ -1,13 +1,17 @@
 import appConfig from 'virtual:open-doc/config';
 import {
   ArrowLeft,
+  BookOpen,
   Check,
   Download,
   FileCode2,
   FileImage,
   FileText,
+  GalleryVertical,
   Image,
+  LayoutGrid,
   Loader2,
+  type LucideIcon,
   Maximize,
   Minimize,
   Minus,
@@ -40,6 +44,14 @@ import { resolvePageGeometry } from '../lib/sdk';
 import { useDocModule } from '../lib/use-doc-module';
 import { useDocPages } from '../lib/use-doc-pages';
 import { cn } from '../lib/utils';
+import {
+  gridColumns,
+  pageInView,
+  READING_LINE,
+  useViewMode,
+  VIEW_MODES,
+  type ViewMode,
+} from '../lib/view-mode';
 
 type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg';
 
@@ -63,6 +75,20 @@ const HEADING_TOP_INSET = 28;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 2;
 const PAGE_GAP = 24;
+/** Facing pages meet at the spine; a hairline keeps two white sheets from reading as one. */
+const SPREAD_GAP = 4;
+/** A grid opens as a contact sheet: small enough to take in a chapter, large enough to tell a figure from a table. */
+const GRID_SCALE = 0.3;
+
+const VIEW_MODE_OPTIONS: Record<ViewMode, { label: string; icon: LucideIcon }> = {
+  continuous: { label: 'Continuous', icon: GalleryVertical },
+  'two-up': { label: 'Two-up', icon: BookOpen },
+  grid: { label: 'Grid', icon: LayoutGrid },
+};
+
+const SCROLL_KEYS = new Set(['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' ']);
+
+const TOOL_GROUP_CLASS = 'items-center gap-0.5 rounded-md border border-border px-1 py-0.5';
 
 const BACK_CLASS =
   'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground';
@@ -113,6 +139,10 @@ export function Doc() {
   const [designOpen, setDesignOpen] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [viewMode, setViewMode] = useViewMode(docId);
+  const chosenPage = useRef<number | null>(null);
+  const place = useRef<{ page: number; fraction: number; centre: number } | null>(null);
+  const refreshPage = useRef<() => void>(() => {});
 
   const geometry = useMemo(() => resolvePageGeometry(doc?.meta), [doc?.meta]);
   const { pages, measuring, overflowing } = useDocPages(doc, geometry);
@@ -121,20 +151,28 @@ export function Doc() {
   useAgentBridge({ docId: docId ?? '', doc, pages, geometry, measuring, oversized: overflowing });
 
   const clamp = (value: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
-  const fitWidthScale = available.width ? clamp(available.width / geometry.width) : 1;
+  // Two-up fits the spread rather than one sheet — the pair is what is being read.
+  const across = viewMode === 'two-up' ? 2 : 1;
+  const columnGap = viewMode === 'two-up' ? SPREAD_GAP : PAGE_GAP;
+  const widthFit = (available.width - (across - 1) * columnGap) / (geometry.width * across);
+  const fitWidthScale = available.width ? clamp(widthFit) : 1;
   // Fit page is bounded by both axes so the whole sheet lands inside the pane.
   const fitPageScale = available.height
-    ? clamp(Math.min(available.width / geometry.width, available.height / geometry.height))
+    ? clamp(Math.min(widthFit, available.height / geometry.height))
     : 1;
   // Auto keeps a page at its true size unless the window is too narrow to hold
-  // it; the explicit fit modes may go past 100%.
+  // it, and opens a grid zoomed out; the explicit fit modes may go past 100%.
   const scale =
     manualScale ??
     (zoomMode === 'fit-width'
       ? fitWidthScale
       : zoomMode === 'fit-page'
         ? fitPageScale
-        : Math.min(1, fitWidthScale));
+        : Math.min(viewMode === 'grid' ? GRID_SCALE : 1, fitWidthScale));
+  const columns =
+    viewMode === 'grid'
+      ? gridColumns(geometry.width * scale, available.width, columnGap, pages.length)
+      : across;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: state.status re-runs this once the scroll container mounts — during loading the ref is null and nothing measures.
   useLayoutEffect(() => {
@@ -170,10 +208,8 @@ export function Doc() {
     };
   }, [state.status, doc, measuring]);
 
-  // A full-size page is taller than the viewport, so intersection ratios never
-  // cross a useful threshold. Track the page that owns the top third of the
-  // viewport instead — that's the sheet the reader is on.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: zooming changes every page's offsetTop, so `scale` forces a re-measure of which page owns the marker.
+  // Counted a frame after a scroll, and recorded as a place to return to: the
+  // page, how far down it the reading line falls, and how far across the view is.
   useEffect(() => {
     const root = scrollRef.current;
     const container = pagesRef.current;
@@ -182,45 +218,110 @@ export function Doc() {
     let frame = 0;
     const update = () => {
       frame = 0;
-      const marker = root.scrollTop + root.clientHeight / 3;
-      const frames = Array.from(container.children) as HTMLElement[];
-      let page = 1;
-      frames.forEach((el, index) => {
-        if (el.offsetTop <= marker) page = index + 1;
-      });
+      const sheets = Array.from(container.children as HTMLCollectionOf<HTMLElement>, (el) => ({
+        top: el.offsetTop,
+        height: el.offsetHeight,
+      }));
+      const page = pageInView(
+        sheets,
+        { top: root.scrollTop, height: root.clientHeight },
+        chosenPage.current,
+      );
+      const sheet = sheets[page - 1];
+      if (sheet) {
+        const line = root.scrollTop + root.clientHeight * READING_LINE;
+        place.current = {
+          page,
+          fraction: Math.min(1, Math.max(0, (line - sheet.top) / sheet.height)),
+          centre: (root.scrollLeft + root.clientWidth / 2) / root.scrollWidth,
+        };
+      }
       setCurrentPage(page);
     };
-    const onScroll = () => {
+    const schedule = () => {
       if (frame) return;
       frame = requestAnimationFrame(update);
     };
-
-    update();
-    root.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      root.removeEventListener('scroll', onScroll);
-      if (frame) cancelAnimationFrame(frame);
+    // Scrolling by hand hands the counter back to the scroll position.
+    const release = () => {
+      chosenPage.current = null;
     };
-  }, [pages.length, scale]);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (SCROLL_KEYS.has(e.key)) release();
+    };
 
-  const scrollToPage = useCallback((page: number) => {
-    const frame = pagesRef.current?.children[page - 1];
-    frame?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    refreshPage.current = schedule;
+    schedule();
+    root.addEventListener('scroll', schedule, { passive: true });
+    root.addEventListener('wheel', release, { passive: true });
+    root.addEventListener('pointerdown', release);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      root.removeEventListener('scroll', schedule);
+      root.removeEventListener('wheel', release);
+      root.removeEventListener('pointerdown', release);
+      window.removeEventListener('keydown', onKeyDown);
+      if (frame) cancelAnimationFrame(frame);
+      refreshPage.current = () => {};
+      // A new page list — another document, or this one re-paginated — has
+      // nothing chosen yet and no place to return to.
+      chosenPage.current = null;
+      place.current = null;
+    };
+  }, [pages.length]);
+
+  /**
+   * A zoom, a new layout or a resized pane moves every sheet, and the scroll
+   * offset left behind lands somewhere else in the document — in a grid, whole
+   * rows away. Put the page being read back where it was: the same point of it on
+   * the reading line, which also keeps the counter on that page.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `scale`, `columns` and `viewMode` are what move the sheets; the effect reads the layout they produced.
+  useLayoutEffect(() => {
+    const root = scrollRef.current;
+    const at = place.current;
+    const sheet = at
+      ? (pagesRef.current?.children[at.page - 1] as HTMLElement | undefined)
+      : undefined;
+    if (root && at && sheet) {
+      root.scrollTop =
+        sheet.offsetTop + at.fraction * sheet.offsetHeight - root.clientHeight * READING_LINE;
+      root.scrollLeft = at.centre * root.scrollWidth - root.clientWidth / 2;
+      chosenPage.current = at.page;
+    }
+    refreshPage.current();
+  }, [scale, columns, viewMode]);
+
+  const choosePage = useCallback((page: number) => {
+    chosenPage.current = page;
+    refreshPage.current();
   }, []);
+
+  const scrollToPage = useCallback(
+    (page: number) => {
+      choosePage(page);
+      const frame = pagesRef.current?.children[page - 1];
+      frame?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    [choosePage],
+  );
 
   // Land the heading near the top of the reading pane, not centred — the reader
   // wants what follows the heading, and centring buries half of it.
-  const scrollToEntry = useCallback((entry: OutlineEntry) => {
-    const root = scrollRef.current;
-    const target = root?.querySelector<HTMLElement>(`#${CSS.escape(entry.id)}`);
-    if (root && target) {
+  const scrollToEntry = useCallback(
+    (entry: OutlineEntry) => {
+      const root = scrollRef.current;
+      const target = root?.querySelector<HTMLElement>(`#${CSS.escape(entry.id)}`);
+      if (!root || !target) {
+        scrollToPage(entry.page);
+        return;
+      }
+      choosePage(entry.page);
       const offset = target.getBoundingClientRect().top - root.getBoundingClientRect().top;
       root.scrollTo({ top: root.scrollTop + offset - HEADING_TOP_INSET, behavior: 'smooth' });
-      return;
-    }
-    const frame = pagesRef.current?.children[entry.page - 1];
-    frame?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+    },
+    [choosePage, scrollToPage],
+  );
 
   const activeOutlineId = useMemo(() => {
     const onPage = outline.filter((entry) => entry.page === currentPage);
@@ -285,6 +386,15 @@ export function Doc() {
   const actualSize = () => {
     setZoomMode('auto');
     setManualScale(1);
+  };
+
+  // Each layout opens at its own natural zoom: a scale picked for one column is
+  // the wrong size for a spread, and a grid is a zoom-out by definition.
+  const changeViewMode = (mode: ViewMode) => {
+    if (mode === viewMode) return;
+    setViewMode(mode);
+    setManualScale(null);
+    setZoomMode('auto');
   };
 
   const toggleFullscreen = useCallback(() => {
@@ -364,10 +474,28 @@ export function Doc() {
         <div className="flex items-center justify-end gap-3">
           <span className="hidden items-center gap-1.5 sm:flex">
             <PageJump page={currentPage} total={pages.length} onJump={scrollToPage} />
-            <DocSearch scrollRef={scrollRef} pagesRef={pagesRef} onFoundPage={setCurrentPage} />
+            <DocSearch scrollRef={scrollRef} pagesRef={pagesRef} onFoundPage={choosePage} />
           </span>
 
-          <div className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+          {/* Narrower than this, the header has no room left for the group and
+              two sheets side by side are too small to read anyway. */}
+          <fieldset aria-label="View mode" className={cn('hidden lg:flex', TOOL_GROUP_CLASS)}>
+            {VIEW_MODES.map((mode) => {
+              const { label, icon: Icon } = VIEW_MODE_OPTIONS[mode];
+              return (
+                <IconButton
+                  key={mode}
+                  label={label}
+                  onClick={() => changeViewMode(mode)}
+                  active={viewMode === mode}
+                >
+                  <Icon className="size-3.5" />
+                </IconButton>
+              );
+            })}
+          </fieldset>
+
+          <div className={cn('flex', TOOL_GROUP_CLASS)}>
             <IconButton label="Zoom out" onClick={() => zoom(-0.1)}>
               <Minus className="size-3.5" />
             </IconButton>
@@ -517,10 +645,18 @@ export function Doc() {
           data-od-viewer
           className="relative min-w-0 flex-1 overflow-auto bg-canvas"
         >
+          {/* Centred by its margins, not by the scroller: a row zoomed wider than
+              the pane then overflows to the right, where it can be scrolled to,
+              instead of equally off both edges with its left side out of reach. */}
           <div
             ref={pagesRef}
-            className="flex flex-col items-center"
-            style={{ gap: PAGE_GAP, padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px` }}
+            className="mx-auto grid w-max"
+            style={{
+              gridTemplateColumns: `repeat(${columns}, max-content)`,
+              columnGap,
+              rowGap: PAGE_GAP,
+              padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px`,
+            }}
           >
             {pages.map((page, index) => (
               <PageFrame
@@ -530,6 +666,9 @@ export function Doc() {
                 geometry={geometry}
                 scale={scale}
                 design={doc.design}
+                // A bound document opens on a right-hand page, so spreads pair
+                // 2–3, 4–5 — the pairs a reader sees when the book is open.
+                className={viewMode === 'two-up' && index === 0 ? 'col-start-2' : undefined}
               >
                 {page.content}
               </PageFrame>
