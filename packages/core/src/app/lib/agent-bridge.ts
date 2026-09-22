@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { diagnosePages, type LayoutFinding } from './diagnostics';
+import type { FileBundle } from './export-dom';
 import { buildDocHtmlBundle } from './export-html';
 import { mountPrintCopy } from './export-pdf';
 import type { DocModule, PageGeometry } from './sdk';
@@ -29,6 +30,7 @@ export type OpenDocBridge = {
   preparePrint(): Promise<{ pageCount: number }>;
   releasePrint(): void;
   htmlBundle(): Promise<BridgeBundle | null>;
+  docxBundle(): Promise<BridgeBundle | null>;
 };
 
 type BridgeInput = {
@@ -49,6 +51,16 @@ function toBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   }
   return btoa(binary);
+}
+
+function toBridge(bundle: FileBundle | null): BridgeBundle | null {
+  return (
+    bundle && {
+      filename: bundle.filename,
+      mimeType: bundle.mimeType,
+      base64: toBase64(bundle.bytes),
+    }
+  );
 }
 
 /**
@@ -109,14 +121,14 @@ export function useAgentBridge(input: BridgeInput): void {
       releasePrint: release,
       async htmlBundle() {
         const { docId, doc, pages } = latest.current;
-        if (!doc || pages.length === 0) return null;
-        const bundle = await buildDocHtmlBundle(doc, docId, pages);
-        if (!bundle) return null;
-        return {
-          filename: bundle.filename,
-          mimeType: bundle.mimeType,
-          base64: toBase64(bundle.bytes),
-        };
+        if (!doc) return null;
+        return toBridge(await buildDocHtmlBundle(doc, docId, pages));
+      },
+      async docxBundle() {
+        const { docId, doc, pages } = latest.current;
+        if (!doc) return null;
+        const { buildDocxBundle } = await import('./export-docx');
+        return toBridge(await buildDocxBundle(doc, docId, pages));
       },
     };
 

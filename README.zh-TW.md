@@ -107,7 +107,7 @@ q3-infra-review 9 pages — 2 error(s), 1 warning(s)
 ### ⌨️ 無頭匯出——不開瀏覽器的下載選單
 
 ```bash
-open-doc export q3-infra-review --format pdf   # 也可以是 html，或每頁一張 png
+open-doc export q3-infra-review --format pdf   # 也可以是 html、docx，或每頁一張 png
 open-doc export --all --out-dir out
 ```
 
@@ -147,10 +147,11 @@ open-doc import notes.md --id q3-notes --contents
 - **Assets** — 在全域 `assets/` 資料夾或任一文件自己的資料夾中上傳、改名、刪除檔案，並附有「未使用」標記與可直接複製的 import 語句。
 - **設計面板** — 在真實頁面上即時調整色盤、字型、字級、邊界與行距，再透過 AST 編輯將結果直接寫回文件的 `design` 常數。
 
-### 🖨️ 一個下載選單：PDF 與 HTML
+### 🖨️ 一個下載選單：PDF、HTML 與 Word
 
 - **PDF** — 以真實頁面尺寸走瀏覽器列印管線；序列化前會等待字型與圖片載入、並填好目錄。這是能完全重現頁面的格式。
 - **HTML** — 自足且可列印（文件含 assets 時會打包成 zip）。
+- **DOCX** — 給以 Word 進行審閱的流程。標題、註腳、表格、清單、目錄與頁首頁尾都會轉成 Word 原生的對應物；樣式從頁面上讀出，改一次「標題 2」就會改到每一個；內文交給 Word 重新排版，而不是複製每一頁。以 HTML 畫的圖表會以圖片帶過去。
 
 ### 🚀 容易部署
 
@@ -171,7 +172,7 @@ pnpm dev
 | `open-doc dev` | 開發伺服器與檢視器（`--mcp` 會掛上 MCP 端點） |
 | `open-doc build` / `preview` | 靜態網站 |
 | `open-doc check [ids…]` | 回報版面問題，有錯誤時以非零狀態碼結束 |
-| `open-doc export [ids…]` | 無頭產出 PDF / HTML / PNG |
+| `open-doc export [ids…]` | 無頭產出 PDF / HTML / DOCX / PNG |
 | `open-doc import <file.md>` | Markdown → `docs/` 下的一份文件 |
 
 ## 檔案契約

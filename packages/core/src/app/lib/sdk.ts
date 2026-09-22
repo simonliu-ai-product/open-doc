@@ -42,6 +42,8 @@ export function isOrientation(value: unknown): value is Orientation {
 export type PageGeometry = {
   width: number;
   height: number;
+  /** The printed sheet in millimetres, across then down — what a Word section is sized in. */
+  mm: readonly [number, number];
   /** Value for the `@page { size: … }` descriptor, orientation included. */
   css: string;
 };
@@ -104,6 +106,7 @@ export function resolvePageGeometry(meta?: DocMeta): PageGeometry {
   return {
     width: landscape ? size.height : size.width,
     height: landscape ? size.width : size.height,
+    mm: [across, down],
     // Not `<mm> <mm> landscape`: the `landscape` keyword is only valid next to a
     // page-size *name*, and Chromium drops the whole descriptor if it sees both,
     // which silently prints a landscape sheet at the dialog's default size.

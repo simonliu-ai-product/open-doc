@@ -25,6 +25,7 @@ export {
   resolveEntry,
   writeDocument,
 } from './documents.ts';
+export { EXPORT_FORMATS, type ExportFormat } from './formats.ts';
 export {
   type ImportMarkdownOptions,
   type ImportResult,
@@ -34,7 +35,6 @@ export {
 export {
   checkLayout,
   closeRenderSession,
-  type ExportFormat,
   type ExportResult,
   exportDocument,
   type LayoutFinding,

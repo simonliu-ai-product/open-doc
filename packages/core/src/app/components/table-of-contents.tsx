@@ -1,6 +1,12 @@
 import type { CSSProperties } from 'react';
-import { useDocOutline } from '../lib/outline';
+import { TOC_ATTR, useDocOutline } from '../lib/outline';
 import { useDocPageNumber } from '../lib/page-context';
+
+export const TOC_ENTRY_ATTR = 'data-od-toc-entry';
+/** Read by the Word export, which rebuilds the list as a contents field. */
+export const TOC_DEPTH_ATTR = 'data-od-toc-depth';
+export const TOC_LEVEL_ATTR = 'data-od-toc-level';
+export const TOC_PAGE_ATTR = 'data-od-toc-page';
 
 export type TableOfContentsProps = {
   /** Deepest heading level to list. Defaults to 2 (h1 + h2). */
@@ -38,7 +44,7 @@ export function TableOfContents({
 
   return (
     <div
-      data-od-toc=""
+      {...{ [TOC_ATTR]: '', [TOC_DEPTH_ATTR]: maxLevel }}
       className={className}
       style={{
         fontFamily: 'var(--od-font-body)',
@@ -53,7 +59,7 @@ export function TableOfContents({
           /* Which heading this line stands for. The inspector follows it: a
            * contents row holds no text of its own, so clicking one has to land
            * on the heading that produced it. */
-          data-od-toc-entry={entry.id}
+          {...{ [TOC_ENTRY_ATTR]: entry.id, [TOC_LEVEL_ATTR]: entry.level }}
           style={{
             display: 'flex',
             alignItems: 'baseline',
@@ -75,7 +81,9 @@ export function TableOfContents({
                   transform: 'translateY(-3px)',
                 }}
               />
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{entry.page}</span>
+              <span {...{ [TOC_PAGE_ATTR]: '' }} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {entry.page}
+              </span>
             </>
           )}
         </div>

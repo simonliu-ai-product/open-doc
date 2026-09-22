@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { candidateLocs, formatLocs } from '../../lib/inspector/fiber';
+import { TOC_ENTRY_ATTR } from '../table-of-contents';
 
 type TextPart = { kind: 'text'; index: number; value: string } | { kind: 'markup'; label: string };
 
@@ -46,8 +47,8 @@ function targetFrom(el: Element | null): InspectorTarget | null {
   // A contents row is generated from a heading and written nowhere; the words
   // to edit are the heading's. Clicking the row selects that instead, so the
   // list stays what it is — a view — and still answers to a click.
-  const row = (el as HTMLElement | null)?.closest?.('[data-od-toc-entry]') as HTMLElement | null;
-  const heading = row?.dataset.odTocEntry ? document.getElementById(row.dataset.odTocEntry) : null;
+  const entry = el?.closest?.(`[${TOC_ENTRY_ATTR}]`)?.getAttribute(TOC_ENTRY_ATTR);
+  const heading = entry ? document.getElementById(entry) : null;
   const from = heading ?? el;
   const host = (from as HTMLElement | null)?.closest?.(`[${LOC_ATTR}]`) as HTMLElement | null;
   const raw = host?.getAttribute(LOC_ATTR);

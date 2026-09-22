@@ -1,10 +1,4 @@
-import { createElement } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { designToCssVars } from './design';
-import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
-import { DocPageProvider } from './page-context';
-import { nextFrame, sleep, waitForDataWaitfor, waitForFonts, waitForImages } from './print-ready';
-import { captureScan, restoreScan, scanDocument } from './scan';
+import { mountOffscreen } from './export-dom';
 import { type DocModule, resolvePageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
@@ -104,65 +98,35 @@ export async function mountPrintCopy(
   root.setAttribute('aria-hidden', 'true');
   document.body.appendChild(root);
 
-  const designVars = doc.design ? designToCssVars(doc.design) : null;
-  const reactRoots: Root[] = [];
-
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i];
-    if (!page) continue;
-    const host = document.createElement('div');
-    host.className = PRINT_PAGE_CLASS;
-    host.setAttribute(PAGE_ATTR, '');
-    host.setAttribute(PAGE_INDEX_ATTR, String(i));
-    host.style.width = `${geometry.width}px`;
-    host.style.height = `${geometry.height}px`;
-    if (designVars) {
-      for (const [k, v] of Object.entries(designVars)) host.style.setProperty(k, v);
-      host.style.background = 'var(--od-bg)';
-      host.style.color = 'var(--od-text)';
-    }
-    root.appendChild(host);
-    const r = createRoot(host);
-    r.render(createElement(DocPageProvider, { index: i, total }, page.content));
-    reactRoots.push(r);
-    onProgress?.({
-      phase: 'rendering',
-      current: i + 1,
-      total,
-      percent: Math.min(90, ((i + 1) / total) * 90),
-    });
-  }
-
   const previousTitle = document.title;
-  const previousScan = captureScan();
   document.title = doc.meta?.title ?? docId;
 
-  const dispose = () => {
-    document.title = previousTitle;
-    for (const r of reactRoots) r.unmount();
-    root.remove();
-    style.remove();
-    restoreScan(previousScan);
-  };
-
-  try {
-    await nextFrame();
-    await waitForFonts();
-    await waitForImages(root);
-    await waitForDataWaitfor(root);
-
-    // A `<TableOfContents>`, a `<Ref>`, a figure's number: all of them read a
-    // store that only a DOM scan fills. Scan the print copy and let React commit
-    // the resolved values before handing the pages to whoever asked for them.
-    scanDocument(root, doc.meta);
-    await nextFrame();
-    await sleep(50);
-  } catch (err) {
-    dispose();
-    throw err;
-  }
-
-  return { root, dispose };
+  return mountOffscreen(
+    doc,
+    async (mount, pace) => {
+      for (const [index, page] of pages.entries()) {
+        mount(
+          page.content,
+          { index, total },
+          { frame: index, sheet: true, className: PRINT_PAGE_CLASS, paint: true },
+        );
+        onProgress?.({
+          phase: 'rendering',
+          current: index + 1,
+          total,
+          percent: Math.min(90, ((index + 1) / total) * 90),
+        });
+        await pace();
+      }
+    },
+    {
+      root,
+      onDispose: () => {
+        document.title = previousTitle;
+        style.remove();
+      },
+    },
+  );
 }
 
 export async function exportDocAsPdf(

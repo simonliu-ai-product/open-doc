@@ -145,6 +145,8 @@ export type FootnotesProps = {
 export const FOOTNOTE_AREA_MARGIN_TOP = 12;
 
 export const FOOTNOTE_ROW_ATTR = 'data-od-footnote-row';
+export const FOOTNOTE_BODY_ATTR = 'data-od-footnote-body';
+export const FOOTNOTES_ATTR = 'data-od-footnotes';
 
 export function footnoteAreaStyle(): CSSProperties {
   return {
@@ -161,7 +163,7 @@ export function footnoteAreaStyle(): CSSProperties {
 export function FootnoteRow({ id, content }: CollectedNote) {
   const entry = useDocLabel(id);
   return (
-    <div {...{ [FOOTNOTE_ROW_ATTR]: '' }} style={{ display: 'flex', gap: 5, marginBottom: 3 }}>
+    <div {...{ [FOOTNOTE_ROW_ATTR]: id }} style={{ display: 'flex', gap: 5, marginBottom: 3 }}>
       <span
         style={{
           flex: 'none',
@@ -171,7 +173,9 @@ export function FootnoteRow({ id, content }: CollectedNote) {
       >
         {entry?.number ?? UNNUMBERED}
       </span>
-      <span style={{ minWidth: 0 }}>{content}</span>
+      <span {...{ [FOOTNOTE_BODY_ATTR]: '' }} style={{ minWidth: 0 }}>
+        {content}
+      </span>
     </div>
   );
 }
@@ -184,7 +188,11 @@ export function Footnotes({ notes, style, className }: FootnotesProps) {
   if (list.length === 0) return null;
 
   return (
-    <div data-od-footnotes="" className={className} style={{ ...footnoteAreaStyle(), ...style }}>
+    <div
+      {...{ [FOOTNOTES_ATTR]: '' }}
+      className={className}
+      style={{ ...footnoteAreaStyle(), ...style }}
+    >
       {vocabulary.footnotes ? (
         <div style={{ fontWeight: 600, marginBottom: 3 }}>{vocabulary.footnotes}</div>
       ) : null}

@@ -8,12 +8,14 @@ export type OutlineEntry = {
   page: number;
 };
 
-const HEADING_SELECTOR = 'h1, h2, h3, [data-od-heading]';
+export const HEADING_SELECTOR = 'h1, h2, h3, [data-od-heading]';
 
 export const PAGE_ATTR = 'data-od-page';
 export const PAGE_INDEX_ATTR = 'data-od-page-index';
+/** A contents list; headings inside one are never part of the outline. */
+export const TOC_ATTR = 'data-od-toc';
 
-function levelOf(el: Element): number {
+export function levelOf(el: Element): number {
   const declared = el.getAttribute('data-od-level');
   if (declared) {
     const n = Number(declared);
@@ -32,6 +34,13 @@ function textOf(el: Element): string {
   return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
+/** The level a heading has in the outline, or null when it is kept out of it. */
+export function outlineLevelOf(el: Element): number | null {
+  if (el.closest(`[${TOC_ATTR}]`)) return null;
+  if (el.getAttribute('data-od-outline') === 'skip') return null;
+  return levelOf(el);
+}
+
 /**
  * Walks rendered page frames and returns their headings in document order.
  * Headings inside a rendered table of contents are skipped so a TOC never
@@ -46,13 +55,13 @@ export function collectOutline(root: ParentNode): OutlineEntry[] {
     const page = (Number.isFinite(declared) ? declared : fallbackIndex) + 1;
     const headings = Array.from(frame.querySelectorAll<HTMLElement>(HEADING_SELECTOR));
     for (const el of headings) {
-      if (el.closest('[data-od-toc]')) continue;
-      if (el.getAttribute('data-od-outline') === 'skip') continue;
+      const level = outlineLevelOf(el);
+      if (level === null) continue;
       const text = textOf(el);
       if (!text) continue;
       const id = el.id || `od-h-${entries.length + 1}`;
       if (!el.id) el.id = id;
-      entries.push({ id, text, level: levelOf(el), page });
+      entries.push({ id, text, level, page });
     }
   });
   return entries;

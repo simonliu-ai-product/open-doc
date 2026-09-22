@@ -3,12 +3,29 @@ import { FlowPage } from '../components/flow-page';
 import type { DesignSystem } from './design';
 import { type DocEntry, type FlowSection, isFlowSection, paginateBlocks } from './flow';
 import { type MeasurableSection, measureFlowSections } from './flow-measure';
-import { extractSectionFootnotes, notesForPage, type PreparedSection } from './footnotes';
+import {
+  type ExtractedNote,
+  extractSectionFootnotes,
+  notesForPage,
+  type PreparedSection,
+} from './footnotes';
 import type { DocModule, PageGeometry } from './sdk';
+
+/** The slice of a flow section one sheet shows. */
+export type FlowSlice = {
+  /** Index into the document's entries; every sheet of one section shares it. */
+  entry: number;
+  section: FlowSection;
+  blocks: ReactNode[];
+  blockIndices: number[];
+  notes: ExtractedNote[];
+};
 
 export type ExpandedPage = {
   key: string;
   content: ReactNode;
+  /** Set on a flow section's sheets, so an exporter that reflows can join them up again. */
+  flow?: FlowSlice;
 };
 
 type Plan = {
@@ -114,15 +131,11 @@ export function useDocPages(
       // viewer shows something rather than flashing empty.
       const chunks = plan.bySection[sectionIndex] ?? [blocks.map((_, i) => i)];
       chunks.forEach((blockIndices, pageIndex) => {
+        const notes = ready ? notesForPage(ready.notesByBlock, blockIndices) : [];
         out.push({
           key: `f${entryIndex}-${pageIndex}`,
-          content: createElement(FlowPage, {
-            section,
-            design,
-            blockIndices,
-            blocks,
-            notes: ready ? notesForPage(ready.notesByBlock, blockIndices) : [],
-          }),
+          content: createElement(FlowPage, { section, design, blockIndices, blocks, notes }),
+          flow: { entry: entryIndex, section, blocks, blockIndices, notes },
         });
       });
     });

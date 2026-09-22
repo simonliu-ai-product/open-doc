@@ -10,6 +10,7 @@ import {
 } from '../render/session.ts';
 import type { ApiContext } from '../vite/routes/context.ts';
 import { OpsError, resolveEntry } from './documents.ts';
+import type { ExportFormat } from './formats.ts';
 
 export type { LayoutFinding };
 
@@ -21,8 +22,6 @@ export type LayoutReport = {
   warnings: number;
   findings: LayoutFinding[];
 };
-
-export type ExportFormat = 'pdf' | 'html' | 'png';
 
 export type ExportResult = {
   docId: string;
@@ -174,8 +173,8 @@ export async function exportDocument(
 
     if (format === 'pdf') {
       await write(`${docId}.pdf`, await renderer.pdf());
-    } else if (format === 'html') {
-      const bundle = await renderer.html();
+    } else if (format === 'html' || format === 'docx') {
+      const bundle = await renderer[format]();
       if (!bundle) throw new OpsError(422, `document has no pages: ${docId}`);
       await write(bundle.filename, Buffer.from(bundle.base64, 'base64'));
     } else {

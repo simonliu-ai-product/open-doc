@@ -35,7 +35,7 @@ Point a client at `http://localhost:5273/mcp`. There is no session handshake —
 | `list_folders` / `create_folder` / `file_document` | The folder manifest. |
 | `check_layout` | Render the sheets and report layout faults, with source locations. |
 | `render_page` | PNG of one sheet at true page size. |
-| `export_document` | Write pdf / html / png to disk, headlessly. |
+| `export_document` | Write pdf / html / docx / png to disk, headlessly. |
 | `import_markdown` | Turn Markdown into a document under `docs/`. |
 
 The last four render the document in a headless browser and need `playwright` in the workspace (`pnpm add -D playwright && pnpm exec playwright install chromium`). They reuse the running dev server, so repeat calls are cheap.

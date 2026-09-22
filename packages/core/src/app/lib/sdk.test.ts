@@ -6,6 +6,7 @@ describe('resolvePageGeometry', () => {
     expect(resolvePageGeometry()).toEqual({
       width: PAGE_SIZES.A4.width,
       height: PAGE_SIZES.A4.height,
+      mm: [210, 297],
       css: '210mm 297mm',
     });
   });
@@ -21,6 +22,7 @@ describe('resolvePageGeometry', () => {
     expect(geo.height).toBe(PAGE_SIZES.B4.width);
     // Chromium drops `<mm> <mm> landscape` entirely — the axes must be swapped.
     expect(geo.css).toBe('364mm 257mm');
+    expect(geo.mm).toEqual([364, 257]);
   });
 
   it('falls back to A4 for a page size that is no longer offered', () => {

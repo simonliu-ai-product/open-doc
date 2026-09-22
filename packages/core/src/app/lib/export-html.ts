@@ -2,9 +2,10 @@ import { designToCssVars } from './design';
 import {
   collectCss,
   collectExternalStylesheetLinks,
-  downloadBlob,
+  downloadBundle,
   escapeAttr,
   escapeHtml,
+  type FileBundle,
   findCssAssetUrls,
   findHtmlAssetUrls,
   renderPagesToHtml,
@@ -17,12 +18,6 @@ import type { ExpandedPage } from './use-doc-pages';
 
 type AssetEntry = { name: string; bytes: Uint8Array };
 
-export type HtmlBundle = {
-  filename: string;
-  mimeType: 'text/html' | 'application/zip';
-  bytes: Uint8Array;
-};
-
 /**
  * Serializes the document into a self-contained page — a plain `.html` when
  * nothing is referenced, a zip alongside its assets when something is. The
@@ -32,12 +27,12 @@ export async function buildDocHtmlBundle(
   doc: DocModule,
   docId: string,
   pages: ExpandedPage[],
-): Promise<HtmlBundle | null> {
+): Promise<FileBundle | null> {
   if (pages.length === 0) return null;
 
   const title = doc.meta?.title ?? docId;
   const geometry = resolvePageGeometry(doc.meta);
-  const pagesHtml = await renderPagesToHtml(pages, geometry, doc);
+  const pagesHtml = await renderPagesToHtml(pages, doc);
   const bundledCss = collectCss();
   const externalLinks = collectExternalStylesheetLinks();
 
@@ -94,8 +89,7 @@ export async function exportDocAsHtml(
   pages: ExpandedPage[],
 ): Promise<void> {
   const bundle = await buildDocHtmlBundle(doc, docId, pages);
-  if (!bundle) return;
-  downloadBlob(new Blob([bundle.bytes as BlobPart], { type: bundle.mimeType }), bundle.filename);
+  if (bundle) downloadBundle(bundle);
 }
 
 function rewriteUrls(

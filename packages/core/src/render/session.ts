@@ -78,6 +78,7 @@ export type DocRenderer = {
   /** PNG of one sheet at true page size, 1-based. */
   screenshot(page: number): Promise<Uint8Array>;
   html(): Promise<BridgeBundle | null>;
+  docx(): Promise<BridgeBundle | null>;
   close(): Promise<void>;
 };
 
@@ -193,6 +194,7 @@ export async function createRenderSession(opts: RenderSessionOptions): Promise<R
           }
         },
         html: () => page.evaluate<BridgeBundle | null>('globalThis.__openDoc.htmlBundle()'),
+        docx: () => page.evaluate<BridgeBundle | null>('globalThis.__openDoc.docxBundle()'),
         close: () => page.close(),
       };
     },

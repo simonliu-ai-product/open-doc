@@ -35,7 +35,7 @@ open-doc dev --mcp
 | `list_folders` / `create_folder` / `file_document` | 資料夾清單與歸檔。 |
 | `check_layout` | 算出每一頁並回報版面問題，附上原始碼位置。 |
 | `render_page` | 以真實頁面尺寸截下某一頁的 PNG。 |
-| `export_document` | 無頭寫出 pdf / html / png。 |
+| `export_document` | 無頭寫出 pdf / html / docx / png。 |
 | `import_markdown` | 把 Markdown 變成 `docs/` 下的一份文件。 |
 
 最後四個會在無頭瀏覽器裡算出文件，需要工作區內有 `playwright`（`pnpm add -D playwright && pnpm exec playwright install chromium`）。它們會沿用正在跑的 dev server，所以連續呼叫很便宜。

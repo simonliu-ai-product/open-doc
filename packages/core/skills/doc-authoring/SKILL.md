@@ -357,8 +357,9 @@ A document is not a slide deck. Long-form copy is the point — but it still has
 - Hot reload: edit `index.tsx` and the pages update live.
 - **Assets panel** (`/assets` in the dev UI): upload, rename, and delete files in the global `assets/` folder or any document's `assets/` folder, with an "unused" badge and a copy-ready import line. Files you reference in source are what it scans, so an import you write by hand shows up there immediately.
 - **Inspect mode** (the "Inspect" button, dev only): click any element on a page to edit its text in place — the change is written straight back into `docs/<id>/index.tsx` — or leave a note for the agent, which is stored as a `@doc-comment` marker and processed by the `apply-comments` skill.
-- **Download menu** — PDF (true page size) and self-contained HTML.
-- **Headless render** — `open-doc export <id> --format pdf|html|png` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
+- **Download menu** — PDF (true page size), self-contained HTML, and DOCX for review in Word.
+- **Word export** — DOCX reflows the text instead of copying the sheets, so write structure, not position: real `h1`–`h3` become Word headings, `<Footnote>` a Word footnote, `<TableOfContents />` a contents field, a flow `footer` a running footer with live page numbers, and tables, lists, and links their Word equivalents. Inside a `<Figure>`, anything that is not an image or a table — a chart drawn with divs — is exported as a picture of itself.
+- **Headless render** — `open-doc export <id> --format pdf|html|docx|png` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
 - **Design panel** (the "Design" button in the document view, dev only): live-tweaks the `design` const — palette, fonts, type scale, margin, leading, radius — previewing on the real pages and writing the values back into `docs/<id>/index.tsx` on save.
 
 ### Writing for the inspector

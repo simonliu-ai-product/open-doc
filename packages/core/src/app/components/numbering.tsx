@@ -1,15 +1,20 @@
 import { type CSSProperties, type ReactNode, useId } from 'react';
 import {
-  formatOnPage,
   LABEL_ATTR,
   LABEL_ID_ATTR,
   LABEL_TEXT_ATTR,
   type LabelKind,
+  onPageParts,
   useDocLabel,
   useDocLabels,
   useLabelVocabulary,
 } from '../lib/labels';
 import { useDocPageNumber } from '../lib/page-context';
+
+export const REF_ATTR = 'data-od-ref';
+/** The page number inside a reference's page suffix — the Word export makes it a PAGEREF. */
+export const REF_PAGE_ATTR = 'data-od-ref-page';
+export const LIST_OF_ATTR = 'data-od-list-of';
 
 function nameFor(kind: LabelKind, vocabulary: { figure: string; table: string }): string {
   return kind === 'table' ? vocabulary.table : vocabulary.figure;
@@ -133,12 +138,20 @@ export function Ref({ to, showPage = 'auto', style, className }: RefProps) {
 
   const name = entry.kind === 'footnote' ? '' : `${nameFor(entry.kind, vocabulary)} `;
   const withPage = showPage === 'auto' ? entry.page !== here : showPage;
+  const parts = onPageParts(vocabulary);
 
   return (
-    <span data-od-ref={to} className={className} style={style}>
+    <span {...{ [REF_ATTR]: to }} className={className} style={style}>
       {name}
       {entry.number}
-      {withPage ? formatOnPage(vocabulary, entry.page) : ''}
+      {withPage && parts && (
+        <>
+          {parts[0]}
+          <span {...{ [REF_PAGE_ATTR]: '' }}>{entry.page}</span>
+          {parts[1]}
+        </>
+      )}
+      {withPage && !parts && vocabulary.onPage}
     </span>
   );
 }
@@ -162,7 +175,7 @@ export function ListOf({ kind = 'figure', showPageNumbers = true, style, classNa
 
   return (
     <div
-      data-od-list-of={kind}
+      {...{ [LIST_OF_ATTR]: kind }}
       className={className}
       style={{
         fontFamily: 'var(--od-font-body)',
@@ -174,6 +187,7 @@ export function ListOf({ kind = 'figure', showPageNumbers = true, style, classNa
       {entries.map((entry) => (
         <div
           key={entry.id}
+          {...{ [REF_ATTR]: entry.id }}
           style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}
         >
           <span style={{ flex: 'none', color: 'var(--od-muted)' }}>
@@ -190,7 +204,9 @@ export function ListOf({ kind = 'figure', showPageNumbers = true, style, classNa
                   transform: 'translateY(-3px)',
                 }}
               />
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{entry.page}</span>
+              <span {...{ [REF_PAGE_ATTR]: '' }} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {entry.page}
+              </span>
             </>
           )}
         </div>

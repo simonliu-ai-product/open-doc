@@ -2,9 +2,13 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { DesignSystem } from '../lib/design';
 import type { FlowSection } from '../lib/flow';
 import type { ExtractedNote } from '../lib/footnotes';
+import { PAGE_ATTR, PAGE_INDEX_ATTR } from '../lib/outline';
+import { DocPageProvider, useDocPageCount } from '../lib/page-context';
 import { Footnotes } from './footnote';
 
 export const FLOW_BLOCK_ATTR = 'data-od-flow-block';
+/** Around the section's footer, as `display: contents` so it lays out as if absent. */
+export const FLOW_FOOTER_ATTR = 'data-od-flow-footer';
 
 /**
  * The page shell a flow section renders into. The framework owns the margin and
@@ -33,8 +37,21 @@ export function flowShellStyle(design: DesignSystem | undefined, padding?: numbe
   };
 }
 
-export function FlowBlock({ children }: { children?: ReactNode }) {
-  return <div {...{ [FLOW_BLOCK_ATTR]: '' }}>{children}</div>;
+/**
+ * With a `sheet`, the block is a page frame of its own: the outline and
+ * numbering scans, and `useDocPageNumber()`, see the sheet it printed on even
+ * when it is laid out in one continuous column.
+ */
+export function FlowBlock({ children, sheet }: { children?: ReactNode; sheet?: number }) {
+  const total = useDocPageCount();
+  if (sheet === undefined) return <div {...{ [FLOW_BLOCK_ATTR]: '' }}>{children}</div>;
+  return (
+    <div {...{ [FLOW_BLOCK_ATTR]: '', [PAGE_ATTR]: '', [PAGE_INDEX_ATTR]: sheet }}>
+      <DocPageProvider index={sheet} total={total}>
+        {children}
+      </DocPageProvider>
+    </div>
+  );
 }
 
 export function FlowPage({
@@ -43,6 +60,7 @@ export function FlowPage({
   blockIndices,
   blocks,
   notes,
+  sheets,
 }: {
   section: FlowSection;
   design: DesignSystem | undefined;
@@ -50,6 +68,8 @@ export function FlowPage({
   /** Blocks with footnotes already lifted out; falls back to the authored ones. */
   blocks?: ReactNode[];
   notes?: ExtractedNote[];
+  /** Block index → the sheet it printed on, for a copy laid out as one column. */
+  sheets?: ReadonlyMap<number, number>;
 }) {
   const Footer = section.footer;
   const source = blocks ?? section.blocks;
@@ -57,11 +77,17 @@ export function FlowPage({
     <div style={flowShellStyle(design, section.padding)}>
       <div style={{ flex: 1, minHeight: 0 }}>
         {blockIndices.map((index) => (
-          <FlowBlock key={index}>{source[index]}</FlowBlock>
+          <FlowBlock key={index} sheet={sheets?.get(index)}>
+            {source[index]}
+          </FlowBlock>
         ))}
       </div>
       {notes && notes.length > 0 && <Footnotes notes={notes} />}
-      {Footer && <Footer />}
+      {Footer && (
+        <div {...{ [FLOW_FOOTER_ATTR]: '' }} style={{ display: 'contents' }}>
+          <Footer />
+        </div>
+      )}
     </div>
   );
 }

@@ -107,7 +107,7 @@ Clipped content, blank sheets, stranded headings, type too small to print, image
 ### ⌨️ Headless export — the Download menu without a browser
 
 ```bash
-open-doc export q3-infra-review --format pdf   # or html, or one png per page
+open-doc export q3-infra-review --format pdf   # or html, docx, or one png per page
 open-doc export --all --out-dir out
 ```
 
@@ -147,10 +147,11 @@ A left sidebar holds every view — Documents, Themes, Assets — plus folders y
 - **Assets** — upload, rename, and delete files in the global `assets/` folder or any document's own, with an "unused" badge and a copy-ready import line.
 - **Design panel** — live-tweak the palette, fonts, type scale, margin, and leading on the real pages, then write the result straight back into the document's `design` const via an AST edit.
 
-### 🖨️ One Download menu: PDF and HTML
+### 🖨️ One Download menu: PDF, HTML, and Word
 
 - **PDF** — the browser print pipeline at the true page size; fonts and images are awaited and contents lists filled before serializing. This is the format that reproduces the page exactly.
 - **HTML** — self-contained and printable (a zip when the document has assets).
+- **DOCX** — for a review that runs on Word. Headings, footnotes, tables, lists, the contents, and running footers arrive as their Word equivalents, styles are read off the page so restyling Heading 2 restyles every one, and the text reflows instead of copying the sheets. A chart drawn in HTML travels as a picture.
 
 ### 🚀 Deploy-friendly
 
@@ -171,7 +172,7 @@ Open http://localhost:5273. From there, drive it through your agent — or edit 
 | `open-doc dev` | Dev server + viewer (`--mcp` to mount the MCP endpoint) |
 | `open-doc build` / `preview` | Static site |
 | `open-doc check [ids…]` | Report layout faults; non-zero exit on errors |
-| `open-doc export [ids…]` | Headless PDF / HTML / PNG |
+| `open-doc export [ids…]` | Headless PDF / HTML / DOCX / PNG |
 | `open-doc import <file.md>` | Markdown → a document under `docs/` |
 
 ## The file contract

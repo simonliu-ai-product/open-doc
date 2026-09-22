@@ -1,5 +1,6 @@
 import chalk from 'chalk';
-import { closeRenderSession, type ExportFormat, exportDocument, listDocIds } from '../ops/index.ts';
+import { EXPORT_FORMATS, type ExportFormat } from '../ops/formats.ts';
+import { closeRenderSession, exportDocument, listDocIds } from '../ops/index.ts';
 import { cliContext } from './context.ts';
 
 export interface ExportOptions {
@@ -8,8 +9,6 @@ export interface ExportOptions {
   all?: boolean;
 }
 
-const FORMATS: ExportFormat[] = ['pdf', 'html', 'png'];
-
 /**
  * The Download menu without a browser window — the same render pipeline, driven
  * from a script. This is what makes a document something CI can produce on a
@@ -17,8 +16,8 @@ const FORMATS: ExportFormat[] = ['pdf', 'html', 'png'];
  */
 export async function exportDocs(docIds: string[], opts: ExportOptions = {}): Promise<void> {
   const format = opts.format ?? 'pdf';
-  if (!FORMATS.includes(format)) {
-    throw new Error(`Unknown format "${format}". Expected one of: ${FORMATS.join(', ')}`);
+  if (!EXPORT_FORMATS.includes(format)) {
+    throw new Error(`Unknown format "${format}". Expected one of: ${EXPORT_FORMATS.join(', ')}`);
   }
 
   const ctx = await cliContext();

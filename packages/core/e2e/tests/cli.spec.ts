@@ -47,13 +47,20 @@ test.describe('open-doc CLI', () => {
     expect(source).toContain('satisfies DocEntry[]');
   });
 
-  test('export writes a PDF, and check passes the fixture documents', async () => {
+  test('export writes a PDF and a DOCX, and check passes the fixture documents', async () => {
     const dir = prepareScratchProject('cli-render');
 
     const exported = await runCli(['export', 'alpha', '--out-dir', 'out'], dir);
     expect(exported.code, exported.stderr).toBe(0);
     const pdf = await fs.readFile(path.join(dir, 'out', 'alpha.pdf'));
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+
+    const word = await runCli(['export', 'alpha', '--format', 'docx', '--out-dir', 'out'], dir);
+    expect(word.code, word.stderr).toBe(0);
+    const docx = await fs.readFile(path.join(dir, 'out', 'alpha.docx'));
+    // A zip, and the Word part inside it.
+    expect(docx.subarray(0, 2).toString()).toBe('PK');
+    expect(docx.includes('word/document.xml')).toBe(true);
 
     const checked = await runCli(['check', 'alpha'], dir);
     expect(checked.code, checked.stderr).toBe(0);

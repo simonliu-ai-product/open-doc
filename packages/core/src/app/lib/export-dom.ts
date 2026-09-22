@@ -1,27 +1,45 @@
 /**
- * Shared by both exporters so there is one way to draw the document offscreen.
+ * Shared by every exporter so there is one way to draw the document offscreen.
  * Two copies would drift on font waiting, scanning, or design variables, and the
  * difference would only ever show up in an exported file.
  */
 
-import { createElement } from 'react';
+import { Component, createElement, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { designToCssVars } from './design';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
-import { nextFrame, waitForFonts, waitForImages } from './print-ready';
+import { nextFrame, waitForDataWaitfor, waitForFonts, waitForImages } from './print-ready';
 import { captureScan, restoreScan, scanDocument } from './scan';
-import type { DocModule, PageGeometry } from './sdk';
+import { type DocModule, resolvePageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
 export const ASSET_EXT_RE =
   /\.(?:png|jpe?g|gif|svg|webp|avif|woff2?|ttf|otf)(?:\?[^#]*)?(?:#.*)?$/i;
 
-export async function renderPagesToHtml(
-  pages: ExpandedPage[],
-  geometry: PageGeometry,
-  doc: DocModule,
-): Promise<string[]> {
+export type FileBundle = { filename: string; mimeType: string; bytes: Uint8Array };
+
+export type HostOptions = {
+  /** 0-based page index; makes the host a frame the outline and numbering scans read. */
+  frame?: number;
+  /** Sheet height; without it the host grows with its content. */
+  sheet?: boolean;
+  className?: string;
+  /** The design's paper and ink on the host itself, as a printed sheet has them. */
+  paint?: boolean;
+};
+
+/** Mounts `node` in a host of its own, rendered as page `index` of `total`. */
+export type PageMount = (
+  node: ReactNode,
+  page: { index: number; total: number },
+  host?: HostOptions,
+) => HTMLElement;
+
+export type OffscreenCopy<T> = { root: HTMLElement; value: T; dispose: () => void };
+
+function offscreenContainer(): HTMLElement {
   const container = document.createElement('div');
   container.setAttribute('aria-hidden', 'true');
   Object.assign(container.style, {
@@ -31,45 +49,158 @@ export async function renderPagesToHtml(
     pointerEvents: 'none',
   });
   document.body.appendChild(container);
+  return container;
+}
 
-  const designVars = doc.design ? designToCssVars(doc.design) : null;
-  const roots: Root[] = [];
-  const hosts: HTMLElement[] = [];
-  const previousScan = captureScan();
+/**
+ * Around every page of a copy. Rendered synchronously, a page that throws would
+ * take the whole export with it; one that only fails for the pages chosen —
+ * `chapters[n - 3]` on page 1 of a one-page export, or on the Word export's
+ * sentinel page 38271 — prints blank instead.
+ */
+class PageBoundary extends Component<{ children?: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
 
-  try {
-    for (let i = 0; i < pages.length; i++) {
-      const page = pages[i];
-      if (!page) continue;
-      const host = document.createElement('div');
-      host.setAttribute(PAGE_ATTR, '');
-      host.setAttribute(PAGE_INDEX_ATTR, String(i));
-      host.style.width = `${geometry.width}px`;
-      host.style.height = `${geometry.height}px`;
-      if (designVars) {
-        for (const [k, v] of Object.entries(designVars)) host.style.setProperty(k, v);
-      }
-      container.appendChild(host);
-      hosts.push(host);
-      const root = createRoot(host);
-      root.render(createElement(DocPageProvider, { index: i, total: pages.length }, page.content));
-      roots.push(root);
-    }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
 
-    await nextFrame();
-    await waitForFonts();
-    await waitForImages(container);
-    scanDocument(container, doc.meta);
-    await nextFrame();
-    await nextFrame();
-
-    return hosts.map((host) => host.innerHTML);
-  } finally {
-    for (const root of roots) root.unmount();
-    container.remove();
-    restoreScan(previousScan);
+  render() {
+    return this.state.failed ? null : this.props.children;
   }
 }
+
+/**
+ * Renders and commits before returning. A concurrent render can still be
+ * pending when the next line reads the DOM — right after a document first
+ * loads, the viewer's own rendering is ahead of it in the queue — and a scan of
+ * an uncommitted copy sees blank sheets: an empty table of contents, figures
+ * without numbers. Never call it from inside a render or an effect.
+ */
+function renderNow(host: HTMLElement, node: ReactNode): Root {
+  const root = createRoot(host);
+  flushSync(() => root.render(node));
+  return root;
+}
+
+/** Everything a page waits on before it can be read: fonts, images, `data-waitfor`. */
+async function settle(root: HTMLElement): Promise<void> {
+  await nextFrame();
+  await waitForFonts();
+  await waitForImages(root);
+  await waitForDataWaitfor(root);
+}
+
+/**
+ * Hands the thread back between synchronous renders. Committed back to back, a
+ * long document holds the main thread and the progress percentage never paints.
+ * It yields through a message rather than a timer: a timer in a background tab
+ * waits a whole second, once per yield.
+ */
+export function pacer(budgetMs = 50): () => Promise<void> {
+  let last = performance.now();
+  return async () => {
+    if (performance.now() - last < budgetMs) return;
+    await new Promise<void>((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => {
+        channel.port1.close();
+        resolve();
+      };
+      channel.port2.postMessage(null);
+    });
+    last = performance.now();
+  };
+}
+
+/**
+ * A private copy of the document, drawn offscreen by `draw`, scanned, and
+ * settled — the lifecycle every exporter shares. The scan is the copy's own, so
+ * the pages its contents and references quote are the pages it shows; the
+ * viewer's is put back by `dispose()`, which also runs if anything throws first.
+ */
+export async function mountOffscreen<T>(
+  doc: DocModule,
+  draw: (mount: PageMount, pace: () => Promise<void>) => Promise<T>,
+  opts: { root?: HTMLElement; onDispose?: () => void } = {},
+): Promise<OffscreenCopy<T>> {
+  const root = opts.root ?? offscreenContainer();
+  const geometry = resolvePageGeometry(doc.meta);
+  const vars = doc.design ? Object.entries(designToCssVars(doc.design)) : [];
+  const previousScan = captureScan();
+  const roots: Root[] = [];
+  const dispose = () => {
+    for (const r of roots) r.unmount();
+    root.remove();
+    restoreScan(previousScan);
+    opts.onDispose?.();
+  };
+
+  // Styled as the viewer styles a sheet, so positioned content lands where it
+  // does on screen.
+  const mount: PageMount = (node, page, host = {}) => {
+    const el = document.createElement('div');
+    if (host.className) el.className = host.className;
+    if (host.frame !== undefined) {
+      el.setAttribute(PAGE_ATTR, '');
+      el.setAttribute(PAGE_INDEX_ATTR, String(host.frame));
+    }
+    Object.assign(el.style, {
+      width: `${geometry.width}px`,
+      height: host.sheet ? `${geometry.height}px` : '',
+      position: 'relative',
+      overflow: 'hidden',
+      textAlign: 'start',
+    });
+    for (const [name, value] of vars) el.style.setProperty(name, value);
+    if (host.paint) {
+      // Paper and ink of its own, as the viewer's sheet has: the copy hangs off
+      // <body>, and a document with no design would otherwise print in the
+      // chrome's colours, which follow the viewer's dark mode.
+      el.style.background = doc.design ? 'var(--od-bg)' : '#ffffff';
+      el.style.color = doc.design ? 'var(--od-text)' : '#000000';
+    }
+    root.appendChild(el);
+    const content = createElement(PageBoundary, null, node);
+    roots.push(renderNow(el, createElement(DocPageProvider, page, content)));
+    return el;
+  };
+
+  try {
+    const value = await draw(mount, pacer());
+    await settle(root);
+    // What the scan resolves — contents, numbers, references — is committed
+    // before anything reads the copy, and gets its fonts like the rest. Images
+    // and data-waitfor were settled above; waiting on them again only doubles
+    // the timeout of one that never arrives.
+    flushSync(() => scanDocument(root, doc.meta));
+    await nextFrame();
+    await waitForFonts();
+    return { root, value, dispose };
+  } catch (err) {
+    dispose();
+    throw err;
+  }
+}
+
+/** Every sheet as it would print, serialized. */
+export async function renderPagesToHtml(pages: ExpandedPage[], doc: DocModule): Promise<string[]> {
+  const total = pages.length;
+  const copy = await mountOffscreen(doc, async (mount, pace) => {
+    const hosts: HTMLElement[] = [];
+    for (const [index, page] of pages.entries()) {
+      hosts.push(mount(page.content, { index, total }, { frame: index, sheet: true }));
+      await pace();
+    }
+    return hosts;
+  });
+  try {
+    return copy.value.map((host) => host.innerHTML);
+  } finally {
+    copy.dispose();
+  }
+}
+
 export function collectCss(): string {
   const chunks: string[] = [];
   for (const sheet of Array.from(document.styleSheets)) {
@@ -159,6 +290,10 @@ export function shortHash(input: string): string {
   }
   return (h >>> 0).toString(36).slice(0, 6);
 }
+export function downloadBundle(bundle: FileBundle): void {
+  downloadBlob(new Blob([bundle.bytes as BlobPart], { type: bundle.mimeType }), bundle.filename);
+}
+
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

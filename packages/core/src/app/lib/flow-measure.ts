@@ -18,22 +18,27 @@ export type MeasurableSection = {
   padding?: number;
 };
 
-function metricsFor(el: HTMLElement, height: number, footnoteHeight: number): BlockMetrics {
-  const inner = el.firstElementChild;
-  const tag = inner?.tagName ?? '';
-  const declaredKeepNext = inner?.getAttribute('data-od-keep-with-next');
-  const declaredKeepPrev = inner?.getAttribute('data-od-keep-with-previous');
-  const declaredBreak = inner?.getAttribute('data-od-break-before');
+export type BlockHints = Required<
+  Pick<BlockMetrics, 'keepWithNext' | 'keepWithPrevious' | 'breakBefore'>
+>;
 
+/** The page-break hints a block declares — read once, for the packer and the Word export alike. */
+export function blockHints(el: Element | null): BlockHints {
+  const declared = (name: string) => {
+    const value = el?.getAttribute(name);
+    return value === null || value === undefined ? undefined : value !== 'false';
+  };
   return {
-    height,
-    footnoteHeight,
     // A heading alone at the bottom of a page is the most visible layout error
     // in a report, so headings glue to whatever follows them by default.
-    keepWithNext: declaredKeepNext !== null ? declaredKeepNext !== 'false' : HEADING_TAGS.has(tag),
-    keepWithPrevious: declaredKeepPrev !== null && declaredKeepPrev !== 'false',
-    breakBefore: declaredBreak !== null && declaredBreak !== 'false',
+    keepWithNext: declared('data-od-keep-with-next') ?? HEADING_TAGS.has(el?.tagName ?? ''),
+    keepWithPrevious: declared('data-od-keep-with-previous') ?? false,
+    breakBefore: declared('data-od-break-before') ?? false,
   };
+}
+
+function metricsFor(el: HTMLElement, height: number, footnoteHeight: number): BlockMetrics {
+  return { height, footnoteHeight, ...blockHints(el.firstElementChild) };
 }
 
 export type FlowMeasurement = {

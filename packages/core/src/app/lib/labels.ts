@@ -170,6 +170,12 @@ export function useLabelVocabulary(): LabelVocabulary {
   return useLabelSnapshot().vocabulary;
 }
 
-export function formatOnPage(vocabulary: LabelVocabulary, page: number): string {
-  return vocabulary.onPage.replace('{page}', String(page));
+/**
+ * The words either side of the page number in a cross-reference's page suffix,
+ * or null when the suffix names no page — it is then printed as written.
+ */
+export function onPageParts(vocabulary: LabelVocabulary): [before: string, after: string] | null {
+  const at = vocabulary.onPage.indexOf('{page}');
+  if (at < 0) return null;
+  return [vocabulary.onPage.slice(0, at), vocabulary.onPage.slice(at + '{page}'.length)];
 }

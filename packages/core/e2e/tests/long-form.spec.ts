@@ -62,7 +62,8 @@ test.describe('long-form document layer', () => {
     page,
   }) => {
     await openDoc(page, 'long-form');
-    const refs = page.locator('[data-od-viewer] [data-od-ref="rows-table"]');
+    // The list of tables links to the table too; the reference is the inline one.
+    const refs = page.locator('[data-od-viewer] span[data-od-ref="rows-table"]');
     await expect(refs.first()).toContainText('Table 1');
     // Nothing may be left unresolved once the scan has run.
     await expect(page.locator('[data-od-viewer] [data-od-ref-unresolved]')).toHaveCount(0);

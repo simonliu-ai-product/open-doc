@@ -5,6 +5,7 @@ import {
   Download,
   FileCode2,
   FileImage,
+  FilePen,
   FileText,
   Image,
   Loader2,
@@ -41,18 +42,12 @@ import { useDocModule } from '../lib/use-doc-module';
 import { useDocPages } from '../lib/use-doc-pages';
 import { cn } from '../lib/utils';
 
-type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg';
-
-const DOWNLOAD_LABEL: Record<DownloadFormat, string> = {
-  pdf: 'PDF',
-  html: 'HTML',
-  png: 'PNG',
-  svg: 'SVG',
-};
+type DownloadFormat = 'pdf' | 'html' | 'docx' | 'png' | 'svg';
 
 const DOWNLOAD_FORMATS = [
   { format: 'pdf' as const, label: 'PDF', hint: 'True page size, print-ready', icon: FileText },
   { format: 'html' as const, label: 'HTML', hint: 'Self-contained, printable', icon: FileCode2 },
+  { format: 'docx' as const, label: 'DOCX', hint: 'Editable in Word, reflows', icon: FilePen },
   { format: 'png' as const, label: 'PNG', hint: 'Pixels, 2x — for slides and chat', icon: Image },
   { format: 'svg' as const, label: 'SVG', hint: 'Vector, keeps text as text', icon: FileImage },
 ];
@@ -252,6 +247,11 @@ export function Doc() {
         );
       } else if (format === 'html') {
         await exportDocAsHtml(doc, docId, chosen);
+      } else if (format === 'docx') {
+        const { exportDocAsDocx } = await import('../lib/export-docx');
+        await exportDocAsDocx(doc, docId, chosen, (progress) =>
+          setDownload({ format, percent: progress.percent }),
+        );
       } else {
         await exportDocAsImages(doc, docId, chosen, format, (progress) =>
           setDownload({ format, percent: progress.percent }),
@@ -460,7 +460,7 @@ export function Doc() {
                   <Download className="size-3.5" />
                 )}
                 {download
-                  ? `${DOWNLOAD_LABEL[download.format]} ${Math.round(download.percent)}%`
+                  ? `${DOWNLOAD_FORMATS.find((entry) => entry.format === download.format)?.label} ${Math.round(download.percent)}%`
                   : 'Download'}
               </button>
             )}
