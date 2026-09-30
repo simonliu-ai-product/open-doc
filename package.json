@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.11",
-    "@changesets/changelog-github": "^0.7.0",
+    "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.0",
     "turbo": "^2.10.12",
     "vitest": "^2.1.9"
