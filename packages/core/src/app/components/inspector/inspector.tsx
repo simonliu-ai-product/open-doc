@@ -1043,8 +1043,11 @@ export function Inspector({
       setStatus(null);
       setNote('');
     };
+    // On the window, not the pane: the first click opens the element panel,
+    // and in two-up or grid a sheet near the right edge can have the panel
+    // open right under the pointer — the second click then lands on it, and a
+    // listener on the pane would never hear the double-click at all.
     const onDblClick = (e: MouseEvent) => {
-      if (insideChrome(e.target)) return;
       const first = firstClickRef.current;
       firstClickRef.current = null;
       if (first && Date.now() - first.time < DOUBLE_CLICK_MS) {
@@ -1052,6 +1055,7 @@ export function Inspector({
         setWantEdit({ anchor: first.anchor, at: first.at, selectWord: true });
         return;
       }
+      if (!container.contains(e.target as Node) || insideChrome(e.target)) return;
       if (entryAt(e.target)) return;
       const target = targetFrom(e.target as Element);
       if (!target?.anchor.contains(e.target as Node)) return;
@@ -1099,13 +1103,13 @@ export function Inspector({
 
     container.addEventListener('pointermove', onMove, true);
     container.addEventListener('click', onClick, true);
-    container.addEventListener('dblclick', onDblClick, true);
+    window.addEventListener('dblclick', onDblClick, true);
     window.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('keydown', onKey, true);
     return () => {
       container.removeEventListener('pointermove', onMove, true);
       container.removeEventListener('click', onClick, true);
-      container.removeEventListener('dblclick', onDblClick, true);
+      window.removeEventListener('dblclick', onDblClick, true);
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onKey, true);
     };
