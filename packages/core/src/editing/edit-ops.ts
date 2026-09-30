@@ -541,22 +541,95 @@ export function replaceTextAt(
 ): EditResult {
   const ast = parseSource(source);
   if (!ast) return { ok: false, status: 422, error: 'could not parse document source' };
-
-  const element = findJsxAt(ast, target.line, target.column);
-  if (!element) return { ok: false, status: 404, error: 'no element at that source location' };
-
-  const { slots } = resolve(element, { ast, source, shown: opts.shown });
-  if (slots.length === 0) {
-    return { ok: false, status: 422, error: 'element has no text to replace' };
-  }
-  const slot = slots[opts.index ?? 0];
-  if (!slot) return { ok: false, status: 404, error: 'no such text run in this element' };
-  if (opts.expected !== undefined && normalizeText(slot.value) !== normalizeText(opts.expected)) {
-    return { ok: false, status: 409, error: 'source changed since this was opened — reselect it' };
-  }
-
+  const found = slotAt(ast, source, { ...target, ...opts });
+  if (!found.ok) return found;
+  const { slot } = found;
   return {
     ok: true,
     source: source.slice(0, slot.start) + slot.escape(text) + source.slice(slot.end),
   };
+}
+
+type SlotResult = { ok: true; slot: Slot } | { ok: false; status: number; error: string };
+
+function slotAt(
+  ast: AstNode,
+  source: string,
+  edit: EditTarget & { index?: number; expected?: string; shown?: string },
+): SlotResult {
+  const element = findJsxAt(ast, edit.line, edit.column);
+  if (!element) return { ok: false, status: 404, error: 'no element at that source location' };
+
+  const { slots } = resolve(element, { ast, source, shown: edit.shown });
+  if (slots.length === 0) {
+    return { ok: false, status: 422, error: 'element has no text to replace' };
+  }
+  const slot = slots[edit.index ?? 0];
+  if (!slot) return { ok: false, status: 404, error: 'no such text run in this element' };
+  if (edit.expected !== undefined && normalizeText(slot.value) !== normalizeText(edit.expected)) {
+    return { ok: false, status: 409, error: 'source changed since this was opened — reselect it' };
+  }
+  return { ok: true, slot };
+}
+
+export type TextEdit = EditTarget & {
+  text: string;
+  index?: number;
+  expected?: string;
+  shown?: string;
+};
+
+export type TextEditOutcome = { ok: true } | { ok: false; status: number; error: string };
+
+/**
+ * Applies several run replacements as one write.
+ *
+ * Every edit is located against the source as the caller last saw it, before
+ * any of them lands: an edit's `line:column` is only true of that source, and
+ * resolving each against the output of the previous one would find elements
+ * shifted by whatever was typed above them. The splices then go in back to
+ * front so none moves another.
+ *
+ * A failed edit is reported and skipped; the rest still land. Two edits that
+ * reach the same span — one prop rendered by two elements — must agree, or the
+ * later one is refused rather than silently winning.
+ */
+export function replaceTextsAt(
+  source: string,
+  edits: TextEdit[],
+): { source: string; results: TextEditOutcome[] } {
+  const ast = parseSource(source);
+  if (!ast) {
+    const error = { ok: false as const, status: 422, error: 'could not parse document source' };
+    return { source, results: edits.map(() => error) };
+  }
+
+  const results: TextEditOutcome[] = [];
+  const planned: Array<{ slot: Slot; text: string }> = [];
+  for (const edit of edits) {
+    const found = slotAt(ast, source, edit);
+    if (!found.ok) {
+      results.push(found);
+      continue;
+    }
+    const same = planned.find(
+      (other) => other.slot.start === found.slot.start && other.slot.end === found.slot.end,
+    );
+    if (same && same.text !== edit.text) {
+      results.push({
+        ok: false,
+        status: 409,
+        error: 'another edit in this save rewrites the same text',
+      });
+      continue;
+    }
+    if (!same) planned.push({ slot: found.slot, text: edit.text });
+    results.push({ ok: true });
+  }
+
+  let next = source;
+  for (const { slot, text } of [...planned].sort((a, b) => b.slot.start - a.slot.start)) {
+    next = next.slice(0, slot.start) + slot.escape(text) + next.slice(slot.end);
+  }
+  return { source: next, results };
 }

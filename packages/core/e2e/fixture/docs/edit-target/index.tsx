@@ -41,6 +41,9 @@ const Only: DocPage = () => (
     <h1 style={{ fontSize: 'var(--od-size-h1)', margin: 0 }}>Editable heading</h1>
     <p>Editable paragraph</p>
     <p>Second paragraph stays put</p>
+    <p>
+      Run before <code>open-doc dev</code> run after
+    </p>
   </div>
 );
 

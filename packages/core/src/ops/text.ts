@@ -1,6 +1,12 @@
 import fs from 'node:fs/promises';
 import { insertMarker } from '../editing/comments.ts';
-import { replaceTextAt, resolveTextTarget } from '../editing/edit-ops.ts';
+import {
+  replaceTextAt,
+  replaceTextsAt,
+  resolveTextTarget,
+  type TextEdit,
+  type TextEditOutcome,
+} from '../editing/edit-ops.ts';
 import type { ApiContext } from '../vite/routes/context.ts';
 import { OpsError, resolveEntry } from './documents.ts';
 
@@ -50,6 +56,24 @@ export async function writeText(
   if (!result.ok) throw new OpsError(result.status, result.error);
   if (result.source !== source) await fs.writeFile(entry, result.source, 'utf8');
   return { ok: true };
+}
+
+/**
+ * Several run replacements in one read and one write, so an editing session
+ * that touched five paragraphs lands as a single hot reload rather than five
+ * that each re-paginate the document. Per-edit failures are reported, not
+ * thrown: the edits that still apply are written.
+ */
+export async function writeTexts(
+  ctx: ApiContext,
+  docId: string,
+  edits: TextEdit[],
+): Promise<{ results: TextEditOutcome[] }> {
+  if (edits.length === 0) throw new OpsError(400, 'at least one edit is required');
+  const { entry, source } = await sourceOf(ctx, docId);
+  const result = replaceTextsAt(source, edits);
+  if (result.source !== source) await fs.writeFile(entry, result.source, 'utf8');
+  return { results: result.results };
 }
 
 /** Leaves a `@doc-comment` marker in the source for a later agent pass to act on. */

@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Check,
   Download,
+  Eye,
   FileCode2,
   FileImage,
   FileText,
@@ -11,10 +12,10 @@ import {
   Maximize,
   Minimize,
   Minus,
-  MousePointerClick,
   MoveHorizontal,
   MoveVertical,
   Palette,
+  Pencil,
   Percent,
   Plus,
 } from 'lucide-react';
@@ -111,7 +112,8 @@ export function Doc() {
   const [selection, setSelection] = useState<PageSelection>({ kind: 'all' });
   const [customRange, setCustomRange] = useState('');
   const [designOpen, setDesignOpen] = useState(false);
-  const [inspecting, setInspecting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const leaveEditRef = useRef<(() => void) | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const geometry = useMemo(() => resolvePageGeometry(doc?.meta), [doc?.meta]);
@@ -418,18 +420,21 @@ export function Doc() {
           {!appConfig.build.showDocBrowser && <ThemeToggle />}
 
           {import.meta.env.DEV && (
-            <button
-              type="button"
-              onClick={() => setInspecting((on) => !on)}
-              title="Inspect and edit on the page"
-              className={cn(
-                'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
-                inspecting && 'border-transparent bg-[#3b82f6] text-white hover:bg-[#3b82f6]',
-              )}
-            >
-              <MousePointerClick className="size-3.5" />
-              Inspect
-            </button>
+            // Same two modes as open-slide: reading the document, or editing it
+            // where it is printed. Leaving edit mode saves unsaved text first.
+            <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+              <legend className="sr-only">Mode</legend>
+              <IconButton
+                label="Preview"
+                active={!editing}
+                onClick={() => (leaveEditRef.current ? leaveEditRef.current() : setEditing(false))}
+              >
+                <Eye className="size-3.5" />
+              </IconButton>
+              <IconButton label="Edit" active={editing} onClick={() => setEditing(true)}>
+                <Pencil className="size-3.5" />
+              </IconButton>
+            </fieldset>
           )}
           {import.meta.env.DEV && (
             <button
@@ -536,8 +541,14 @@ export function Doc() {
             ))}
           </div>
         </div>
-        {inspecting && docId && (
-          <Inspector docId={docId} containerRef={scrollRef} onExit={() => setInspecting(false)} />
+        {editing && docId && (
+          <Inspector
+            docId={docId}
+            containerRef={scrollRef}
+            panelHidden={designOpen}
+            onExit={() => setEditing(false)}
+            exitRef={leaveEditRef}
+          />
         )}
         {designOpen && <DesignPanel onClose={() => setDesignOpen(false)} />}
       </div>

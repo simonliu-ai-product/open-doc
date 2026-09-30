@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { insertMarker, parseMarkers, removeMarker } from './comments.ts';
-import { readTextAt, replaceTextAt, resolveTextTarget } from './edit-ops.ts';
+import { readTextAt, replaceTextAt, replaceTextsAt, resolveTextTarget } from './edit-ops.ts';
 
 // Column is 0-based, line is 1-based — exactly what the loc tag carries.
 const SOURCE = `const Page = () => (
@@ -425,6 +425,53 @@ describe('resolveTextTarget', () => {
     const resolved = resolveTextTarget(SOURCE, [WRAPPER], 'nested');
     expect(resolved?.editable).toBe(false);
     expect(resolved).toMatchObject(WRAPPER);
+  });
+});
+
+describe('replaceTextsAt', () => {
+  it('locates every edit against the source the caller saw', () => {
+    // The heading grows by a line's worth of text; the paragraph below it must
+    // still be found at the location it had before that edit landed.
+    const { source, results } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'A much longer executive summary', expected: 'Executive summary' },
+      { ...P, text: 'Availability slipped.', expected: 'Availability held above target.' },
+    ]);
+    expect(results).toEqual([{ ok: true }, { ok: true }]);
+    expect(source).toContain('<h1 style={h1}>A much longer executive summary</h1>');
+    expect(source).toContain('Availability slipped.');
+    expect(source).not.toContain('Availability held');
+  });
+
+  it('edits several runs of one element around its markup', () => {
+    const { source, results } = replaceTextsAt(MIXED, [
+      { ...MIXED_P, index: 0, text: '端點是', expected: '對外端點為' },
+      { ...MIXED_P, index: 2, text: '供健康檢查使用。', expected: '供探針使用。' },
+    ]);
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(source).toContain(
+      '端點是 <code>/mcp</code>，另外自訂 <code>/healthz</code> 供健康檢查使用。',
+    );
+  });
+
+  it('skips a stale edit and still writes the rest', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'New title', expected: 'something else' },
+      { ...P, text: 'Kept.', expected: 'Availability held above target.' },
+    ]);
+    expect(results[0]).toMatchObject({ ok: false, status: 409 });
+    expect(results[1]).toEqual({ ok: true });
+    expect(source).toContain('Executive summary');
+    expect(source).toContain('Kept.');
+  });
+
+  it('refuses two edits that disagree about the same span', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'First' },
+      { ...H1, text: 'Second' },
+    ]);
+    expect(results[0]).toEqual({ ok: true });
+    expect(results[1]).toMatchObject({ ok: false, status: 409 });
+    expect(source).toContain('<h1 style={h1}>First</h1>');
   });
 });
 

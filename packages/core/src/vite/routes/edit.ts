@@ -3,10 +3,13 @@ import type { ViteDevServer } from 'vite';
 import { insertMarker, parseMarkers, removeMarker } from '../../editing/comments.ts';
 import { replaceTextAt, resolveTextTarget } from '../../editing/edit-ops.ts';
 import { validateMutationRequest } from '../../http/request-guard.ts';
+import { OpsError } from '../../ops/documents.ts';
+import { writeTexts } from '../../ops/text.ts';
 import { type ApiContext, json, readBody, resolveDocEntry } from './context.ts';
 
 // GET    /__edit/text?docId=…&locs=12:4,296:10&shown=…   resolve what was clicked
 // PUT    /__edit/text   { docId, line, column, text, index?, expected? }
+// PUT    /__edit/texts  { docId, edits: [{ line, column, text, index?, expected?, shown? }] }
 // POST   /__edit/comment                         { docId, line, column, note, hint? }
 // GET    /__comments?docId=…                     list pending markers
 // DELETE /__comments?docId=…&id=…                drop one marker
@@ -73,6 +76,32 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         return json(res, 200, { ok: true });
       }
 
+      if (method === 'PUT' && url.pathname === '/texts') {
+        const check = validateMutationRequest(req, { requireJsonBody: true });
+        if (!check.ok) return json(res, check.status, { error: check.error });
+
+        const body = (await readBody(req)) as { docId?: unknown; edits?: unknown };
+        if (typeof body.docId !== 'string' || !Array.isArray(body.edits)) {
+          return json(res, 400, { error: 'invalid payload' });
+        }
+        const edits = [];
+        for (const raw of body.edits as Record<string, unknown>[]) {
+          const loc = readLoc({ ...raw, docId: body.docId });
+          if (!loc || typeof raw.text !== 'string') {
+            return json(res, 400, { error: 'invalid payload' });
+          }
+          edits.push({
+            line: loc.line,
+            column: loc.column,
+            text: raw.text,
+            index: typeof raw.index === 'number' ? raw.index : undefined,
+            expected: typeof raw.expected === 'string' ? raw.expected : undefined,
+            shown: typeof raw.shown === 'string' ? raw.shown : undefined,
+          });
+        }
+        return json(res, 200, await writeTexts(ctx, body.docId, edits));
+      }
+
       if (method === 'POST' && url.pathname === '/comment') {
         const check = validateMutationRequest(req, { requireJsonBody: true });
         if (!check.ok) return json(res, check.status, { error: check.error });
@@ -104,6 +133,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
 
       return next();
     } catch (err) {
+      if (err instanceof OpsError) return json(res, err.status, { error: err.message });
       json(res, 500, { error: String((err as Error).message ?? err) });
     }
   });
