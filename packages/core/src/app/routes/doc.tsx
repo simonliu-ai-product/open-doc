@@ -1,6 +1,7 @@
 import appConfig from 'virtual:open-doc/config';
 import {
   ArrowLeft,
+  BookOpen,
   Check,
   Download,
   Eye,
@@ -8,6 +9,7 @@ import {
   FileImage,
   FileText,
   Image,
+  LayoutGrid,
   Loader2,
   Maximize,
   Minimize,
@@ -18,6 +20,7 @@ import {
   Pencil,
   Percent,
   Plus,
+  Rows3,
 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -43,6 +46,13 @@ import { resolvePageGeometry } from '../lib/sdk';
 import { useDocModule } from '../lib/use-doc-module';
 import { useDocPages } from '../lib/use-doc-pages';
 import { cn } from '../lib/utils';
+import {
+  fitWidthScale as fitScale,
+  pageAtMarker,
+  readViewMode,
+  type ViewMode,
+  writeViewMode,
+} from '../lib/view-mode';
 
 type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg';
 
@@ -140,6 +150,11 @@ export function Doc() {
   const [textPending, setTextPending] = useState(0);
   const [cardShown, setCardShown] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => readViewMode(docId));
+  // The page the reader was on when the layout changed, to put back in view.
+  const keepPageRef = useRef<number | null>(null);
+  // The page last jumped to, reported while it shares the row in view.
+  const jumpedRef = useRef<number | null>(null);
 
   const geometry = useMemo(() => resolvePageGeometry(doc?.meta), [doc?.meta]);
   const { pages, measuring, overflowing } = useDocPages(doc, geometry);
@@ -148,10 +163,13 @@ export function Doc() {
   useAgentBridge({ docId: docId ?? '', doc, pages, geometry, measuring, oversized: overflowing });
 
   const clamp = (value: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
-  const fitWidthScale = available.width ? clamp(available.width / geometry.width) : 1;
-  // Fit page is bounded by both axes so the whole sheet lands inside the pane.
+  // Every fit is of the unit the mode lays side by side — a sheet, a spread,
+  // a row of the grid — so zoom and view mode compose instead of fighting.
+  const widthFit = fitScale(viewMode, available.width, geometry.width, PAGE_GAP);
+  const fitWidthScale = available.width ? clamp(widthFit) : 1;
+  // Fit page is bounded by both axes so the whole unit lands inside the pane.
   const fitPageScale = available.height
-    ? clamp(Math.min(available.width / geometry.width, available.height / geometry.height))
+    ? clamp(Math.min(widthFit, available.height / geometry.height))
     : 1;
   // Auto keeps a page at its true size unless the window is too narrow to hold
   // it; the explicit fit modes may go past 100%.
@@ -211,11 +229,13 @@ export function Doc() {
       frame = 0;
       const marker = root.scrollTop + root.clientHeight / 3;
       const frames = Array.from(container.children) as HTMLElement[];
-      let page = 1;
-      frames.forEach((el, index) => {
-        if (el.offsetTop <= marker) page = index + 1;
-      });
-      setCurrentPage(page);
+      setCurrentPage(
+        pageAtMarker(
+          frames.map((el) => el.offsetTop),
+          marker,
+          jumpedRef.current,
+        ),
+      );
     };
     const onScroll = () => {
       if (frame) return;
@@ -228,9 +248,35 @@ export function Doc() {
       root.removeEventListener('scroll', onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [pages.length, scale]);
+  }, [pages.length, scale, viewMode]);
+
+  useEffect(() => setViewModeState(readViewMode(docId)), [docId]);
+
+  const setViewMode = (mode: ViewMode) => {
+    if (mode === viewMode) return;
+    keepPageRef.current = currentPage;
+    setViewModeState(mode);
+    writeViewMode(docId, mode);
+  };
+
+  // Changing the layout moves every sheet. Without this the reader lands on
+  // whatever page now sits where their scroll position happens to be.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per layout change, after the sheets have moved.
+  useLayoutEffect(() => {
+    const page = keepPageRef.current;
+    keepPageRef.current = null;
+    const root = scrollRef.current;
+    const frame = pagesRef.current?.children[page === null ? -1 : page - 1] as
+      | HTMLElement
+      | undefined;
+    if (!root || !frame) return;
+    // Keep the gutter above the sheet, as a fresh document opens with, rather
+    // than butting its top edge against the toolbar.
+    root.scrollTop = Math.max(0, frame.offsetTop - GUTTER);
+  }, [viewMode]);
 
   const scrollToPage = useCallback((page: number) => {
+    jumpedRef.current = page;
     const frame = pagesRef.current?.children[page - 1];
     frame?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
@@ -435,6 +481,31 @@ export function Doc() {
             </IconButton>
           </div>
 
+          <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+            <legend className="sr-only">Page layout</legend>
+            <IconButton
+              label="Continuous"
+              active={viewMode === 'continuous'}
+              onClick={() => setViewMode('continuous')}
+            >
+              <Rows3 className="size-3.5" />
+            </IconButton>
+            <IconButton
+              label="Two-up"
+              active={viewMode === 'spread'}
+              onClick={() => setViewMode('spread')}
+            >
+              <BookOpen className="size-3.5" />
+            </IconButton>
+            <IconButton
+              label="Grid"
+              active={viewMode === 'grid'}
+              onClick={() => setViewMode('grid')}
+            >
+              <LayoutGrid className="size-3.5" />
+            </IconButton>
+          </fieldset>
+
           <IconButton
             label={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
             onClick={toggleFullscreen}
@@ -563,8 +634,25 @@ export function Doc() {
           >
             <div
               ref={pagesRef}
-              className="flex flex-col items-center"
-              style={{ gap: PAGE_GAP, padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px` }}
+              data-od-view={viewMode}
+              className={cn(
+                viewMode === 'continuous' && 'flex flex-col items-center',
+                // Facing pages as a bound document is read: page 1 alone on
+                // the right, then 2–3, 4–5.
+                viewMode === 'spread' && 'grid justify-center [&>:first-child]:col-start-2',
+                // A contact sheet: columns that line up, the last row starting
+                // under the first sheet rather than centred in the gap.
+                viewMode === 'grid' && 'grid content-start justify-center',
+              )}
+              style={{
+                gap: PAGE_GAP,
+                padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px`,
+                ...(viewMode === 'spread'
+                  ? { gridTemplateColumns: `repeat(2, ${geometry.width * scale}px)` }
+                  : viewMode === 'grid'
+                    ? { gridTemplateColumns: `repeat(auto-fill, ${geometry.width * scale}px)` }
+                    : {}),
+              }}
             >
               {pages.map((page, index) => (
                 <PageFrame
