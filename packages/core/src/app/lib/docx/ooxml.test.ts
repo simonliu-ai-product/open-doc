@@ -145,31 +145,47 @@ describe('buildDocxParts', () => {
     expect(text('[Content_Types].xml')).toContain('/word/fontTable.xml');
   });
 
-  it('keeps the footer off sections that end without one', () => {
+  it('keeps the running header and footer off sections that end without them', () => {
     const sectioned = buildDocxParts({
       ...MODEL,
+      header: {
+        type: 'paragraph',
+        inlines: [
+          { type: 'text', text: 'Running head · ' },
+          { type: 'field', instr: 'PAGE', cached: '1' },
+        ],
+      },
       blocks: [
         {
           type: 'paragraph',
           inlines: [{ type: 'text', text: 'Cover' }],
-          sectionEnd: { footer: false },
+          sectionEnd: { running: false },
         },
         { type: 'paragraph', inlines: [{ type: 'text', text: 'Body' }] },
       ],
     });
     const doc = sectioned['word/document.xml'] as string;
     const rels = sectioned['word/_rels/document.xml.rels'] as string;
-    const bare = rels.match(/Id="(rId\d+)"[^>]*Target="footer2\.xml"/)?.[1];
-    const full = rels.match(/Id="(rId\d+)"[^>]*Target="footer1\.xml"/)?.[1];
+    const id = (target: string) =>
+      rels.match(new RegExp(`Id="(rId\\d+)"[^>]*Target="${target}"`))?.[1];
+    const refs = (header?: string, footer?: string) =>
+      `<w:sectPr><w:headerReference w:type="default" r:id="${header}"/><w:footerReference w:type="default" r:id="${footer}"/>`;
     // The paragraph that ends a section holds its properties, ahead of its text.
-    expect(doc).toMatch(
-      new RegExp(`<w:sectPr><w:footerReference w:type="default" r:id="${bare}"/>.*?Cover`),
+    expect(doc).toContain(`${refs(id('header2.xml'), id('footer2.xml'))}`);
+    expect(doc.indexOf(refs(id('header2.xml'), id('footer2.xml')))).toBeLessThan(
+      doc.indexOf('Cover'),
     );
-    expect(doc).toMatch(
-      new RegExp(`Body.*<w:sectPr><w:footerReference w:type="default" r:id="${full}"/>`),
-    );
+    expect(doc).toMatch(new RegExp(`Body.*${refs(id('header1.xml'), id('footer1.xml'))}`));
+    expect(sectioned['word/header1.xml']).toContain('<w:hdr');
+    expect(sectioned['word/header1.xml']).toContain('<w:pStyle w:val="Header"/>');
+    expect(sectioned['word/header1.xml']).toContain('<w:fldSimple w:instr=" PAGE ">');
+    expect(sectioned['word/header2.xml']).toContain('<w:hdr');
     expect(sectioned['word/footer2.xml']).toContain('<w:ftr');
+    expect(sectioned['[Content_Types].xml']).toContain(
+      '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>',
+    );
     expect(parts['word/footer2.xml']).toBeUndefined();
+    expect(parts['word/header1.xml']).toBeUndefined();
   });
 
   it('shades a cell and keeps code out of the spelling check', () => {

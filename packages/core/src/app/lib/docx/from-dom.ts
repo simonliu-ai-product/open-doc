@@ -58,7 +58,7 @@ export type WalkResult = {
   footnotes: Array<{ id: number; paragraphs: Paragraph[] }>;
   images: ImagePart[];
   lists: Array<'bullet' | 'decimal'>;
-  finalFooter: boolean;
+  finalRunning: boolean;
 };
 
 type Ctx = WalkOptions & {
@@ -735,7 +735,7 @@ export async function docxFromPages(
     page: { top: 0, bottom: 0, fixed: true, first: true },
   };
   const blocks: Block[] = [];
-  let previousFooter = true;
+  let previousRunning = true;
 
   for (const [index, host] of hosts.entries()) {
     const info = pages[index] ?? { continues: false };
@@ -793,15 +793,15 @@ export async function docxFromPages(
         }
       }
     }
-    // Flow pages carry the section footer; a fixed sheet prints its own
-    // running lines, so it sits in a section without one. The section break
-    // itself starts the next page.
-    const footer = !ctx.page.fixed;
-    const breaksSection = own.length > 0 && blocks.length > 0 && footer !== previousFooter;
+    // Flow pages carry the section's running header and footer; a fixed sheet
+    // prints its own running lines, so it sits in a section without them. The
+    // section break itself starts the next page.
+    const running = !ctx.page.fixed;
+    const breaksSection = own.length > 0 && blocks.length > 0 && running !== previousRunning;
     if (breaksSection) {
       const last = blocks[blocks.length - 1];
       if (last?.type === 'paragraph' && !last.sectionEnd) {
-        last.sectionEnd = { footer: previousFooter };
+        last.sectionEnd = { running: previousRunning };
       } else {
         blocks.push({
           type: 'paragraph',
@@ -809,7 +809,7 @@ export async function docxFromPages(
           spacingBefore: 0,
           spacingAfter: 0,
           lineExact: 20,
-          sectionEnd: { footer: previousFooter },
+          sectionEnd: { running: previousRunning },
         });
       }
     }
@@ -835,7 +835,7 @@ export async function docxFromPages(
         });
       }
     }
-    if (own.length > 0) previousFooter = footer;
+    if (own.length > 0) previousRunning = running;
     blocks.push(...own);
   }
 
@@ -856,7 +856,7 @@ export async function docxFromPages(
     });
   }
 
-  return { blocks, footnotes, images: ctx.images, lists: ctx.lists, finalFooter: previousFooter };
+  return { blocks, footnotes, images: ctx.images, lists: ctx.lists, finalRunning: previousRunning };
 }
 
 /** Runs for one element — the footer the orchestrator renders on its own. */

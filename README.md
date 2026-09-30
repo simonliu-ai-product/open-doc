@@ -50,7 +50,7 @@ The tools and the browser share one implementation, so `write_document` / `write
 
 ### 🧭 Outline, contents, and page numbers that maintain themselves
 
-Write real `<h1>`/`<h2>` elements and you get an outline sidebar for free. Drop in `<TableOfContents />` and the contents page fills itself — with correct page numbers, in the viewer *and* in the export. `useDocPageNumber()` / `useDocPageCount()` handle running footers. Nothing to renumber by hand.
+Write real `<h1>`/`<h2>` elements and you get an outline sidebar for free. Drop in `<TableOfContents />` and the contents page fills itself — with correct page numbers, in the viewer *and* in the export. `useDocPageNumber()` / `useDocPageCount()` handle running headers and footers. Nothing to renumber by hand.
 
 ### 📐 Auto-pagination that knows what not to break
 

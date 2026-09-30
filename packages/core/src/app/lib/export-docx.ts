@@ -34,7 +34,7 @@ export type DocxBundle = { filename: string; mimeType: string; bytes: Uint8Array
 
 export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-// Page numbers no document prints, so the footer can be drawn once and every
+// Page numbers no document prints, so a running line can be drawn once and every
 // place a number landed found again and handed to Word as a field.
 const PAGE_SENTINEL = 97_531;
 const TOTAL_SENTINEL = 86_420;
@@ -86,26 +86,27 @@ function baselines(design: DesignSystem): Record<StyleId, StyleBaseline> {
 }
 
 /**
- * The first flow section's footer, as a Word footer. It is drawn once with
+ * The first flow section's header or footer, as Word's. It is drawn once with
  * sentinel page numbers, and wherever a sentinel landed the text becomes a
  * PAGE or NUMPAGES field — so Word numbers the pages it lays out, not the ones
  * open-doc did.
  */
-async function footerOf(
+async function runningLineOf(
+  kind: 'header' | 'footer',
   doc: DocModule,
   design: DesignSystem,
   width: number,
   walk: Parameters<typeof lineOf>[1],
 ): Promise<Paragraph | undefined> {
   const section = ((doc.default ?? []) as DocEntry[]).find(
-    (entry): entry is FlowSection => isFlowSection(entry) && Boolean(entry.footer),
+    (entry): entry is FlowSection => isFlowSection(entry) && Boolean(entry[kind]),
   );
-  const Footer = section?.footer;
-  if (!Footer) return undefined;
+  const Line = section?.[kind];
+  if (!Line) return undefined;
 
   const host = document.createElement('div');
   host.setAttribute('aria-hidden', 'true');
-  // The sheet's base styles (styles.css), so the footer reads as it prints.
+  // The sheet's base styles (styles.css), so the line reads as it prints.
   host.setAttribute('data-od-measure', '');
   Object.assign(host.style, { position: 'fixed', left: '-99999px', top: '0', width: `${width}px` });
   for (const [name, value] of Object.entries(designToCssVars(design))) {
@@ -120,7 +121,7 @@ async function footerOf(
       createElement(
         DocPageProvider,
         { index: PAGE_SENTINEL - 1, total: TOTAL_SENTINEL },
-        createElement(Footer),
+        createElement(Line),
       ),
     );
     await nextFrame();
@@ -171,7 +172,8 @@ export async function buildDocDocx(
   const content = await withRenderedPages(pages, geometry, doc, (hosts, container) =>
     docxFromPages(hosts, pageInfo(pages), container, walk),
   );
-  const footer = await footerOf(doc, design, textWidth, walk);
+  const header = await runningLineOf('header', doc, design, textWidth, walk);
+  const footer = await runningLineOf('footer', doc, design, textWidth, walk);
 
   const size = (px: number) => Math.round(px * PX_TO_HALF_POINTS);
   const text = hexColor(design.palette.text) ?? '000000';
@@ -204,6 +206,7 @@ export async function buildDocDocx(
     },
     line: design.leading * design.typeScale.body * PX_TO_TWIPS,
     ...content,
+    ...(header ? { header } : {}),
     ...(footer ? { footer } : {}),
   };
 

@@ -55,6 +55,8 @@ export type DocPage = ComponentType;
 export type FlowSection = {
   readonly __odFlow: true;
   blocks: ReactNode[];
+  /** Rendered on every page the section expands into, in the top margin band. */
+  header?: ComponentType;
   /** Rendered on every page the section expands into. */
   footer?: ComponentType;
   /** Page padding override in px; defaults to the design's `margin`. */

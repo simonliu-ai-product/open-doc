@@ -31,7 +31,7 @@ export default [Cover, Contents, Body] satisfies DocEntry[];
 
 - **Each direct child of the fragment is one block.** Blocks are atomic: a block never splits across a page, so a table either fits whole or moves to the next page.
 - The framework owns the page shell for flow pages — margin, background, and base typography come from the `design` const. Your blocks keep their own styles. `flow(node, { padding })` overrides the margin for that section.
-- `footer` is a component rendered on **every** page the section expands into. `useDocPageNumber()` works inside it, so a running footer needs no extra wiring.
+- `header` and `footer` are components rendered on **every** page the section expands into. `useDocPageNumber()` works inside them, so a running header or footer needs no extra wiring. Position each absolutely in its margin band (`top: 32` / `bottom: 40`); neither takes anything from the block budget.
 - Blocks are measured in the real DOM at the real page width after fonts settle, then packed greedily. Change a paragraph and the pagination re-runs on hot reload.
 
 ### Keep rules
