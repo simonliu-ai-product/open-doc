@@ -32,10 +32,11 @@ export async function readText(
   docId: string,
   locs: Loc[],
   shown?: string,
+  prop?: string,
 ): Promise<unknown> {
   if (locs.length === 0) throw new OpsError(400, 'at least one loc is required');
   const { source } = await sourceOf(ctx, docId);
-  const resolved = resolveTextTarget(source, locs, shown);
+  const resolved = resolveTextTarget(source, locs, shown, prop);
   if (!resolved) throw new OpsError(404, 'no editable text at that location');
   return resolved;
 }
@@ -52,7 +53,7 @@ export async function writeText(
   docId: string,
   loc: Loc,
   text: string,
-  opts: { index?: number; expected?: string; segments?: TextSegment[] } = {},
+  opts: { index?: number; expected?: string; segments?: TextSegment[]; prop?: string } = {},
 ): Promise<{ ok: true }> {
   const { entry, source } = await sourceOf(ctx, docId);
   const result = replaceTextAt(source, loc, text, opts);

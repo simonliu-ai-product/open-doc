@@ -93,6 +93,17 @@ const HeaderBackLink = () => {
   );
 };
 
+const EDITING_KEY = 'open-doc:editing';
+
+function readEditing(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    return sessionStorage.getItem(EDITING_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function Doc() {
   const { docId } = useParams<{ docId: string }>();
   const state = useDocModule(docId);
@@ -112,7 +123,16 @@ export function Doc() {
   const [selection, setSelection] = useState<PageSelection>({ kind: 'all' });
   const [customRange, setCustomRange] = useState('');
   const [designOpen, setDesignOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditingState] = useState(readEditing);
+  // The dev server reloads every open viewer when a document is added or
+  // removed anywhere in the workspace. Edit mode is per tab and survives that.
+  const setEditing = useCallback((next: boolean) => {
+    setEditingState(next);
+    try {
+      if (next) sessionStorage.setItem(EDITING_KEY, '1');
+      else sessionStorage.removeItem(EDITING_KEY);
+    } catch {}
+  }, []);
   const leaveEditRef = useRef<(() => void) | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 

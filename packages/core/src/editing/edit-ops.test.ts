@@ -606,6 +606,63 @@ describe('replaceTextsAt', () => {
   });
 });
 
+describe('words a component prints from a prop', () => {
+  const TABLE = `import services from './data/services.csv';
+
+const Page = () => (
+  <div>
+    <DataTable
+      caption="Platform tier, Q3 2026"
+      rows={services}
+      columns={[
+        { key: 'service', label: 'Service' },
+        { key: 'requests', label: "Req's" },
+        'plain',
+      ]}
+    />
+    <Figure caption={title}>x</Figure>
+  </div>
+);
+`;
+  const AT = { line: 5, column: 4 };
+
+  it('reads an attribute and a path into an array of objects', () => {
+    expect(resolveTextTarget(TABLE, [AT], undefined, 'caption')).toMatchObject({
+      editable: true,
+      parts: [{ kind: 'text', index: 0, value: 'Platform tier, Q3 2026' }],
+    });
+    expect(resolveTextTarget(TABLE, [AT], undefined, 'columns.1.label')).toMatchObject({
+      editable: true,
+      parts: [{ value: "Req's" }],
+    });
+  });
+
+  it('writes only that string, escaped for where it sits', () => {
+    const { source, results } = replaceTextsAt(TABLE, [
+      { ...AT, prop: 'caption', text: 'Say "hi"', expected: 'Platform tier, Q3 2026' },
+      { ...AT, prop: 'columns.1.label', text: "It's", expected: "Req's" },
+    ]);
+    expect(results).toEqual([{ ok: true }, { ok: true }]);
+    expect(source).toContain('caption="Say &quot;hi&quot;"');
+    expect(source).toContain(`{ key: 'requests', label: "It's" }`);
+  });
+
+  it('refuses a prop that is not a plain string', () => {
+    expect(resolveTextTarget(TABLE, [{ line: 14, column: 4 }], undefined, 'caption')).toMatchObject(
+      { editable: false },
+    );
+    const { results } = replaceTextsAt(TABLE, [{ ...AT, prop: 'columns.9.label', text: 'x' }]);
+    expect(results[0]).toMatchObject({ ok: false, status: 422 });
+  });
+
+  it('names the file a table’s rows come from', () => {
+    expect(readTextAt(TABLE, AT)).toMatchObject({
+      editable: false,
+      reason: expect.stringContaining('./data/services.csv'),
+    });
+  });
+});
+
 describe('comment markers', () => {
   it('round-trips a note through insert → parse', () => {
     const inserted = insertMarker(SOURCE, H1, 'make this bold', 'h1');

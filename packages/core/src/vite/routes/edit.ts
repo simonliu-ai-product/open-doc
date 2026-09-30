@@ -7,7 +7,7 @@ import { OpsError } from '../../ops/documents.ts';
 import { writeTexts } from '../../ops/text.ts';
 import { type ApiContext, json, readBody, resolveDocEntry } from './context.ts';
 
-// GET    /__edit/text?docId=…&locs=12:4,296:10&shown=…   resolve what was clicked
+// GET    /__edit/text?docId=…&locs=12:4,296:10&shown=…&prop=…   resolve what was clicked
 // PUT    /__edit/text   { docId, line, column, text, index?, expected? }
 // PUT    /__edit/texts  { docId, edits: [{ line, column, text, segments?, index?, expected?, shown? }] }
 // POST   /__edit/comment                         { docId, line, column, note, hint? }
@@ -65,6 +65,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
           source,
           locs,
           url.searchParams.get('shown') ?? undefined,
+          url.searchParams.get('prop') ?? undefined,
         );
         if (!resolved) return json(res, 404, { error: 'element not found' });
         return json(res, 200, resolved);
@@ -86,6 +87,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
           index: typeof body.index === 'number' ? body.index : undefined,
           expected: typeof body.expected === 'string' ? body.expected : undefined,
           shown: typeof body.shown === 'string' ? body.shown : undefined,
+          prop: typeof body.prop === 'string' ? body.prop : undefined,
         });
         if (!result.ok) return json(res, result.status, { error: result.error });
         if (result.source !== source) await fs.writeFile(entry, result.source, 'utf8');
@@ -112,6 +114,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
             text: raw.text,
             segments: readSegments(raw.segments),
             index: typeof raw.index === 'number' ? raw.index : undefined,
+            prop: typeof raw.prop === 'string' ? raw.prop : undefined,
             expected: typeof raw.expected === 'string' ? raw.expected : undefined,
             shown: typeof raw.shown === 'string' ? raw.shown : undefined,
           });

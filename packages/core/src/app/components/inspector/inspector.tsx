@@ -49,6 +49,7 @@ import {
   toggleMark,
   writeSegments,
 } from '../../lib/inspector/inline-edit';
+import { PROP_ATTR } from '../../lib/source-loc';
 
 type TextPart =
   | { kind: 'text'; index: number; value: string; formattable?: true; segments?: Segment[] }
@@ -70,6 +71,8 @@ export type InspectorTarget = {
   column: number;
   anchor: HTMLElement;
   tag: string;
+  /** Set when the words are an attribute of a component's call site. */
+  prop?: string;
 };
 
 /**
@@ -82,6 +85,7 @@ type Entry = {
   editor: MountedEditor;
   line: number;
   column: number;
+  prop?: string;
   shown: string;
   pre: boolean;
   undo: Segment[][][];
@@ -143,7 +147,8 @@ function targetFrom(el: Element | null): InspectorTarget | null {
   if (!host || !raw) return null;
   const [line, column] = raw.split(':').map(Number);
   if (!Number.isFinite(line) || !Number.isFinite(column)) return null;
-  return { line, column, anchor: host, tag: host.tagName.toLowerCase() };
+  const prop = host.getAttribute(PROP_ATTR) ?? undefined;
+  return { line, column, anchor: host, tag: host.tagName.toLowerCase(), ...(prop ? { prop } : {}) };
 }
 
 type Rect = { left: number; top: number; width: number; height: number };
@@ -587,6 +592,9 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
           anchor,
           editor,
           line: resolved.line,
+          ...(anchor.hasAttribute(PROP_ATTR)
+            ? { prop: anchor.getAttribute(PROP_ATTR) as string }
+            : {}),
           column: resolved.column,
           shown,
           pre: getComputedStyle(anchor).whiteSpace.startsWith('pre'),
@@ -755,6 +763,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
           index: run.index,
           expected: run.expected,
           shown: entry.shown,
+          ...(entry.prop ? { prop: entry.prop } : {}),
           text: cleanRun(run.el.textContent ?? '', run.expected),
           ...(run.formattable ? { segments } : {}),
         });
@@ -840,9 +849,12 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       const successor = (anchor: HTMLElement): HTMLElement | null => {
         if (anchor.isConnected) return anchor;
         const loc = anchor.getAttribute(LOC_ATTR);
-        return loc
-          ? container.querySelector<HTMLElement>(`[${LOC_ATTR}="${CSS.escape(loc)}"]`)
-          : null;
+        if (!loc) return null;
+        // A component's root and the caption it prints share one call site;
+        // the prop is what tells them apart.
+        const prop = anchor.getAttribute(PROP_ATTR);
+        const which = prop ? `[${PROP_ATTR}="${CSS.escape(prop)}"]` : `:not([${PROP_ATTR}])`;
+        return container.querySelector<HTMLElement>(`[${LOC_ATTR}="${CSS.escape(loc)}"]${which}`);
       };
 
       let lost = 0;
@@ -1173,6 +1185,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       docId,
       locs: formatLocs(candidateLocs(selected.anchor)),
       shown: normalize(selected.anchor.textContent ?? '').slice(0, 400),
+      ...(selected.prop ? { prop: selected.prop } : {}),
     });
     fetch(`/__edit/text?${params}`)
       .then((res) => res.json())

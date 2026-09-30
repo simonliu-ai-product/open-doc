@@ -162,9 +162,15 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         docId: z.string(),
         locs: z.array(LOC).min(1),
         shown: z.string().optional().describe('rendered text, disambiguates helper components'),
+        prop: z
+          .string()
+          .optional()
+          .describe(
+            'a path into the element’s attributes for words a component prints from a prop, e.g. `caption` or `columns.2.label` (the `data-od-prop` on the rendered element)',
+          ),
       }),
     },
-    ({ docId, locs, shown }) => run(() => readText(ctx, docId, locs, shown)),
+    ({ docId, locs, shown, prop }) => run(() => readText(ctx, docId, locs, shown, prop)),
   );
 
   server.registerTool(
@@ -191,10 +197,11 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
           )
           .optional()
           .describe('the run as formatted pieces, in order; their texts concatenate to `text`'),
+        prop: z.string().optional().describe('as in read_text'),
       }),
     },
-    ({ docId, loc, text, index, expected, segments }) =>
-      run(() => writeText(ctx, docId, loc, text, { index, expected, segments })),
+    ({ docId, loc, text, index, expected, segments, prop }) =>
+      run(() => writeText(ctx, docId, loc, text, { index, expected, segments, prop })),
   );
 
   server.registerTool(

@@ -320,6 +320,21 @@ test.describe('editing on the page', () => {
       .toContain('<p>Saved on the way out</p>');
   });
 
+  test('edit mode survives the reload the dev server sends', async ({ page }) => {
+    await enterEditMode(page);
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
   test('a comment is stored as a marker in the source', async ({ page }) => {
     await enterEditMode(page);
     await viewer(page).getByText('Editable paragraph').click();

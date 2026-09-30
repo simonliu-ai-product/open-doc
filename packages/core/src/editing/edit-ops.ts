@@ -668,6 +668,72 @@ export function partsOf(element: AstNode): TextPart[] {
   return resolve(element).parts;
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * Text a framework component renders from an attribute
+ * ---------------------------------------------------------------------------
+ *
+ * `<Figure caption="…">` and `<DataTable columns={[{ label: '…' }]}>` print
+ * words that are not children of anything: they are attribute values at the
+ * call site. The component marks the host that prints one with the call
+ * site's loc and a path into its attributes (`data-od-prop="columns.2.label"`),
+ * and the edit is written to that string and nowhere else.
+ */
+
+function propertyKey(property: AstNode): string | undefined {
+  const key = property.key as AstNode | undefined;
+  return (key?.name as string | undefined) ?? (key?.value as string | undefined);
+}
+
+/** The string a prop path names on the element, as a writable slot. */
+function propSlot(element: AstNode, path: string, source: string): Slot | null {
+  const [name, ...steps] = path.split('.');
+  const attributes = ((element.openingElement as AstNode).attributes ?? []) as AstNode[];
+  const attribute = attributes.find(
+    (candidate) => ((candidate.name as AstNode | undefined)?.name as string | undefined) === name,
+  );
+  const value = attribute?.value as AstNode | undefined;
+  if (value?.type === 'StringLiteral' && steps.length === 0) return attributeSlot(value, source);
+  let node = value?.type === 'JSXExpressionContainer' ? (value.expression as AstNode) : undefined;
+  for (const step of steps) {
+    if (node?.type === 'ArrayExpression' && /^\d+$/.test(step)) {
+      node = ((node.elements ?? []) as (AstNode | null)[])[Number(step)] ?? undefined;
+    } else if (node?.type === 'ObjectExpression') {
+      const match = ((node.properties ?? []) as AstNode[]).find(
+        (property) => property.type === 'ObjectProperty' && propertyKey(property) === step,
+      );
+      node = match?.value as AstNode | undefined;
+    } else {
+      return null;
+    }
+  }
+  return node?.type === 'StringLiteral' ? stringSlot(node, source) : null;
+}
+
+/**
+ * Where an element's content comes from when it is data, not source: a table
+ * whose rows are an imported `.csv`. Naming the file is the useful answer —
+ * the words cannot be edited here, but the reader now knows where they can.
+ */
+function dataSource(element: AstNode, ast: AstNode): string | null {
+  const attributes = ((element.openingElement as AstNode).attributes ?? []) as AstNode[];
+  const names = attributes
+    .map((attribute) => (attribute.value as AstNode | undefined)?.expression as AstNode | undefined)
+    .filter((expression): expression is AstNode => expression?.type === 'Identifier')
+    .map((expression) => expression.name as string);
+  let found: string | null = null;
+  walkAst(ast, (node) => {
+    if (found || node.type !== 'ImportDeclaration') return;
+    const from = (node.source as AstNode).value as string;
+    if (!/\.(csv|tsv|json)$/.test(from)) return;
+    const locals = ((node.specifiers ?? []) as AstNode[]).map(
+      (specifier) => (specifier.local as AstNode).name as string,
+    );
+    if (locals.some((local) => names.includes(local))) found = from;
+  });
+  return found;
+}
+
 function describe(element: AstNode, ctx?: Context): TextTargetInfo {
   const { parts } = resolve(element, ctx);
   const texts = parts.filter(
@@ -675,13 +741,16 @@ function describe(element: AstNode, ctx?: Context): TextTargetInfo {
   );
   if (texts.length === 0) {
     const generated = parts.some((part) => part.kind === 'markup' && part.label === '{…}');
+    const data = ctx ? dataSource(element, ctx.ast) : null;
     return {
       editable: false,
       text: '',
       parts,
-      reason: generated
-        ? 'text is produced by code — edit whatever feeds it'
-        : 'element has no text of its own',
+      reason: data
+        ? `the values come from ${data} — edit that file, or leave a comment for the agent`
+        : generated
+          ? 'text is produced by code — edit whatever feeds it'
+          : 'element has no text of its own',
     };
   }
   return { editable: true, text: texts.map((part) => part.value).join(' '), parts };
@@ -713,9 +782,31 @@ export function resolveTextTarget(
   source: string,
   candidates: EditTarget[],
   expected?: string,
+  prop?: string,
 ): ResolvedTarget | null {
   const ast = parseSource(source);
   if (!ast) return null;
+  if (prop !== undefined) {
+    const first = candidates[0];
+    const element = first && findJsxAt(ast, first.line, first.column);
+    if (!first || !element) return null;
+    const slot = propSlot(element, prop, source);
+    if (!slot) {
+      return {
+        editable: false,
+        text: '',
+        parts: [],
+        reason: `\`${prop}\` is not a plain string here — edit it in source`,
+        ...first,
+      };
+    }
+    return {
+      editable: true,
+      text: slot.value,
+      parts: [{ kind: 'text', index: 0, value: slot.value }],
+      ...first,
+    };
+  }
   const ctx: Context = { ast, source, shown: expected };
   const shown = expected ? normalizeText(expected) : null;
 
@@ -760,7 +851,13 @@ export function replaceTextAt(
   source: string,
   target: EditTarget,
   text: string,
-  opts: { index?: number; expected?: string; shown?: string; segments?: TextSegment[] } = {},
+  opts: {
+    index?: number;
+    expected?: string;
+    shown?: string;
+    segments?: TextSegment[];
+    prop?: string;
+  } = {},
 ): EditResult {
   const { source: next, results } = replaceTextsAt(source, [{ ...target, ...opts, text }]);
   const result = results[0];
@@ -773,10 +870,22 @@ type SlotResult = { ok: true; slot: Slot } | { ok: false; status: number; error:
 function slotAt(
   ast: AstNode,
   source: string,
-  edit: EditTarget & { index?: number; expected?: string; shown?: string },
+  edit: EditTarget & { index?: number; expected?: string; shown?: string; prop?: string },
 ): SlotResult {
   const element = findJsxAt(ast, edit.line, edit.column);
   if (!element) return { ok: false, status: 404, error: 'no element at that source location' };
+  if (edit.prop !== undefined) {
+    const slot = propSlot(element, edit.prop, source);
+    if (!slot) return { ok: false, status: 422, error: `\`${edit.prop}\` is not a plain string` };
+    if (edit.expected !== undefined && normalizeText(slot.value) !== normalizeText(edit.expected)) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'source changed since this was opened — reselect it',
+      };
+    }
+    return { ok: true, slot };
+  }
 
   const { slots } = resolve(element, { ast, source, shown: edit.shown });
   if (slots.length === 0) {
@@ -792,6 +901,8 @@ function slotAt(
 
 export type TextEdit = EditTarget & {
   text: string;
+  /** A path into the element's attributes, for words a component prints from a prop. */
+  prop?: string;
   /** The run as formatted pieces; `text` is their concatenation. */
   segments?: TextSegment[];
   index?: number;
