@@ -6,6 +6,7 @@ import { DocPageProvider } from './page-context';
 import { nextFrame, sleep, waitForDataWaitfor, waitForFonts, waitForImages } from './print-ready';
 import { captureScan, restoreScan, scanDocument } from './scan';
 import { type DocModule, resolvePageGeometry } from './sdk';
+import { scopeSvgIds } from './svg-ids';
 import type { ExpandedPage } from './use-doc-pages';
 
 export const PRINT_ROOT_ID = 'od-print-root';
@@ -157,6 +158,11 @@ export async function mountPrintCopy(
     scanDocument(root, doc.meta);
     await nextFrame();
     await sleep(50);
+    // Last, once React has drawn every page: a page still rendering has no ids
+    // to rename yet.
+    Array.from(root.children).forEach((host, i) => {
+      scopeSvgIds(host, `print-${i}`);
+    });
   } catch (err) {
     dispose();
     throw err;

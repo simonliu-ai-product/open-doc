@@ -91,6 +91,26 @@
     background-color: rgb(59 130 246 / 0.3);
     color: inherit;
   }
+  /* Preflight strips every list of its markers and indent, which suits the
+     chrome and not the paper: a plain <ul> in a document should print as a
+     list. Given back on the sheet and in the measuring host alike — a list
+     measured without its indent wraps differently from the one printed — and
+     only just outranking preflight, so a document's own list style still wins. */
+  :is([data-od-page], [data-od-measure]) :where(ul, ol) {
+    padding-inline-start: 1.5em;
+  }
+  :is([data-od-page], [data-od-measure]) :where(ul) {
+    list-style: disc;
+  }
+  :is([data-od-page], [data-od-measure]) :where(ol) {
+    list-style: decimal;
+  }
+  :is([data-od-page], [data-od-measure]) :where(ul ul, ol ul) {
+    list-style: circle;
+  }
+  :is([data-od-page], [data-od-measure]) :where(ul ul ul, ol ul ul, ul ol ul) {
+    list-style: square;
+  }
   /* A heading's space-above is what separates it from the section before it —
      but at the top of a page that space is just a dent. Strip it there so the
      first block of every flow page starts flush with the margin. */
