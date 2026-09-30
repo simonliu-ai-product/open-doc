@@ -508,6 +508,8 @@ function segmentsOf(children: AstNode[], inherited: Marks): TextSegment[] | null
     } else if (isSpacing(child)) {
       const expression = child.expression as AstNode;
       out.push({ text: expression.value as string, ...inherited });
+    } else if (isBreak(child)) {
+      out.push({ text: '\n', ...inherited });
     } else {
       const marks = markOf(child);
       if (!marks) return null;
@@ -519,8 +521,15 @@ function segmentsOf(children: AstNode[], inherited: Marks): TextSegment[] | null
   return out;
 }
 
+/** `<br />`: a line break inside a run, read as `'\n'` and written back as the same tag. */
+function isBreak(node: AstNode): boolean {
+  if (node.type !== 'JSXElement' || tagName(node) !== 'br') return false;
+  const attributes = ((node.openingElement as AstNode).attributes ?? []) as AstNode[];
+  return attributes.length === 0 && jsxChildren(node).length === 0;
+}
+
 function isInline(child: AstNode): boolean {
-  return child.type === 'JSXText' || isSpacing(child) || markOf(child) !== null;
+  return child.type === 'JSXText' || isSpacing(child) || isBreak(child) || markOf(child) !== null;
 }
 
 function mergeSegments(segments: TextSegment[]): TextSegment[] {
@@ -569,10 +578,11 @@ function formattedSlot(group: AstNode[]): Slot | null {
   const trailing =
     tail.type === 'JSXText' ? ((tail.value as string).match(/\s*$/)?.[0] ?? '').length : 0;
   const segments = mergeSegments(pieces);
+  // Indentation only: a `<br />` at either end is the author's.
   const firstPiece = segments[0];
-  if (firstPiece) firstPiece.text = firstPiece.text.trimStart();
+  if (firstPiece) firstPiece.text = firstPiece.text.replace(/^[ \t]+/, '');
   const lastPiece = segments[segments.length - 1];
-  if (lastPiece) lastPiece.text = lastPiece.text.trimEnd();
+  if (lastPiece) lastPiece.text = lastPiece.text.replace(/[ \t]+$/, '');
   const trimmed = mergeSegments(segments);
   return {
     value: trimmed.map((segment) => segment.text).join(''),
@@ -596,7 +606,11 @@ function renderSegments(
   level = 0,
 ): string {
   const key = NEST[level];
-  if (key === undefined) return segments.map((segment) => escapeText(segment.text)).join('');
+  if (key === undefined) {
+    return segments
+      .map((segment) => segment.text.split('\n').map(escapeText).join('<br />'))
+      .join('');
+  }
   const groups: Array<{ value: TextSegment[keyof Marks]; items: TextSegment[] }> = [];
   for (const segment of segments) {
     const value = segment[key] || undefined;

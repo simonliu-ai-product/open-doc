@@ -42,9 +42,12 @@ import {
   readSegments,
   replaceInRun,
   restoreRuns,
+  runLength,
+  runText,
   type Segment,
   selectInRun,
   setHref,
+  shownText,
   snapshotRuns,
   toggleMark,
   writeSegments,
@@ -580,7 +583,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
         const runs = resolved.parts.filter(
           (part): part is Extract<TextPart, { kind: 'text' }> => part.kind === 'text',
         );
-        const shown = normalize(anchor.textContent ?? '');
+        const shown = shownText(anchor);
         const editor = mountEditor(anchor, runs);
         if (!editor) {
           setStatus(
@@ -764,7 +767,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
           expected: run.expected,
           shown: entry.shown,
           ...(entry.prop ? { prop: entry.prop } : {}),
-          text: cleanRun(run.el.textContent ?? '', run.expected),
+          text: cleanRun(runText(run.el), run.expected),
           ...(run.formattable ? { segments } : {}),
         });
         owners.push(entry);
@@ -870,7 +873,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
 
         const next = successor(entry.anchor);
         const editor =
-          next && normalize(next.textContent ?? '') === entry.shown
+          next && shownText(next) === entry.shown
             ? mountEditor(
                 next,
                 entry.editor.runs.map((run) => ({
@@ -1069,7 +1072,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       restoreRuns(runs, texts);
       active.lastInsert = 0;
       const last = runs[runs.length - 1];
-      if (last) placeCaret(last.el, (last.el.textContent ?? '').length);
+      if (last) placeCaret(last.el, runLength(last.el));
       refresh();
     };
 
@@ -1083,11 +1086,14 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       }
       let text: string;
       if (type === 'insertParagraph' || type === 'insertLineBreak') {
-        // A run is one string; outside a code block a newline has nowhere to go.
-        if (!active.pre) {
+        // Enter keeps the change. Shift+Enter breaks the line — a `<br />` in
+        // source, so only in text written between tags; a string passed in as
+        // a prop has nowhere to put one. A code block keeps real newlines.
+        if (!active.pre && type === 'insertParagraph') {
           finish(active, false);
           return;
         }
+        if (!active.pre && !selectionIn(active)?.run.formattable) return;
         text = '\n';
       } else if (type.startsWith('insert')) {
         text = e.data ?? e.dataTransfer?.getData('text/plain') ?? '';
@@ -1169,7 +1175,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
             line: selected.line,
             column: selected.column,
             tagName: selected.anchor.tagName.toLowerCase(),
-            text: normalize(selected.anchor.textContent ?? '').slice(0, 120),
+            text: shownText(selected.anchor).slice(0, 120),
           }
         : null,
     });
@@ -1184,7 +1190,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     const params = new URLSearchParams({
       docId,
       locs: formatLocs(candidateLocs(selected.anchor)),
-      shown: normalize(selected.anchor.textContent ?? '').slice(0, 400),
+      shown: shownText(selected.anchor).slice(0, 400),
       ...(selected.prop ? { prop: selected.prop } : {}),
     });
     fetch(`/__edit/text?${params}`)
@@ -1198,11 +1204,11 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
         // Last line of defence: every run the source offers has to be visible
         // in the element the user clicked. A drifted resolution would
         // otherwise let a save rewrite someone else's words.
-        const shownText = normalize(selected.anchor.textContent ?? '');
+        const visible = shownText(selected.anchor);
         const runs = (body.parts ?? []).filter((part) => part.kind === 'text');
         const belongs =
           runs.length > 0 &&
-          runs.every((part) => part.kind === 'text' && shownText.includes(normalize(part.value)));
+          runs.every((part) => part.kind === 'text' && visible.includes(normalize(part.value)));
         setResolution({
           anchor: selected.anchor,
           value:
@@ -1260,7 +1266,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     anchor ? (entriesRef.current.get(anchor)?.editor.clone ?? anchor) : null;
   const selectedEl = visible(selected?.anchor);
   const hint = active
-    ? 'Enter to keep · Esc to revert'
+    ? 'Enter to keep · Shift+Enter for a new line · Esc to revert'
     : selected
       ? 'Double-click or Enter to edit text · Esc to deselect'
       : 'Click to select · double-click to edit · Esc to leave';
@@ -1377,7 +1383,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
             ) : target.editable ? (
               <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
                 {active?.anchor === selected.anchor
-                  ? 'Editing on the page. Enter keeps the change, Esc reverts it.'
+                  ? 'Editing on the page. Enter keeps the change, Shift+Enter starts a new line, Esc reverts it.'
                   : 'Double-click the text on the page, or press Enter, to edit it where it is printed.'}
                 {target.parts.some((part) => part.kind === 'markup') &&
                   ' Inline markup stays as written.'}

@@ -19,6 +19,11 @@
  * A run is held as segments — stretches of text and the formatting on them —
  * so bold, italic, code and links show as real `<strong>`, `<em>`, `<code>`
  * and `<a>` inside the run and still read back as one run the source can take.
+ *
+ * A line break is a `'\n'` in a segment and a `<br>` on the page. A `<br>` has
+ * no text, so every offset here counts it as one character by hand — reading
+ * offsets off `Range.toString()` would put the caret one place short after
+ * every break.
  */
 
 export const EDITING_ATTR = 'data-od-editing';
@@ -194,7 +199,7 @@ export function mapSegmentText(segments: Segment[], fn: (text: string) => string
  */
 function formatSignature(segments: Segment[]): string {
   return explode(segments)
-    .filter((char) => char.text.trim() !== '')
+    .filter((char) => char.text === '\n' || char.text.trim() !== '')
     .map(
       (char) =>
         `${char.text}${char.bold ? 'b' : ''}${char.italic ? 'i' : ''}${char.code ? 'c' : ''}${char.href ?? ''}`,
@@ -274,10 +279,13 @@ export function matchRanges(parts: RunPart[], items: Item[]): Array<[number, num
 }
 
 function itemsOf(anchor: HTMLElement): Item[] {
-  return Array.from(anchor.childNodes).map((node) => ({
-    text: node.textContent ?? '',
-    inline: node.nodeType === Node.TEXT_NODE || (node instanceof Element && isMarkElement(node)),
-  }));
+  return Array.from(anchor.childNodes).map((node) => {
+    if (node instanceof Element && node.tagName === 'BR') return { text: '\n', inline: true };
+    return {
+      text: node.textContent ?? '',
+      inline: node.nodeType === Node.TEXT_NODE || (node instanceof Element && isMarkElement(node)),
+    };
+  });
 }
 
 /**
@@ -408,8 +416,24 @@ export function mountEditor(anchor: HTMLElement, parts: RunPart[]): MountedEdito
   };
 }
 
-export function readRuns(runs: Run[]): string[] {
-  return runs.map((run) => run.el.textContent ?? '');
+/**
+ * What an element reads as, a line break counting as a space. `textContent`
+ * joins the words either side of a `<br>` into one, so text the source holds
+ * as two words would never be found in it.
+ */
+export function shownText(el: HTMLElement): string {
+  let out = '';
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType === Node.TEXT_NODE) out += (node as Text).data;
+    else if ((node as Element).tagName === 'BR') out += ' ';
+  }
+  return normalize(out);
+}
+
+/** A run's text with its line breaks — `textContent` would drop every `<br>`. */
+export function runText(el: HTMLElement): string {
+  return segmentsText(readSegments(el));
 }
 
 const MARK_TAGS: Record<string, Mark> = {
@@ -420,12 +444,46 @@ const MARK_TAGS: Record<string, Mark> = {
   CODE: 'code',
 };
 
+const CARET_ATTR = 'data-od-caret';
+
+/**
+ * A `<br>` that ends a block draws no line of its own, so a break typed at the
+ * very end would be invisible and the caret would have nowhere to go. A second
+ * one holds the new line open; it is ours, and nothing reads it back.
+ */
+function isCaretBreak(node: Node): boolean {
+  return node instanceof Element && node.hasAttribute(CARET_ATTR);
+}
+
+/** The run's characters in order: its text nodes and its line breaks. */
+function units(run: HTMLElement): Node[] {
+  const out: Node[] = [];
+  const walker = document.createTreeWalker(run, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (node) =>
+      node.nodeType === Node.TEXT_NODE ||
+      ((node as Element).tagName === 'BR' && !isCaretBreak(node))
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP,
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) out.push(node);
+  return out;
+}
+
+function unitLength(node: Node): number {
+  return node.nodeType === Node.TEXT_NODE ? (node as Text).data.length : 1;
+}
+
+export function runLength(run: HTMLElement): number {
+  return units(run).reduce((total, node) => total + unitLength(node), 0);
+}
+
 /** The run as it stands on the page, formatting included. */
 export function readSegments(el: HTMLElement): Segment[] {
   const out: Segment[] = [];
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const segment: Segment = { text: (node as Text).data };
+  for (const node of units(el)) {
+    const segment: Segment = {
+      text: node.nodeType === Node.TEXT_NODE ? (node as Text).data : '\n',
+    };
     for (let at = node.parentElement; at && at !== el; at = at.parentElement) {
       const mark = MARK_TAGS[at.tagName];
       if (mark) segment[mark] = true;
@@ -445,10 +503,23 @@ function wrap(node: Node, tag: string): Node {
   return el;
 }
 
+/** A piece's text as nodes: in a run that does not keep whitespace, each `'\n'` is a `<br>`. */
+function textNodes(text: string, pre: boolean): Node {
+  if (pre || !text.includes('\n')) return document.createTextNode(text);
+  const fragment = document.createDocumentFragment();
+  text.split('\n').forEach((line, at) => {
+    if (at > 0) fragment.appendChild(document.createElement('br'));
+    if (line !== '') fragment.appendChild(document.createTextNode(line));
+  });
+  return fragment;
+}
+
 export function writeSegments(el: HTMLElement, segments: Segment[]): void {
+  const pre = getComputedStyle(el).whiteSpace.startsWith('pre');
+  const merged = mergeSegments(segments);
   el.replaceChildren(
-    ...mergeSegments(segments).map((segment) => {
-      let node: Node = document.createTextNode(segment.text);
+    ...merged.map((segment) => {
+      let node: Node = textNodes(segment.text, pre);
       if (segment.code) node = wrap(node, 'code');
       if (segment.italic) node = wrap(node, 'em');
       if (segment.bold) node = wrap(node, 'strong');
@@ -459,6 +530,11 @@ export function writeSegments(el: HTMLElement, segments: Segment[]): void {
       return node;
     }),
   );
+  if (!pre && segmentsText(merged).endsWith('\n')) {
+    const hold = document.createElement('br');
+    hold.setAttribute(CARET_ATTR, '');
+    el.appendChild(hold);
+  }
 }
 
 /** Every run's segments — what undo and Escape put back. */
@@ -484,6 +560,7 @@ export function cleanSegments(segments: Segment[], expected: string): Segment[] 
     text: unbreak ? segment.text.replace(/ /g, ' ') : segment.text,
   }));
   if (expected === expected.trim()) {
+    // A break at either end of a run draws nothing a reader could see.
     const first = out[0];
     if (first) out[0] = { ...first, text: first.text.trimStart() };
     const last = out[out.length - 1];
@@ -494,7 +571,7 @@ export function cleanSegments(segments: Segment[], expected: string): Segment[] 
 
 export function isRunChanged(run: Run): boolean {
   return (
-    isRunDirty(run.el.textContent ?? '', run.expected) ||
+    isRunDirty(runText(run.el), run.expected) ||
     formatSignature(readSegments(run.el)) !== formatSignature(run.expectedSegments)
   );
 }
@@ -537,28 +614,50 @@ export function runOf(node: Node | null, clone: HTMLElement): HTMLElement | null
   return run && clone.contains(run) ? run : null;
 }
 
-/** Character offset of a DOM point within a run. */
+/** Character offset of a DOM point within a run, a line break counting as one. */
 function offsetIn(run: HTMLElement, container: Node, offset: number): number {
-  const range = document.createRange();
-  range.selectNodeContents(run);
-  range.setEnd(container, offset);
-  return range.toString().length;
+  const point = document.createRange();
+  point.setStart(container, offset);
+  point.collapse(true);
+  let total = 0;
+  for (const node of units(run)) {
+    if (node === container) return total + offset;
+    const parent = node.parentNode;
+    if (!parent) continue;
+    const index = Array.prototype.indexOf.call(parent.childNodes, node) as number;
+    // Wholly before the point: its end is at or before it.
+    if (point.comparePoint(parent, index + 1) > 0) break;
+    total += unitLength(node);
+  }
+  return total;
 }
 
 export function placeCaret(run: HTMLElement, offset: number): void {
   const selection = window.getSelection();
   if (!selection) return;
   let remaining = offset;
-  const walker = document.createTreeWalker(run, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode() as Text | null;
-  while (node) {
-    const length = node.data.length;
-    if (remaining <= length) {
+  for (const node of units(run)) {
+    const length = unitLength(node);
+    if (node.nodeType === Node.TEXT_NODE && remaining <= length) {
       selection.collapse(node, remaining);
       return;
     }
+    if (node.nodeType !== Node.TEXT_NODE && remaining === 0) {
+      const parent = node.parentNode as Node;
+      selection.collapse(parent, Array.prototype.indexOf.call(parent.childNodes, node));
+      return;
+    }
     remaining -= length;
-    node = walker.nextNode() as Text | null;
+  }
+  // Past the last character: before the line-holding break, if there is one,
+  // so the caret sits on the new empty line.
+  const hold = run.querySelector(`[${CARET_ATTR}]`);
+  if (hold?.parentNode) {
+    selection.collapse(
+      hold.parentNode,
+      Array.prototype.indexOf.call(hold.parentNode.childNodes, hold),
+    );
+    return;
   }
   selection.collapse(run, run.childNodes.length);
 }
@@ -591,7 +690,7 @@ export function locate(
     if (touched.length !== 1) return null;
     run = touched[0] as HTMLElement;
   }
-  const length = (run.textContent ?? '').length;
+  const length = runLength(run);
   const start = run.contains(range.startContainer)
     ? offsetIn(run, range.startContainer, range.startOffset)
     : 0;
@@ -651,7 +750,7 @@ export function focusAt(
   }
   const runs = clone.querySelectorAll<HTMLElement>(`[${RUN_ATTR}]`);
   const last = runs[runs.length - 1];
-  if (last) placeCaret(last, (last.textContent ?? '').length);
+  if (last) placeCaret(last, runLength(last));
 }
 
 function caretRangeAt(x: number, y: number): Range | null {

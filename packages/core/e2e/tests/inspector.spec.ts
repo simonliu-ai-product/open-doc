@@ -307,6 +307,40 @@ test.describe('editing on the page', () => {
     await expect(toolbar(page).getByRole('button', { name: 'Italic' })).toBeEnabled();
   });
 
+  test('Shift+Enter breaks the line, written as <br />', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('Editable paragraph'));
+    await selectWord(page, ' ');
+    await page.keyboard.press('Shift+Enter');
+    await expect(field(page).locator('br')).toHaveCount(1);
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('<p>Editable<br />paragraph</p>');
+  });
+
+  test('a break already in the source survives an edit around it', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).locator('p', { hasText: 'First line' }), { x: 4, y: 6 });
+    await selectWord(page, 'Second');
+    await page.keyboard.type('Next');
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('First line<br />Next line');
+  });
+
+  test('Shift+Enter does nothing in text passed in as a string', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('From a prop'));
+    await selectWord(page, 'a');
+    await page.keyboard.press('Shift+Enter');
+    await expect(field(page).locator('br')).toHaveCount(0);
+    await expect(field(page)).toHaveText('From a prop');
+  });
+
   test('leaving edit mode saves what is still unsaved', async ({ page }) => {
     await enterEditMode(page);
     await editAt(page, viewer(page).getByText('Editable paragraph'));

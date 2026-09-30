@@ -57,6 +57,11 @@ const Only: DocPage = () => (
     <p>
       Left side <kbd>Enter</kbd> right side
     </p>
+    <p>
+      First line
+      <br />
+      Second line
+    </p>
   </div>
 );
 

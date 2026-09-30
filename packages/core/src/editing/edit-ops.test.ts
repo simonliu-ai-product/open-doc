@@ -606,6 +606,36 @@ describe('replaceTextsAt', () => {
   });
 });
 
+describe('line breaks', () => {
+  const BROKEN = `const P = () => (\n  <p>\n    First line<br />\n    Second <em>line</em>\n  </p>\n);\n`;
+
+  it('reads <br /> as a newline inside one run', () => {
+    expect(readTextAt(BROKEN, { line: 2, column: 2 })?.parts).toEqual([
+      {
+        kind: 'text',
+        index: 0,
+        value: 'First line\nSecond line',
+        formattable: true,
+        segments: [{ text: 'First line\nSecond ' }, { text: 'line', italic: true }],
+      },
+    ]);
+  });
+
+  it('writes a newline back as <br />', () => {
+    const { source, results } = replaceTextsAt(BROKEN, [
+      {
+        line: 2,
+        column: 2,
+        text: 'One\nTwo\nThree line',
+        expected: 'First line\nSecond line',
+        segments: [{ text: 'One\nTwo\nThree ' }, { text: 'line', italic: true }],
+      },
+    ]);
+    expect(results).toEqual([{ ok: true }]);
+    expect(source).toContain('<p>\n    One<br />Two<br />Three <em>line</em>\n  </p>');
+  });
+});
+
 describe('words a component prints from a prop', () => {
   const TABLE = `import services from './data/services.csv';
 
