@@ -105,6 +105,8 @@ async function footerOf(
 
   const host = document.createElement('div');
   host.setAttribute('aria-hidden', 'true');
+  // The sheet's base styles (styles.css), so the footer reads as it prints.
+  host.setAttribute('data-od-measure', '');
   Object.assign(host.style, { position: 'fixed', left: '-99999px', top: '0', width: `${width}px` });
   for (const [name, value] of Object.entries(designToCssVars(design))) {
     host.style.setProperty(name, value);

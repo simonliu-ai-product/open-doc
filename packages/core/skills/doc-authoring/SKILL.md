@@ -138,6 +138,8 @@ The framework builds the document outline by scanning rendered pages for `h1`, `
 - **The cover title and the word "Contents" both carry `data-od-outline="skip"`.** A contents list that opens with the cover and lists itself reads as a bug.
 - Override the listed text with `data-od-heading="Short title"` when the visible heading is long or contains markup.
 
+Bare elements on the sheet start from a base drawn from the design, not from a blank reset: headings are bold at `--od-size-h1`/`h2`/`h3` in the heading font, paragraphs, lists, quotes and tables have a bottom margin, lists have their markers and indent, links take `--od-accent` with an underline, `code`/`pre` use `--od-font-mono`, and a quote carries a rule on its leading edge. Anything you set inline replaces it, so style the elements that matter to the layout explicitly — margins above all, since they decide where a page breaks.
+
 ## Footnotes, numbering, and data
 
 Four primitives resolve themselves from the rendered pages, the same way the

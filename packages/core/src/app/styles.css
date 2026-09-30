@@ -91,11 +91,65 @@
     background-color: rgb(59 130 246 / 0.3);
     color: inherit;
   }
-  /* Preflight strips every list of its markers and indent, which suits the
-     chrome and not the paper: a plain <ul> in a document should print as a
-     list. Given back on the sheet and in the measuring host alike — a list
-     measured without its indent wraps differently from the one printed — and
-     only just outranking preflight, so a document's own list style still wins. */
+  /* The paper's own base.
+   *
+   * Preflight resets every element for the chrome — headings to body text,
+   * links to plain text, lists to bare lines, code to the viewer's own mono —
+   * and it reaches the sheet too, so a plain <h2> or <a> in a document printed
+   * as if it were a paragraph. The sheet gets a base of its own instead, drawn
+   * from the document's design variables (with the default design's values
+   * where a document sets none). It applies in the measuring host as well: a
+   * block measured with different margins than it prints with breaks the page
+   * in the wrong place. Each rule only just outranks preflight, so a
+   * document's inline style or its own stylesheet still wins.
+   */
+  :is([data-od-page], [data-od-measure]) {
+    font-family: var(
+      --od-font-body,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Inter",
+      system-ui,
+      sans-serif
+    );
+    font-size: var(--od-size-body, 14px);
+    line-height: var(--od-leading, 1.55);
+    color: var(--od-text, #16181d);
+  }
+  :is([data-od-page], [data-od-measure]) :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(
+      --od-font-heading,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Inter",
+      system-ui,
+      sans-serif
+    );
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 0 0 0.5em;
+  }
+  :is([data-od-page], [data-od-measure]) :where(h1) {
+    font-size: var(--od-size-h1, 28px);
+  }
+  :is([data-od-page], [data-od-measure]) :where(h2) {
+    font-size: var(--od-size-h2, 20px);
+  }
+  :is([data-od-page], [data-od-measure]) :where(h3) {
+    font-size: var(--od-size-h3, 16px);
+  }
+  :is([data-od-page], [data-od-measure]) :where(h4) {
+    font-size: calc(var(--od-size-body, 14px) * 1.1);
+  }
+  :is([data-od-page], [data-od-measure]) :where(h5, h6) {
+    font-size: var(--od-size-body, 14px);
+  }
+  :is([data-od-page], [data-od-measure]) :where(p, blockquote, pre, ul, ol, dl, table) {
+    margin: 0 0 0.75em;
+  }
+  :is([data-od-page], [data-od-measure]) :where(li > ul, li > ol) {
+    margin-bottom: 0;
+  }
   :is([data-od-page], [data-od-measure]) :where(ul, ol) {
     padding-inline-start: 1.5em;
   }
@@ -110,6 +164,23 @@
   }
   :is([data-od-page], [data-od-measure]) :where(ul ul ul, ol ul ul, ul ol ul) {
     list-style: square;
+  }
+  :is([data-od-page], [data-od-measure]) :where(a) {
+    color: var(--od-accent, #2563eb);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+  :is([data-od-page], [data-od-measure]) :where(blockquote) {
+    padding-inline-start: 1em;
+    border-inline-start: 3px solid var(--od-rule, #e5e7eb);
+    color: var(--od-muted, #6b7280);
+  }
+  :is([data-od-page], [data-od-measure]) :where(code, kbd, samp, pre) {
+    font-family: var(--od-font-mono, ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace);
+  }
+  :is([data-od-page], [data-od-measure]) :where(hr) {
+    border-top-color: var(--od-rule, #e5e7eb);
+    margin: 1em 0;
   }
   /* A heading's space-above is what separates it from the section before it —
      but at the top of a page that space is just a dent. Strip it there so the
