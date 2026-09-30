@@ -25,7 +25,7 @@
     "release": "turbo run build --filter=@open-document/core --filter=@open-document/cli --filter=@open-document/mcp && changeset publish"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.11",
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^3.0.0",
     "turbo": "^2.10.8",
