@@ -186,6 +186,7 @@ export function ListOf({ kind = 'figure', showPageNumbers = true, style, classNa
       {entries.map((entry) => (
         <div
           key={entry.id}
+          data-od-list-entry={entry.id}
           style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}
         >
           <span style={{ flex: 'none', color: 'var(--od-muted)' }}>

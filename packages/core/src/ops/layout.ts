@@ -22,7 +22,9 @@ export type LayoutReport = {
   findings: LayoutFinding[];
 };
 
-export type ExportFormat = 'pdf' | 'html' | 'png';
+import type { ExportFormat } from '../app/lib/sdk.ts';
+
+export { EXPORT_FORMATS, type ExportFormat } from '../app/lib/sdk.ts';
 
 export type ExportResult = {
   docId: string;
@@ -174,8 +176,8 @@ export async function exportDocument(
 
     if (format === 'pdf') {
       await write(`${docId}.pdf`, await renderer.pdf());
-    } else if (format === 'html') {
-      const bundle = await renderer.html();
+    } else if (format === 'html' || format === 'docx') {
+      const bundle = format === 'html' ? await renderer.html() : await renderer.docx();
       if (!bundle) throw new OpsError(422, `document has no pages: ${docId}`);
       await write(bundle.filename, Buffer.from(bundle.base64, 'base64'));
     } else {

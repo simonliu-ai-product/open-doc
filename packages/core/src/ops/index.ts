@@ -34,6 +34,7 @@ export {
 export {
   checkLayout,
   closeRenderSession,
+  EXPORT_FORMATS,
   type ExportFormat,
   type ExportResult,
   exportDocument,

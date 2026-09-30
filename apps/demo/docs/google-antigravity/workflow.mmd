@@ -1,0 +1,8 @@
+flowchart TD
+  Task[交付任務] --> Plan[實作計畫]
+  Plan --> Build[修改程式碼]
+  Build --> Verify[瀏覽器驗證]
+  Verify --> Artifacts[產出 Artifacts]
+  Artifacts --> Review{人工審閱}
+  Review -.->|留言| Revise[依回饋再修改]
+  Review ==>|通過| Done([完成])

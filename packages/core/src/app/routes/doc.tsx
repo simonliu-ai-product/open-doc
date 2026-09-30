@@ -8,6 +8,7 @@ import {
   FileCode2,
   FileImage,
   FileText,
+  FileType2,
   Image,
   LayoutGrid,
   Loader2,
@@ -35,6 +36,7 @@ import { EditSaveCard } from '../components/panel/edit-save-card';
 import { ThemeToggle } from '../components/theme-toggle';
 import { Menu, MenuItem } from '../components/ui/menu';
 import { useAgentBridge } from '../lib/agent-bridge';
+import { exportDocAsDocx } from '../lib/export-docx';
 import { exportDocAsHtml } from '../lib/export-html';
 import { exportDocAsImages } from '../lib/export-image';
 import { exportDocAsPdf } from '../lib/export-pdf';
@@ -54,13 +56,14 @@ import {
   writeViewMode,
 } from '../lib/view-mode';
 
-type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg';
+type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg' | 'docx';
 
 const DOWNLOAD_LABEL: Record<DownloadFormat, string> = {
   pdf: 'PDF',
   html: 'HTML',
   png: 'PNG',
   svg: 'SVG',
+  docx: 'Word',
 };
 
 const DOWNLOAD_FORMATS = [
@@ -68,6 +71,12 @@ const DOWNLOAD_FORMATS = [
   { format: 'html' as const, label: 'HTML', hint: 'Self-contained, printable', icon: FileCode2 },
   { format: 'png' as const, label: 'PNG', hint: 'Pixels, 2x — for slides and chat', icon: Image },
   { format: 'svg' as const, label: 'SVG', hint: 'Vector, keeps text as text', icon: FileImage },
+  {
+    format: 'docx' as const,
+    label: 'Word (DOCX)',
+    hint: 'Editable — Word lays out the pages',
+    icon: FileType2,
+  },
 ];
 
 const GUTTER = 48;
@@ -325,6 +334,8 @@ export function Doc() {
         );
       } else if (format === 'html') {
         await exportDocAsHtml(doc, docId, chosen);
+      } else if (format === 'docx') {
+        await exportDocAsDocx(doc, docId, chosen);
       } else {
         await exportDocAsImages(doc, docId, chosen, format, (progress) =>
           setDownload({ format, percent: progress.percent }),
