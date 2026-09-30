@@ -1,7 +1,9 @@
 import { Children, cloneElement, createElement, isValidElement, type ReactNode } from 'react';
 import { FOOTNOTE_MARKER_FLAG, FootnoteMarker } from '../components/footnote';
+import { LOC_PROP } from './source-loc';
 
-export type ExtractedNote = { id: string; content: ReactNode };
+/** `loc` is the `<Footnote>` call site, carried so the printed note can be edited. */
+export type ExtractedNote = { id: string; content: ReactNode; loc?: string };
 
 export type ExtractedBlock = {
   /** The block with each `<Footnote>` swapped for its marker. */
@@ -47,9 +49,10 @@ export function extractBlockFootnotes(node: ReactNode, idPrefix: string): Extrac
     if (!isValidElement(current)) return current;
 
     if (isFootnoteElement(current)) {
-      const props = current.props as { id?: string; children?: ReactNode };
+      const props = current.props as { id?: string; children?: ReactNode; [LOC_PROP]?: string };
       const id = props.id ?? `${idPrefix}-${notes.length + 1}`;
-      notes.push({ id, content: props.children });
+      const loc = props[LOC_PROP];
+      notes.push({ id, content: props.children, ...(loc ? { loc } : {}) });
       return createElement(FootnoteMarker, { key: current.key ?? id, id });
     }
 

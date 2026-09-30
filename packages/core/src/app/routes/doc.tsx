@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Check,
   Download,
+  Eye,
   FileCode2,
   FileImage,
   FileText,
@@ -11,10 +12,10 @@ import {
   Maximize,
   Minimize,
   Minus,
-  MousePointerClick,
   MoveHorizontal,
   MoveVertical,
   Palette,
+  Pencil,
   Percent,
   Plus,
 } from 'lucide-react';
@@ -24,8 +25,10 @@ import { DesignPanel } from '../components/design-panel/design-panel';
 import { DesignProvider } from '../components/design-panel/design-provider';
 import { DocSearch } from '../components/doc-search';
 import { DocSidebar } from '../components/doc-sidebar';
-import { Inspector } from '../components/inspector/inspector';
+import { HistoryProvider } from '../components/history-provider';
+import { Inspector, type InspectorControls } from '../components/inspector/inspector';
 import { PageFrame } from '../components/page-frame';
+import { EditSaveCard } from '../components/panel/edit-save-card';
 import { ThemeToggle } from '../components/theme-toggle';
 import { Menu, MenuItem } from '../components/ui/menu';
 import { useAgentBridge } from '../lib/agent-bridge';
@@ -92,6 +95,17 @@ const HeaderBackLink = () => {
   );
 };
 
+const EDITING_KEY = 'open-doc:editing';
+
+function readEditing(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    return sessionStorage.getItem(EDITING_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function Doc() {
   const { docId } = useParams<{ docId: string }>();
   const state = useDocModule(docId);
@@ -111,7 +125,20 @@ export function Doc() {
   const [selection, setSelection] = useState<PageSelection>({ kind: 'all' });
   const [customRange, setCustomRange] = useState('');
   const [designOpen, setDesignOpen] = useState(false);
-  const [inspecting, setInspecting] = useState(false);
+  const [editing, setEditingState] = useState(readEditing);
+  // The dev server reloads every open viewer when a document is added or
+  // removed anywhere in the workspace. Edit mode is per tab and survives that.
+  const setEditing = useCallback((next: boolean) => {
+    setEditingState(next);
+    try {
+      if (next) sessionStorage.setItem(EDITING_KEY, '1');
+      else sessionStorage.removeItem(EDITING_KEY);
+    } catch {}
+  }, []);
+  const leaveEditRef = useRef<(() => void) | null>(null);
+  const editControlsRef = useRef<InspectorControls | null>(null);
+  const [textPending, setTextPending] = useState(0);
+  const [cardShown, setCardShown] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const geometry = useMemo(() => resolvePageGeometry(doc?.meta), [doc?.meta]);
@@ -322,6 +349,9 @@ export function Doc() {
       if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         toggleFullscreen();
+      } else if (import.meta.env.DEV && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        setDesignOpen((open) => !open);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -418,22 +448,29 @@ export function Doc() {
           {!appConfig.build.showDocBrowser && <ThemeToggle />}
 
           {import.meta.env.DEV && (
-            <button
-              type="button"
-              onClick={() => setInspecting((on) => !on)}
-              title="Inspect and edit on the page"
-              className={cn(
-                'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
-                inspecting && 'border-transparent bg-[#3b82f6] text-white hover:bg-[#3b82f6]',
-              )}
-            >
-              <MousePointerClick className="size-3.5" />
-              Inspect
-            </button>
+            // Same two modes as open-slide: reading the document, or editing it
+            // where it is printed. Leaving edit mode saves unsaved text first.
+            <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+              <legend className="sr-only">Mode</legend>
+              <IconButton
+                label="Preview"
+                active={!editing}
+                onClick={() => (leaveEditRef.current ? leaveEditRef.current() : setEditing(false))}
+              >
+                <Eye className="size-3.5" />
+              </IconButton>
+              <IconButton label="Edit" active={editing} onClick={() => setEditing(true)}>
+                <Pencil className="size-3.5" />
+              </IconButton>
+            </fieldset>
           )}
           {import.meta.env.DEV && (
             <button
               type="button"
+              aria-pressed={designOpen}
+              aria-label="Design"
+              aria-keyshortcuts="D"
+              title="Design tokens (D)"
               onClick={() => setDesignOpen((open) => !open)}
               className={cn(
                 'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
@@ -442,6 +479,12 @@ export function Doc() {
             >
               <Palette className="size-3.5" />
               Design
+              <kbd
+                aria-hidden
+                className="hidden rounded-sm bg-foreground/10 px-1 font-mono text-[9.5px] text-muted-foreground md:inline"
+              >
+                D
+              </kbd>
             </button>
           )}
           <Menu
@@ -512,32 +555,54 @@ export function Doc() {
           onSelectPage={scrollToPage}
           onSelectEntry={scrollToEntry}
         />
-        <div
-          ref={scrollRef}
-          data-od-viewer
-          className="relative min-w-0 flex-1 overflow-auto bg-canvas"
-        >
+        <div className="relative flex min-w-0 flex-1">
           <div
-            ref={pagesRef}
-            className="flex flex-col items-center"
-            style={{ gap: PAGE_GAP, padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px` }}
+            ref={scrollRef}
+            data-od-viewer
+            className="relative min-w-0 flex-1 overflow-auto bg-canvas"
           >
-            {pages.map((page, index) => (
-              <PageFrame
-                key={page.key}
-                index={index}
-                total={pages.length}
-                geometry={geometry}
-                scale={scale}
-                design={doc.design}
-              >
-                {page.content}
-              </PageFrame>
-            ))}
+            <div
+              ref={pagesRef}
+              className="flex flex-col items-center"
+              style={{ gap: PAGE_GAP, padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px` }}
+            >
+              {pages.map((page, index) => (
+                <PageFrame
+                  key={page.key}
+                  index={index}
+                  total={pages.length}
+                  geometry={geometry}
+                  scale={scale}
+                  design={doc.design}
+                >
+                  {page.content}
+                </PageFrame>
+              ))}
+            </div>
           </div>
+          {import.meta.env.DEV && docId && (
+            <EditSaveCard
+              textCount={textPending}
+              controlsRef={editControlsRef}
+              onShownChange={setCardShown}
+            />
+          )}
         </div>
-        {inspecting && docId && (
-          <Inspector docId={docId} containerRef={scrollRef} onExit={() => setInspecting(false)} />
+        {editing && docId && (
+          // Keyed by document: a selection, or an editor carried across a
+          // reload by source location, must never follow into another
+          // document where the same line:column is something else entirely.
+          <Inspector
+            key={docId}
+            docId={docId}
+            containerRef={scrollRef}
+            panelHidden={designOpen}
+            quiet={cardShown}
+            onExit={() => setEditing(false)}
+            exitRef={leaveEditRef}
+            controlsRef={editControlsRef}
+            onPendingChange={setTextPending}
+          />
         )}
         {designOpen && <DesignPanel onClose={() => setDesignOpen(false)} />}
       </div>
@@ -545,9 +610,14 @@ export function Doc() {
   );
 
   // The design panel writes back to source through the dev server, so it only
-  // exists while `open-doc dev` is running.
+  // exists while `open-doc dev` is running. The history is per document: an
+  // undo step from one must never replay onto another.
   if (!import.meta.env.DEV || !docId) return view;
-  return <DesignProvider docId={docId}>{view}</DesignProvider>;
+  return (
+    <HistoryProvider key={docId}>
+      <DesignProvider docId={docId}>{view}</DesignProvider>
+    </HistoryProvider>
+  );
 }
 
 /**

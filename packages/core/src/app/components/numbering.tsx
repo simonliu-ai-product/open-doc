@@ -10,6 +10,7 @@ import {
   useLabelVocabulary,
 } from '../lib/labels';
 import { useDocPageNumber } from '../lib/page-context';
+import { LOC_PROP, sourceAttrs } from '../lib/source-loc';
 
 function nameFor(kind: LabelKind, vocabulary: { figure: string; table: string }): string {
   return kind === 'table' ? vocabulary.table : vocabulary.figure;
@@ -30,6 +31,8 @@ export type FigureProps = {
   captionStyle?: CSSProperties;
   className?: string;
   children?: ReactNode;
+  /** Stamped in dev by the loc-tags plugin; see `lib/source-loc.ts`. */
+  [LOC_PROP]?: string;
 };
 
 /**
@@ -50,6 +53,7 @@ export function Figure({
   captionStyle,
   className,
   children,
+  [LOC_PROP]: loc,
 }: FigureProps) {
   const generated = useId();
   const labelId = id ?? generated;
@@ -74,7 +78,14 @@ export function Figure({
       <span style={{ fontWeight: 600, color: 'var(--od-text)' }}>
         {nameFor(kind, vocabulary)} {entry?.number ?? ''}
       </span>
-      {caption ? <span> — {caption}</span> : null}
+      {typeof caption === 'string' || typeof caption === 'number' ? (
+        <span>
+          {' — '}
+          <span {...sourceAttrs(loc, 'caption')}>{caption}</span>
+        </span>
+      ) : caption ? (
+        <span> — {caption}</span>
+      ) : null}
     </figcaption>
   ) : null;
 
@@ -84,6 +95,7 @@ export function Figure({
         [LABEL_ATTR]: kind,
         [LABEL_ID_ATTR]: labelId,
         [LABEL_TEXT_ATTR]: text,
+        ...sourceAttrs(loc),
       }}
       className={className}
       style={{ margin: '0 0 16px', ...style }}

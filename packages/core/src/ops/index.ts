@@ -54,4 +54,4 @@ export {
   type ThemeSummary,
   writeAsset,
 } from './library.ts';
-export { addComment, type Loc, readText, writeText } from './text.ts';
+export { addComment, type Loc, readText, writeText, writeTexts } from './text.ts';

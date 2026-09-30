@@ -162,9 +162,15 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         docId: z.string(),
         locs: z.array(LOC).min(1),
         shown: z.string().optional().describe('rendered text, disambiguates helper components'),
+        prop: z
+          .string()
+          .optional()
+          .describe(
+            'a path into the element’s attributes for words a component prints from a prop, e.g. `caption` or `columns.2.label` (the `data-od-prop` on the rendered element)',
+          ),
       }),
     },
-    ({ docId, locs, shown }) => run(() => readText(ctx, docId, locs, shown)),
+    ({ docId, locs, shown, prop }) => run(() => readText(ctx, docId, locs, shown, prop)),
   );
 
   server.registerTool(
@@ -172,17 +178,30 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
     {
       title: 'Replace text at a location',
       description:
-        'Surgical edit of one text run, leaving surrounding markup untouched. Pass `expected` so a stale write is refused.',
+        'Surgical edit of one text run, leaving surrounding markup untouched. Pass `expected` so a stale write is refused. A run that read_text returned with `segments` (code, emphasis, links) must be written with `segments` too, or it is refused rather than losing its formatting.',
       inputSchema: z.object({
         docId: z.string(),
         loc: LOC,
         text: z.string(),
         index: z.number().int().nonnegative().optional().describe('which run, for mixed content'),
         expected: z.string().optional(),
+        segments: z
+          .array(
+            z.object({
+              text: z.string(),
+              bold: z.boolean().optional(),
+              italic: z.boolean().optional(),
+              code: z.boolean().optional(),
+              href: z.string().optional(),
+            }),
+          )
+          .optional()
+          .describe('the run as formatted pieces, in order; their texts concatenate to `text`'),
+        prop: z.string().optional().describe('as in read_text'),
       }),
     },
-    ({ docId, loc, text, index, expected }) =>
-      run(() => writeText(ctx, docId, loc, text, { index, expected })),
+    ({ docId, loc, text, index, expected, segments, prop }) =>
+      run(() => writeText(ctx, docId, loc, text, { index, expected, segments, prop })),
   );
 
   server.registerTool(
