@@ -1,5 +1,119 @@
 # @open-document/core
 
+## 0.7.0
+
+### Minor Changes
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The design panel works the way open-slide 2.0's does.
+  
+  - **Undo and redo.** Every design change is a step in the document view's
+    history — a slider drag is one step, not fifty — alongside each finished edit
+    made on the page. ⌘Z and ⇧⌘Z outside a field, or the buttons on the card.
+  - **One save card.** Page edits and the design draft are counted, saved and
+    discarded together from one card at the foot of the view; ⌘S saves both. The
+    panel's own Save and Discard buttons are gone. The two are written one after
+    the other, never at once, since both rewrite the same file.
+  - **One dock.** The design panel and the element panel share the right-hand
+    dock and its chrome; design wins while open. `D` toggles it.
+  - **Fields.** A colour only reaches the draft as a complete `#rrggbb`, and a
+    half-typed one reverts when you leave the field. Every slider has a number
+    beside it that can be typed or stepped with the arrow keys. A font list shows
+    "Custom" only when the source holds a stack no preset matches, and gains
+    Inter. The header marks an unsaved draft, and a document that has no `design`
+    yet.
+  - The panel opens once its draft is ready rather than on a spinner, and its
+    content fades in instead of the dock resizing the pages frame by frame.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Captions, table headings and footnotes can be selected and edited on the page.
+  
+  `Figure`, `DataTable` and `Footnote` now point what they print back at their
+  call site in dev, so clicking a table, a figure or a note selects it. A caption
+  is written to the `caption` attribute, a table heading to its column's `label`,
+  and a footnote printed at the foot of the page to the text inside its
+  `<Footnote>`. Rows that come from an imported `.csv` are not editable here: the
+  table is selected and the panel names the file to edit, with a comment box for
+  the agent.
+  
+  `read_text` and `write_text` take a `prop` path (`caption`, `columns.2.label`)
+  for words a component prints from an attribute.
+  
+  Edit mode also survives the reload the dev server sends when a document is
+  added or removed.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Formatting already in a document can be edited on the page, and the toolbar
+  gains code, links, and clear formatting.
+  
+  Text written beside bare `<strong>`, `<em>`, `<code>` or `<a href>` is now one
+  run: a paragraph like `Use real <code>h1</code> elements` is edited as the
+  sentence it is, bold can be taken off after it was saved, and the words inside
+  it can be retyped. A tag with any other attribute — a `style`, a `className` —
+  is still left as written. A changed run is rewritten on one line, so a
+  formatter's `{' '}` line breaks are folded into plain spaces; it renders the
+  same.
+  
+  - Code: ⌘E. Link: ⌘K, or the toolbar, with the address typed in place; a caret
+    inside a link edits it, and an empty address removes it. Only web, mail,
+    phone and in-document addresses are accepted — the server checks too, since
+    links survive into exported HTML. Clear formatting: ⌘\.
+  - Bold is disabled, and says why, where the element is already bold by its
+    own style.
+  - The toolbar shows only when there is something to act on, reads clearly in
+    both themes, and a selection on the page takes the inspector's blue rather
+    than the dark theme's highlight.
+  
+  `write_text` (and `PUT /__edit/text`) refuse plain text over a run that carries
+  formatting rather than drop it; pass `segments`, which `read_text` now returns.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Text is edited on the page, where it is printed.
+  
+  The viewer has a Preview / Edit switch in place of the Inspect button. In edit
+  mode a click selects an element and a double-click (or Enter) opens its text
+  right on the sheet; Enter keeps the change, Escape reverts it. Changes stay on
+  the page, marked as unsaved, until Save (⌘S) — or leaving edit mode — writes
+  them all to source in one request and one hot reload. Discard puts back what
+  was there. Inline markup between runs of text stays as written, and an edit
+  that would reach across it is refused.
+  
+  `PUT /__edit/texts` applies several run replacements at once. Every edit is
+  located against the source the reader saw, so a heading that grew does not
+  shift the paragraph below it; a stale edit is reported and the rest still land.
+  
+  The design panel and the element panel share the right-hand dock; design wins
+  while it is open.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Bold and italic while editing on the page.
+  
+  A small toolbar floats over the text being edited, with Bold (⌘B) and Italic
+  (⌘I). Select words and toggle; the emphasis shows on the page at once, stays
+  unsaved with the rest of the edit, and is written to source as `<strong>` and
+  `<em>` on Save. Undo and Escape take it back like any other change.
+  
+  Only text written in the document itself can take emphasis. Text passed in as a
+  string — a prop, an entry in an array — has nowhere in source to hold a tag, so
+  the buttons are disabled there and say why; the words themselves stay editable.
+  Size, colour and alignment are not offered: they belong to the document's
+  design system.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Shift+Enter breaks the line while editing on the page, written to source as
+  `<br />`. A `<br />` already in a paragraph no longer splits it into separate
+  runs: the paragraph is edited as one, and its breaks are kept. Enter still
+  keeps the change; text passed in as a string cannot hold a break, so
+  Shift+Enter does nothing there.
+
+### Patch Changes
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Nothing is written into a document that has a syntax error. Reading still
+  tolerates a document mid-edit, but the design panel, on-page text edits,
+  comment markers and renames all splice by position in the parsed source, and a
+  tree Babel recovered from an error could put the splice in the wrong place —
+  they now refuse and say why.
+  
+  The design panel's `DesignSystem` import is added correctly in every shape of
+  import: after the last name rather than before the brace (so `{ a, }` no longer
+  becomes `{ a, , type DesignSystem }`), without a second `type` inside
+  `import type { … }`, and as its own statement beside a namespace or
+  default-only import, which used to be left without it.
+
 ## 0.6.0
 
 ### Minor Changes

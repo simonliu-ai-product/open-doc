@@ -1,5 +1,24 @@
 # @open-document/mcp
 
+## 0.4.0
+
+### Minor Changes
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - `read_text` and `write_text` understand formatted text and component props.
+  
+  - `read_text` returns `segments` for a run that carries bold, italic, code,
+    links or line breaks; `write_text` takes `segments` to write it back with its
+    formatting. Plain text over a formatted run is refused rather than stripping
+    the formatting.
+  - Both take a `prop` path — `caption`, `columns.2.label` — for words a
+    component prints from an attribute, as the rendered element's
+    `data-od-prop` names it.
+
+### Patch Changes
+
+- Updated dependencies [[`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3), [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3), [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3), [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3), [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3), [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3), [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3)]:
+  - @open-document/core@0.7.0
+
 ## 0.3.2
 
 ### Patch Changes
