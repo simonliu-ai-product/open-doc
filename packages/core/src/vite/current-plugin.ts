@@ -79,6 +79,7 @@ export function currentPlugin(opts: CurrentPluginOptions): Plugin {
     name: 'open-doc:current',
     apply: 'serve',
     configureServer(server: ViteDevServer) {
+      let writing: Promise<void> = Promise.resolve();
       server.ws.on('open-doc:current', async (raw: IncomingPayload) => {
         const next: Cached = cached
           ? { ...cached }
@@ -132,13 +133,20 @@ export function currentPlugin(opts: CurrentPluginOptions): Plugin {
         cached = next;
 
         const body = { ...next, updatedAt: new Date().toISOString() };
-        try {
-          await fs.mkdir(outDir, { recursive: true });
-          await fs.writeFile(tmpFile, `${JSON.stringify(body, null, 2)}\n`, 'utf8');
-          await fs.rename(tmpFile, outFile);
-        } catch {
-          // Best-effort: a transient FS error here shouldn't crash the dev server.
-        }
+        // One write at a time. Two messages arriving together — a viewer and
+        // its inspector both reporting as a document opens — would otherwise
+        // write the one temp file at once, and the interleaved bytes renamed
+        // into place stay unreadable until something else is reported.
+        writing = writing.then(async () => {
+          try {
+            await fs.mkdir(outDir, { recursive: true });
+            await fs.writeFile(tmpFile, `${JSON.stringify(body, null, 2)}\n`, 'utf8');
+            await fs.rename(tmpFile, outFile);
+          } catch {
+            // Best-effort: a transient FS error here shouldn't crash the dev server.
+          }
+        });
+        await writing;
       });
     },
   };

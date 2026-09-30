@@ -19,6 +19,17 @@ export function parseSource(code: string): AstNode | null {
   }
 }
 
+/**
+ * `parseSource`, but a source with any recovered error is refused. Reading
+ * tolerates a document mid-edit; writing splices text in by AST offset, and a
+ * best-guess tree recovered from a syntax error must never decide where.
+ */
+export function parseStrict(code: string): AstNode | null {
+  const ast = parseSource(code) as (AstNode & { errors?: unknown[] }) | null;
+  if (!ast) return null;
+  return ast.errors && ast.errors.length > 0 ? null : ast;
+}
+
 function isNode(value: unknown): value is AstNode {
   return typeof value === 'object' && value !== null && typeof (value as AstNode).type === 'string';
 }

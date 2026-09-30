@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { insertMarker, parseMarkers, removeMarker } from './comments.ts';
-import { readTextAt, replaceTextAt, resolveTextTarget } from './edit-ops.ts';
+import { readTextAt, replaceTextAt, replaceTextsAt, resolveTextTarget } from './edit-ops.ts';
 
 // Column is 0-based, line is 1-based — exactly what the loc tag carries.
 const SOURCE = `const Page = () => (
@@ -180,8 +180,8 @@ describe('text that arrives as children', () => {
     expect(info?.editable).toBe(true);
     expect(info?.parts).toEqual([
       { kind: 'text', index: 0, value: '主旨' },
-      { kind: 'text', index: 1, value: '：' },
-      { kind: 'text', index: 2, value: '本府訂於115年10月14日辦理研習營。' },
+      { kind: 'text', index: 1, value: '：', formattable: true },
+      { kind: 'text', index: 2, value: '本府訂於115年10月14日辦理研習營。', formattable: true },
     ]);
   });
 
@@ -246,7 +246,7 @@ describe('text that comes from a mapped array', () => {
     const info = readTextAt(VIA_PAIRS, VIA_PAIRS_DIV, '發文日期：中華民國115年8月16日');
     expect(info?.parts).toEqual([
       { kind: 'text', index: 0, value: '發文日期' },
-      { kind: 'text', index: 1, value: '：' },
+      { kind: 'text', index: 1, value: '：', formattable: true },
       { kind: 'text', index: 2, value: '中華民國115年8月16日' },
     ]);
   });
@@ -314,18 +314,37 @@ describe('readTextAt', () => {
     const info = readTextAt(SOURCE, H1);
     expect(info?.editable).toBe(true);
     expect(info?.text).toBe('Executive summary');
-    expect(info?.parts).toEqual([{ kind: 'text', index: 0, value: 'Executive summary' }]);
+    expect(info?.parts).toEqual([
+      { kind: 'text', index: 0, value: 'Executive summary', formattable: true },
+    ]);
   });
 
-  it('splits mixed content into runs, keeping the markup as placeholders', () => {
+  it('reads text and bare marks as one formatted run', () => {
     const info = readTextAt(MIXED, MIXED_P);
     expect(info?.editable).toBe(true);
     expect(info?.parts).toEqual([
-      { kind: 'text', index: 0, value: '對外端點為' },
+      {
+        kind: 'text',
+        index: 0,
+        value: '對外端點為 /mcp，另外自訂 /healthz 供探針使用。',
+        formattable: true,
+        segments: [
+          { text: '對外端點為 ' },
+          { text: '/mcp', code: true },
+          { text: '，另外自訂 ' },
+          { text: '/healthz', code: true },
+          { text: ' 供探針使用。' },
+        ],
+      },
+    ]);
+  });
+
+  it('keeps an element with attributes as markup between runs', () => {
+    const styled = `const P = () => (\n  <p>\n    before <code style={mono}>x</code> after\n  </p>\n);\n`;
+    expect(readTextAt(styled, { line: 2, column: 2 })?.parts).toEqual([
+      { kind: 'text', index: 0, value: 'before', formattable: true },
       { kind: 'markup', label: '<code>' },
-      { kind: 'text', index: 1, value: '，另外自訂' },
-      { kind: 'markup', label: '<code>' },
-      { kind: 'text', index: 2, value: '供探針使用。' },
+      { kind: 'text', index: 1, value: 'after', formattable: true },
     ]);
   });
 
@@ -363,17 +382,19 @@ describe('replaceTextAt', () => {
     expect(result.source).toContain("a {'<'} b {'{'}c{'}'}");
   });
 
-  it('edits one run of mixed content without touching the markup', () => {
+  it('refuses plain text over a formatted run rather than drop its formatting', () => {
     const result = replaceTextAt(MIXED, MIXED_P, '端點是', { index: 0 });
+    expect(result).toMatchObject({ ok: false, status: 422 });
+  });
+
+  it('rewrites a formatted run from segments', () => {
+    const result = replaceTextAt(MIXED, MIXED_P, '端點是 /mcp。', {
+      index: 0,
+      segments: [{ text: '端點是 ' }, { text: '/mcp', code: true }, { text: '。' }],
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.source).toContain('端點是 <code>/mcp</code>');
-    expect(result.source).toContain('<code>/healthz</code>');
-    expect(readTextAt(result.source, MIXED_P)?.parts[0]).toEqual({
-      kind: 'text',
-      index: 0,
-      value: '端點是',
-    });
+    expect(result.source).toContain('<p style={p}>\n      端點是 <code>/mcp</code>。\n    </p>');
   });
 
   it('refuses a write when the source moved under it', () => {
@@ -425,6 +446,257 @@ describe('resolveTextTarget', () => {
     const resolved = resolveTextTarget(SOURCE, [WRAPPER], 'nested');
     expect(resolved?.editable).toBe(false);
     expect(resolved).toMatchObject(WRAPPER);
+  });
+});
+
+describe('JSX spacing', () => {
+  const SPACED = `const Page = () => (
+  <div>
+    <p style={p}>
+      fill{' '}
+      <code>x</code>. Page numbers come from <code>y</code>{' '}
+      and <code>z</code>.
+    </p>
+  </div>
+);
+`;
+
+  it("reads {' '} as the space it renders, inside one run", () => {
+    const info = readTextAt(SPACED, { line: 3, column: 4 });
+    const runs = info?.parts.filter((part) => part.kind === 'text') ?? [];
+    expect(runs.map((part) => part.kind === 'text' && part.value)).toEqual([
+      'fill x. Page numbers come from y and z.',
+    ]);
+  });
+
+  it('rewrites the run on one line, rendering exactly as before', () => {
+    const { source, results } = replaceTextsAt(SPACED, [
+      {
+        line: 3,
+        column: 4,
+        index: 0,
+        text: 'fill x. Page numbers come from y plus z.',
+        expected: 'fill x. Page numbers come from y and z.',
+        segments: [
+          { text: 'fill ' },
+          { text: 'x', code: true },
+          { text: '. Page numbers come from ' },
+          { text: 'y', code: true },
+          { text: ' plus ' },
+          { text: 'z', code: true },
+          { text: '.' },
+        ],
+      },
+    ]);
+    expect(results).toEqual([{ ok: true }]);
+    expect(source).toContain(
+      '<p style={p}>\n      fill <code>x</code>. Page numbers come from <code>y</code> plus <code>z</code>.\n    </p>',
+    );
+  });
+});
+
+describe('replaceTextsAt', () => {
+  it('locates every edit against the source the caller saw', () => {
+    // The heading grows by a line's worth of text; the paragraph below it must
+    // still be found at the location it had before that edit landed.
+    const { source, results } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'A much longer executive summary', expected: 'Executive summary' },
+      { ...P, text: 'Availability slipped.', expected: 'Availability held above target.' },
+    ]);
+    expect(results).toEqual([{ ok: true }, { ok: true }]);
+    expect(source).toContain('<h1 style={h1}>A much longer executive summary</h1>');
+    expect(source).toContain('Availability slipped.');
+    expect(source).not.toContain('Availability held');
+  });
+
+  it('writes links, and shares one tag across neighbours that share a mark', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      {
+        ...H1,
+        text: 'See the docs now',
+        segments: [
+          { text: 'See ' },
+          { text: 'the ', href: 'https://example.com/?a="b"' },
+          { text: 'docs', href: 'https://example.com/?a="b"', bold: true },
+          { text: ' now' },
+        ],
+      },
+    ]);
+    expect(results).toEqual([{ ok: true }]);
+    expect(source).toContain(
+      '<h1 style={h1}>See <a href="https://example.com/?a=&quot;b&quot;">the <strong>docs</strong></a> now</h1>',
+    );
+  });
+
+  it('reads a written link back as the same segments', () => {
+    const linked = `const P = () => (\n  <p>\n    See <a href="/guide">the <strong>guide</strong></a>.\n  </p>\n);\n`;
+    expect(readTextAt(linked, { line: 2, column: 2 })?.parts[0]).toMatchObject({
+      value: 'See the guide.',
+      segments: [
+        { text: 'See ' },
+        { text: 'the ', href: '/guide' },
+        { text: 'guide', href: '/guide', bold: true },
+        { text: '.' },
+      ],
+    });
+  });
+
+  it('refuses a link that would run script', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'x', segments: [{ text: 'x', href: ' JavaScript:alert(1)' }] },
+    ]);
+    expect(results[0]).toMatchObject({ ok: false, status: 422 });
+    expect(source).toBe(SOURCE);
+  });
+
+  it('skips a stale edit and still writes the rest', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'New title', expected: 'something else' },
+      { ...P, text: 'Kept.', expected: 'Availability held above target.' },
+    ]);
+    expect(results[0]).toMatchObject({ ok: false, status: 409 });
+    expect(results[1]).toEqual({ ok: true });
+    expect(source).toContain('Executive summary');
+    expect(source).toContain('Kept.');
+  });
+
+  it('writes emphasis as JSX around the formatted pieces', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      {
+        ...H1,
+        text: 'Executive summary',
+        expected: 'Executive summary',
+        segments: [{ text: 'Executive ' }, { text: 'summary', bold: true, italic: true }],
+      },
+    ]);
+    expect(results).toEqual([{ ok: true }]);
+    expect(source).toContain('<h1 style={h1}>Executive <strong><em>summary</em></strong></h1>');
+  });
+
+  it('escapes formatted text like any other', () => {
+    const { source } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'a {b}', segments: [{ text: 'a ' }, { text: '{b}', bold: true }] },
+    ]);
+    expect(source).toContain("<h1 style={h1}>a <strong>{'{'}b{'}'}</strong></h1>");
+  });
+
+  it('refuses emphasis in text that is a string, not JSX', () => {
+    const { source, results } = replaceTextsAt(VIA_PROPS, [
+      {
+        line: 2,
+        column: 2,
+        index: 0,
+        text: '範例市政府',
+        shown: '範例市政府 函',
+        segments: [{ text: '範例市政府', bold: true }],
+      },
+    ]);
+    expect(results[0]).toMatchObject({ ok: false, status: 422 });
+    expect(source).toBe(VIA_PROPS);
+  });
+
+  it('refuses to write into a document with a syntax error', () => {
+    const broken = `${SOURCE}\nconst Oops = () => (<div>;\n`;
+    const { source, results } = replaceTextsAt(broken, [{ ...H1, text: 'x' }]);
+    expect(results[0]).toMatchObject({ ok: false, status: 422 });
+    expect(source).toBe(broken);
+  });
+
+  it('refuses two edits that disagree about the same span', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'First' },
+      { ...H1, text: 'Second' },
+    ]);
+    expect(results[0]).toEqual({ ok: true });
+    expect(results[1]).toMatchObject({ ok: false, status: 409 });
+    expect(source).toContain('<h1 style={h1}>First</h1>');
+  });
+});
+
+describe('line breaks', () => {
+  const BROKEN = `const P = () => (\n  <p>\n    First line<br />\n    Second <em>line</em>\n  </p>\n);\n`;
+
+  it('reads <br /> as a newline inside one run', () => {
+    expect(readTextAt(BROKEN, { line: 2, column: 2 })?.parts).toEqual([
+      {
+        kind: 'text',
+        index: 0,
+        value: 'First line\nSecond line',
+        formattable: true,
+        segments: [{ text: 'First line\nSecond ' }, { text: 'line', italic: true }],
+      },
+    ]);
+  });
+
+  it('writes a newline back as <br />', () => {
+    const { source, results } = replaceTextsAt(BROKEN, [
+      {
+        line: 2,
+        column: 2,
+        text: 'One\nTwo\nThree line',
+        expected: 'First line\nSecond line',
+        segments: [{ text: 'One\nTwo\nThree ' }, { text: 'line', italic: true }],
+      },
+    ]);
+    expect(results).toEqual([{ ok: true }]);
+    expect(source).toContain('<p>\n    One<br />Two<br />Three <em>line</em>\n  </p>');
+  });
+});
+
+describe('words a component prints from a prop', () => {
+  const TABLE = `import services from './data/services.csv';
+
+const Page = () => (
+  <div>
+    <DataTable
+      caption="Platform tier, Q3 2026"
+      rows={services}
+      columns={[
+        { key: 'service', label: 'Service' },
+        { key: 'requests', label: "Req's" },
+        'plain',
+      ]}
+    />
+    <Figure caption={title}>x</Figure>
+  </div>
+);
+`;
+  const AT = { line: 5, column: 4 };
+
+  it('reads an attribute and a path into an array of objects', () => {
+    expect(resolveTextTarget(TABLE, [AT], undefined, 'caption')).toMatchObject({
+      editable: true,
+      parts: [{ kind: 'text', index: 0, value: 'Platform tier, Q3 2026' }],
+    });
+    expect(resolveTextTarget(TABLE, [AT], undefined, 'columns.1.label')).toMatchObject({
+      editable: true,
+      parts: [{ value: "Req's" }],
+    });
+  });
+
+  it('writes only that string, escaped for where it sits', () => {
+    const { source, results } = replaceTextsAt(TABLE, [
+      { ...AT, prop: 'caption', text: 'Say "hi"', expected: 'Platform tier, Q3 2026' },
+      { ...AT, prop: 'columns.1.label', text: "It's", expected: "Req's" },
+    ]);
+    expect(results).toEqual([{ ok: true }, { ok: true }]);
+    expect(source).toContain('caption="Say &quot;hi&quot;"');
+    expect(source).toContain(`{ key: 'requests', label: "It's" }`);
+  });
+
+  it('refuses a prop that is not a plain string', () => {
+    expect(resolveTextTarget(TABLE, [{ line: 14, column: 4 }], undefined, 'caption')).toMatchObject(
+      { editable: false },
+    );
+    const { results } = replaceTextsAt(TABLE, [{ ...AT, prop: 'columns.9.label', text: 'x' }]);
+    expect(results[0]).toMatchObject({ ok: false, status: 422 });
+  });
+
+  it('names the file a table’s rows come from', () => {
+    expect(readTextAt(TABLE, AT)).toMatchObject({
+      editable: false,
+      reason: expect.stringContaining('./data/services.csv'),
+    });
   });
 });
 

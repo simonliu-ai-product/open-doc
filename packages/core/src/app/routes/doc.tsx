@@ -1,22 +1,27 @@
 import appConfig from 'virtual:open-doc/config';
 import {
   ArrowLeft,
+  BookOpen,
   Check,
   Download,
+  Eye,
   FileCode2,
   FileImage,
   FileText,
+  FileType2,
   Image,
+  LayoutGrid,
   Loader2,
   Maximize,
   Minimize,
   Minus,
-  MousePointerClick,
   MoveHorizontal,
   MoveVertical,
   Palette,
+  Pencil,
   Percent,
   Plus,
+  Rows3,
 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -24,11 +29,14 @@ import { DesignPanel } from '../components/design-panel/design-panel';
 import { DesignProvider } from '../components/design-panel/design-provider';
 import { DocSearch } from '../components/doc-search';
 import { DocSidebar } from '../components/doc-sidebar';
-import { Inspector } from '../components/inspector/inspector';
+import { HistoryProvider } from '../components/history-provider';
+import { Inspector, type InspectorControls } from '../components/inspector/inspector';
 import { PageFrame } from '../components/page-frame';
+import { EditSaveCard } from '../components/panel/edit-save-card';
 import { ThemeToggle } from '../components/theme-toggle';
 import { Menu, MenuItem } from '../components/ui/menu';
 import { useAgentBridge } from '../lib/agent-bridge';
+import { exportDocAsDocx } from '../lib/export-docx';
 import { exportDocAsHtml } from '../lib/export-html';
 import { exportDocAsImages } from '../lib/export-image';
 import { exportDocAsPdf } from '../lib/export-pdf';
@@ -40,14 +48,22 @@ import { resolvePageGeometry } from '../lib/sdk';
 import { useDocModule } from '../lib/use-doc-module';
 import { useDocPages } from '../lib/use-doc-pages';
 import { cn } from '../lib/utils';
+import {
+  fitWidthScale as fitScale,
+  pageAtMarker,
+  readViewMode,
+  type ViewMode,
+  writeViewMode,
+} from '../lib/view-mode';
 
-type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg';
+type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg' | 'docx';
 
 const DOWNLOAD_LABEL: Record<DownloadFormat, string> = {
   pdf: 'PDF',
   html: 'HTML',
   png: 'PNG',
   svg: 'SVG',
+  docx: 'Word',
 };
 
 const DOWNLOAD_FORMATS = [
@@ -55,6 +71,12 @@ const DOWNLOAD_FORMATS = [
   { format: 'html' as const, label: 'HTML', hint: 'Self-contained, printable', icon: FileCode2 },
   { format: 'png' as const, label: 'PNG', hint: 'Pixels, 2x — for slides and chat', icon: Image },
   { format: 'svg' as const, label: 'SVG', hint: 'Vector, keeps text as text', icon: FileImage },
+  {
+    format: 'docx' as const,
+    label: 'Word (DOCX)',
+    hint: 'Editable — Word lays out the pages',
+    icon: FileType2,
+  },
 ];
 
 const GUTTER = 48;
@@ -92,6 +114,17 @@ const HeaderBackLink = () => {
   );
 };
 
+const EDITING_KEY = 'open-doc:editing';
+
+function readEditing(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    return sessionStorage.getItem(EDITING_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function Doc() {
   const { docId } = useParams<{ docId: string }>();
   const state = useDocModule(docId);
@@ -111,8 +144,26 @@ export function Doc() {
   const [selection, setSelection] = useState<PageSelection>({ kind: 'all' });
   const [customRange, setCustomRange] = useState('');
   const [designOpen, setDesignOpen] = useState(false);
-  const [inspecting, setInspecting] = useState(false);
+  const [editing, setEditingState] = useState(readEditing);
+  // The dev server reloads every open viewer when a document is added or
+  // removed anywhere in the workspace. Edit mode is per tab and survives that.
+  const setEditing = useCallback((next: boolean) => {
+    setEditingState(next);
+    try {
+      if (next) sessionStorage.setItem(EDITING_KEY, '1');
+      else sessionStorage.removeItem(EDITING_KEY);
+    } catch {}
+  }, []);
+  const leaveEditRef = useRef<(() => void) | null>(null);
+  const editControlsRef = useRef<InspectorControls | null>(null);
+  const [textPending, setTextPending] = useState(0);
+  const [cardShown, setCardShown] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => readViewMode(docId));
+  // The page the reader was on when the layout changed, to put back in view.
+  const keepPageRef = useRef<number | null>(null);
+  // The page last jumped to, reported while it shares the row in view.
+  const jumpedRef = useRef<number | null>(null);
 
   const geometry = useMemo(() => resolvePageGeometry(doc?.meta), [doc?.meta]);
   const { pages, measuring, overflowing } = useDocPages(doc, geometry);
@@ -121,10 +172,13 @@ export function Doc() {
   useAgentBridge({ docId: docId ?? '', doc, pages, geometry, measuring, oversized: overflowing });
 
   const clamp = (value: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
-  const fitWidthScale = available.width ? clamp(available.width / geometry.width) : 1;
-  // Fit page is bounded by both axes so the whole sheet lands inside the pane.
+  // Every fit is of the unit the mode lays side by side — a sheet, a spread,
+  // a row of the grid — so zoom and view mode compose instead of fighting.
+  const widthFit = fitScale(viewMode, available.width, geometry.width, PAGE_GAP);
+  const fitWidthScale = available.width ? clamp(widthFit) : 1;
+  // Fit page is bounded by both axes so the whole unit lands inside the pane.
   const fitPageScale = available.height
-    ? clamp(Math.min(available.width / geometry.width, available.height / geometry.height))
+    ? clamp(Math.min(widthFit, available.height / geometry.height))
     : 1;
   // Auto keeps a page at its true size unless the window is too narrow to hold
   // it; the explicit fit modes may go past 100%.
@@ -184,11 +238,13 @@ export function Doc() {
       frame = 0;
       const marker = root.scrollTop + root.clientHeight / 3;
       const frames = Array.from(container.children) as HTMLElement[];
-      let page = 1;
-      frames.forEach((el, index) => {
-        if (el.offsetTop <= marker) page = index + 1;
-      });
-      setCurrentPage(page);
+      setCurrentPage(
+        pageAtMarker(
+          frames.map((el) => el.offsetTop),
+          marker,
+          jumpedRef.current,
+        ),
+      );
     };
     const onScroll = () => {
       if (frame) return;
@@ -201,9 +257,35 @@ export function Doc() {
       root.removeEventListener('scroll', onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [pages.length, scale]);
+  }, [pages.length, scale, viewMode]);
+
+  useEffect(() => setViewModeState(readViewMode(docId)), [docId]);
+
+  const setViewMode = (mode: ViewMode) => {
+    if (mode === viewMode) return;
+    keepPageRef.current = currentPage;
+    setViewModeState(mode);
+    writeViewMode(docId, mode);
+  };
+
+  // Changing the layout moves every sheet. Without this the reader lands on
+  // whatever page now sits where their scroll position happens to be.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per layout change, after the sheets have moved.
+  useLayoutEffect(() => {
+    const page = keepPageRef.current;
+    keepPageRef.current = null;
+    const root = scrollRef.current;
+    const frame = pagesRef.current?.children[page === null ? -1 : page - 1] as
+      | HTMLElement
+      | undefined;
+    if (!root || !frame) return;
+    // Keep the gutter above the sheet, as a fresh document opens with, rather
+    // than butting its top edge against the toolbar.
+    root.scrollTop = Math.max(0, frame.offsetTop - GUTTER);
+  }, [viewMode]);
 
   const scrollToPage = useCallback((page: number) => {
+    jumpedRef.current = page;
     const frame = pagesRef.current?.children[page - 1];
     frame?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
@@ -252,6 +334,8 @@ export function Doc() {
         );
       } else if (format === 'html') {
         await exportDocAsHtml(doc, docId, chosen);
+      } else if (format === 'docx') {
+        await exportDocAsDocx(doc, docId, chosen);
       } else {
         await exportDocAsImages(doc, docId, chosen, format, (progress) =>
           setDownload({ format, percent: progress.percent }),
@@ -322,6 +406,9 @@ export function Doc() {
       if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         toggleFullscreen();
+      } else if (import.meta.env.DEV && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        setDesignOpen((open) => !open);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -405,6 +492,31 @@ export function Doc() {
             </IconButton>
           </div>
 
+          <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+            <legend className="sr-only">Page layout</legend>
+            <IconButton
+              label="Continuous"
+              active={viewMode === 'continuous'}
+              onClick={() => setViewMode('continuous')}
+            >
+              <Rows3 className="size-3.5" />
+            </IconButton>
+            <IconButton
+              label="Two-up"
+              active={viewMode === 'spread'}
+              onClick={() => setViewMode('spread')}
+            >
+              <BookOpen className="size-3.5" />
+            </IconButton>
+            <IconButton
+              label="Grid"
+              active={viewMode === 'grid'}
+              onClick={() => setViewMode('grid')}
+            >
+              <LayoutGrid className="size-3.5" />
+            </IconButton>
+          </fieldset>
+
           <IconButton
             label={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
             onClick={toggleFullscreen}
@@ -418,22 +530,29 @@ export function Doc() {
           {!appConfig.build.showDocBrowser && <ThemeToggle />}
 
           {import.meta.env.DEV && (
-            <button
-              type="button"
-              onClick={() => setInspecting((on) => !on)}
-              title="Inspect and edit on the page"
-              className={cn(
-                'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
-                inspecting && 'border-transparent bg-[#3b82f6] text-white hover:bg-[#3b82f6]',
-              )}
-            >
-              <MousePointerClick className="size-3.5" />
-              Inspect
-            </button>
+            // Same two modes as open-slide: reading the document, or editing it
+            // where it is printed. Leaving edit mode saves unsaved text first.
+            <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+              <legend className="sr-only">Mode</legend>
+              <IconButton
+                label="Preview"
+                active={!editing}
+                onClick={() => (leaveEditRef.current ? leaveEditRef.current() : setEditing(false))}
+              >
+                <Eye className="size-3.5" />
+              </IconButton>
+              <IconButton label="Edit" active={editing} onClick={() => setEditing(true)}>
+                <Pencil className="size-3.5" />
+              </IconButton>
+            </fieldset>
           )}
           {import.meta.env.DEV && (
             <button
               type="button"
+              aria-pressed={designOpen}
+              aria-label="Design"
+              aria-keyshortcuts="D"
+              title="Design tokens (D)"
               onClick={() => setDesignOpen((open) => !open)}
               className={cn(
                 'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
@@ -442,6 +561,12 @@ export function Doc() {
             >
               <Palette className="size-3.5" />
               Design
+              <kbd
+                aria-hidden
+                className="hidden rounded-sm bg-foreground/10 px-1 font-mono text-[9.5px] text-muted-foreground md:inline"
+              >
+                D
+              </kbd>
             </button>
           )}
           <Menu
@@ -512,32 +637,71 @@ export function Doc() {
           onSelectPage={scrollToPage}
           onSelectEntry={scrollToEntry}
         />
-        <div
-          ref={scrollRef}
-          data-od-viewer
-          className="relative min-w-0 flex-1 overflow-auto bg-canvas"
-        >
+        <div className="relative flex min-w-0 flex-1">
           <div
-            ref={pagesRef}
-            className="flex flex-col items-center"
-            style={{ gap: PAGE_GAP, padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px` }}
+            ref={scrollRef}
+            data-od-viewer
+            className="relative min-w-0 flex-1 overflow-auto bg-canvas"
           >
-            {pages.map((page, index) => (
-              <PageFrame
-                key={page.key}
-                index={index}
-                total={pages.length}
-                geometry={geometry}
-                scale={scale}
-                design={doc.design}
-              >
-                {page.content}
-              </PageFrame>
-            ))}
+            <div
+              ref={pagesRef}
+              data-od-view={viewMode}
+              className={cn(
+                viewMode === 'continuous' && 'flex flex-col items-center',
+                // Facing pages as a bound document is read: page 1 alone on
+                // the right, then 2–3, 4–5.
+                viewMode === 'spread' && 'grid justify-center [&>:first-child]:col-start-2',
+                // A contact sheet: columns that line up, the last row starting
+                // under the first sheet rather than centred in the gap.
+                viewMode === 'grid' && 'grid content-start justify-center',
+              )}
+              style={{
+                gap: PAGE_GAP,
+                padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px`,
+                ...(viewMode === 'spread'
+                  ? { gridTemplateColumns: `repeat(2, ${geometry.width * scale}px)` }
+                  : viewMode === 'grid'
+                    ? { gridTemplateColumns: `repeat(auto-fill, ${geometry.width * scale}px)` }
+                    : {}),
+              }}
+            >
+              {pages.map((page, index) => (
+                <PageFrame
+                  key={page.key}
+                  index={index}
+                  total={pages.length}
+                  geometry={geometry}
+                  scale={scale}
+                  design={doc.design}
+                >
+                  {page.content}
+                </PageFrame>
+              ))}
+            </div>
           </div>
+          {import.meta.env.DEV && docId && (
+            <EditSaveCard
+              textCount={textPending}
+              controlsRef={editControlsRef}
+              onShownChange={setCardShown}
+            />
+          )}
         </div>
-        {inspecting && docId && (
-          <Inspector docId={docId} containerRef={scrollRef} onExit={() => setInspecting(false)} />
+        {editing && docId && (
+          // Keyed by document: a selection, or an editor carried across a
+          // reload by source location, must never follow into another
+          // document where the same line:column is something else entirely.
+          <Inspector
+            key={docId}
+            docId={docId}
+            containerRef={scrollRef}
+            panelHidden={designOpen}
+            quiet={cardShown}
+            onExit={() => setEditing(false)}
+            exitRef={leaveEditRef}
+            controlsRef={editControlsRef}
+            onPendingChange={setTextPending}
+          />
         )}
         {designOpen && <DesignPanel onClose={() => setDesignOpen(false)} />}
       </div>
@@ -545,9 +709,14 @@ export function Doc() {
   );
 
   // The design panel writes back to source through the dev server, so it only
-  // exists while `open-doc dev` is running.
+  // exists while `open-doc dev` is running. The history is per document: an
+  // undo step from one must never replay onto another.
   if (!import.meta.env.DEV || !docId) return view;
-  return <DesignProvider docId={docId}>{view}</DesignProvider>;
+  return (
+    <HistoryProvider key={docId}>
+      <DesignProvider docId={docId}>{view}</DesignProvider>
+    </HistoryProvider>
+  );
 }
 
 /**

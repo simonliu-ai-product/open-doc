@@ -34,6 +34,7 @@ export {
 export {
   checkLayout,
   closeRenderSession,
+  EXPORT_FORMATS,
   type ExportFormat,
   type ExportResult,
   exportDocument,
@@ -54,4 +55,4 @@ export {
   type ThemeSummary,
   writeAsset,
 } from './library.ts';
-export { addComment, type Loc, readText, writeText } from './text.ts';
+export { addComment, type Loc, readText, writeText, writeTexts } from './text.ts';

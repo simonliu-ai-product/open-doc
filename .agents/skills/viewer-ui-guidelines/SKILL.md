@@ -34,7 +34,7 @@ The chrome is everything that is **not** the sheet: the shell, the rails, the pa
 - **The shell owns shared state.** `routes/home-shell.tsx` holds the left sidebar (nav counts, folders, theme toggle) and passes folder state to routes through the outlet context. A route that fetches the folders manifest itself is a finding.
 - **The document view mirrors it.** `components/doc-sidebar.tsx` is the left rail (thumbnails / outline), pages scroll in the middle, the design panel docks right. New surfaces pick one of those three homes rather than inventing a fourth region.
 - **`app/components/ui/` is the primitive layer.** Shared, unopinionated pieces only (currently `menu.tsx`). Feature-specific UI lives next to its feature, not here.
-- **The inspector overlay is a lens, not an editor.** It reads `data-od-loc` off host JSX and sends edits to `/__edit/*`; it must never mutate rendered DOM to fake a change. What you see after an edit is the re-render from source or it's a lie.
+- **Edit mode types on the page, never into React's DOM.** Text is edited in a clone that stands in for the element (`lib/inspector/inline-edit.ts`); the rendered node is only hidden. Anything shown before Save must be visibly unsaved — the dashed pending frame and the unsaved-edits bar — and Discard must restore exactly what was rendered. After Save, what you see is the re-render from source; the clone only bridges the reload.
 
 ## Escalation triggers — flag on sight
 

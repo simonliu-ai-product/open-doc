@@ -79,6 +79,9 @@ export async function measureFlowSections(
 
   const host = document.createElement('div');
   host.setAttribute('aria-hidden', 'true');
+  // The sheet's own element styles (styles.css) apply here too, so a block
+  // measures as it will print.
+  host.setAttribute('data-od-measure', '');
   Object.assign(host.style, {
     position: 'fixed',
     left: '-99999px',

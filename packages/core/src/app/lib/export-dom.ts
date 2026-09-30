@@ -12,16 +12,24 @@ import { DocPageProvider } from './page-context';
 import { nextFrame, waitForFonts, waitForImages } from './print-ready';
 import { captureScan, restoreScan, scanDocument } from './scan';
 import type { DocModule, PageGeometry } from './sdk';
+import { scopeSvgIds } from './svg-ids';
 import type { ExpandedPage } from './use-doc-pages';
 
 export const ASSET_EXT_RE =
   /\.(?:png|jpe?g|gif|svg|webp|avif|woff2?|ttf|otf)(?:\?[^#]*)?(?:#.*)?$/i;
 
-export async function renderPagesToHtml(
+/**
+ * Draws the pages offscreen at true sheet size, waits until they are settled —
+ * fonts, images, the numbering scan — hands the page hosts to `visit` while
+ * they are still live, and tears everything down after. Exporters that need
+ * computed styles (DOCX reads them) visit the live tree; the others serialise.
+ */
+export async function withRenderedPages<T>(
   pages: ExpandedPage[],
   geometry: PageGeometry,
   doc: DocModule,
-): Promise<string[]> {
+  visit: (hosts: HTMLElement[], container: HTMLElement) => Promise<T> | T,
+): Promise<T> {
   const container = document.createElement('div');
   container.setAttribute('aria-hidden', 'true');
   Object.assign(container.style, {
@@ -62,14 +70,26 @@ export async function renderPagesToHtml(
     scanDocument(container, doc.meta);
     await nextFrame();
     await nextFrame();
+    hosts.forEach((host, i) => {
+      scopeSvgIds(host, `export-${i}`);
+    });
 
-    return hosts.map((host) => host.innerHTML);
+    return await visit(hosts, container);
   } finally {
     for (const root of roots) root.unmount();
     container.remove();
     restoreScan(previousScan);
   }
 }
+
+export async function renderPagesToHtml(
+  pages: ExpandedPage[],
+  geometry: PageGeometry,
+  doc: DocModule,
+): Promise<string[]> {
+  return withRenderedPages(pages, geometry, doc, (hosts) => hosts.map((host) => host.innerHTML));
+}
+
 export function collectCss(): string {
   const chunks: string[] = [];
   for (const sheet of Array.from(document.styleSheets)) {

@@ -1,8 +1,10 @@
+import { isSafeHref } from '../app/lib/href.ts';
 import {
   type AstNode,
   findJsxAt,
   findJsxOnLine,
   parseSource,
+  parseStrict,
   walkAst,
   walkJsx,
 } from './babel-walk.ts';
@@ -28,8 +30,24 @@ export function normalizeText(value: string): string {
  * having to understand — or destroy — the inline markup.
  */
 export type TextPart =
-  | { kind: 'text'; index: number; value: string }
+  | {
+      kind: 'text';
+      index: number;
+      value: string;
+      formattable?: true;
+      /** Present when the run already carries emphasis, code, or links. */
+      segments?: TextSegment[];
+    }
   | { kind: 'markup'; label: string };
+
+/** A stretch of a run and the inline formatting it carries. */
+export type TextSegment = {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  code?: boolean;
+  href?: string;
+};
 
 export type TextTargetInfo = {
   editable: boolean;
@@ -75,8 +93,19 @@ function labelOf(node: AstNode): string {
  * the literal text was found, so the props were never looked for.
  */
 
-/** A span of source an edit may rewrite, and the escaping that span needs. */
-type Slot = { value: string; start: number; end: number; escape: (text: string) => string };
+/**
+ * A span of source an edit may rewrite, and the escaping that span needs.
+ * `jsx` marks text written between tags — the only kind that can take
+ * `<strong>` or `<em>`; an attribute or a string literal holds a string.
+ */
+type Slot = {
+  value: string;
+  start: number;
+  end: number;
+  escape: (text: string) => string;
+  jsx?: true;
+  segments?: TextSegment[];
+};
 
 type Context = { ast: AstNode; source: string; shown?: string };
 
@@ -90,6 +119,7 @@ function literalSlot(node: AstNode): Slot {
     start: node.start + leading,
     end: node.end - trailing,
     escape: escapeJsxText,
+    jsx: true,
   };
 }
 
@@ -409,6 +439,198 @@ function bindingsFor(ctx: Context, element: AstNode, names: string[]): Map<strin
   return bindings.size > 0 ? bindings : null;
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * Formatted runs
+ * ---------------------------------------------------------------------------
+ *
+ * `Use real <code>h1</code>/<code>h2</code> elements` is one sentence to the
+ * reader. Text next to `<strong>`, `<em>`, `<code>` or a plain `<a href>` is
+ * read as a single run whose pieces carry their formatting, so the formatting
+ * can be edited and taken off again. Anything more than a bare mark — a
+ * `style`, a `className`, a component — is still markup the editor leaves
+ * alone, because rewriting the run would drop whatever that attribute meant.
+ */
+
+const MARK_TAGS: Record<string, 'bold' | 'italic' | 'code'> = {
+  strong: 'bold',
+  b: 'bold',
+  em: 'italic',
+  i: 'italic',
+  code: 'code',
+};
+
+type Marks = Omit<TextSegment, 'text'>;
+
+/** JSX's own whitespace rule: lines are trimmed at the break and joined by one space. */
+function cookJsxText(raw: string): string {
+  const lines = raw.split(/\r\n|\n|\r/);
+  if (lines.length === 1) return raw;
+  return lines
+    .map((line, at) => {
+      let out = line;
+      if (at > 0) out = out.replace(/^[ \t]+/, '');
+      if (at < lines.length - 1) out = out.replace(/[ \t]+$/, '');
+      return out;
+    })
+    .filter((line) => line !== '')
+    .join(' ');
+}
+
+function isSpacing(node: AstNode): boolean {
+  if (node.type === 'JSXText') return cookJsxText(node.value as string).trim() === '';
+  if (node.type !== 'JSXExpressionContainer') return false;
+  const expression = node.expression as AstNode | undefined;
+  return expression?.type === 'StringLiteral' && (expression.value as string).trim() === '';
+}
+
+function markOf(node: AstNode): Marks | null {
+  if (node.type !== 'JSXElement') return null;
+  const name = tagName(node);
+  const attributes = ((node.openingElement as AstNode).attributes ?? []) as AstNode[];
+  if (name === 'a') {
+    const only = attributes[0];
+    const value = only?.value as AstNode | undefined;
+    if (attributes.length !== 1 || (only?.name as AstNode | undefined)?.name !== 'href') {
+      return null;
+    }
+    return value?.type === 'StringLiteral' ? { href: value.value as string } : null;
+  }
+  const mark = name ? MARK_TAGS[name] : undefined;
+  return mark && attributes.length === 0 ? { [mark]: true } : null;
+}
+
+/** The pieces a run of children renders, or null when any of them is more than text and marks. */
+function segmentsOf(children: AstNode[], inherited: Marks): TextSegment[] | null {
+  const out: TextSegment[] = [];
+  for (const child of children) {
+    if (child.type === 'JSXText') {
+      out.push({ text: cookJsxText(child.value as string), ...inherited });
+    } else if (isSpacing(child)) {
+      const expression = child.expression as AstNode;
+      out.push({ text: expression.value as string, ...inherited });
+    } else if (isBreak(child)) {
+      out.push({ text: '\n', ...inherited });
+    } else {
+      const marks = markOf(child);
+      if (!marks) return null;
+      const inner = segmentsOf(jsxChildren(child), { ...inherited, ...marks });
+      if (!inner) return null;
+      out.push(...inner);
+    }
+  }
+  return out;
+}
+
+/** `<br />`: a line break inside a run, read as `'\n'` and written back as the same tag. */
+function isBreak(node: AstNode): boolean {
+  if (node.type !== 'JSXElement' || tagName(node) !== 'br') return false;
+  const attributes = ((node.openingElement as AstNode).attributes ?? []) as AstNode[];
+  return attributes.length === 0 && jsxChildren(node).length === 0;
+}
+
+function isInline(child: AstNode): boolean {
+  return child.type === 'JSXText' || isSpacing(child) || isBreak(child) || markOf(child) !== null;
+}
+
+function mergeSegments(segments: TextSegment[]): TextSegment[] {
+  const out: TextSegment[] = [];
+  const same = (a: TextSegment, b: TextSegment) =>
+    Boolean(a.bold) === Boolean(b.bold) &&
+    Boolean(a.italic) === Boolean(b.italic) &&
+    Boolean(a.code) === Boolean(b.code) &&
+    a.href === b.href;
+  for (const segment of segments) {
+    if (segment.text === '') continue;
+    const last = out[out.length - 1];
+    if (last && same(last, segment)) last.text += segment.text;
+    else out.push({ ...segment });
+  }
+  return out;
+}
+
+function isFormatted(segments: TextSegment[] | undefined): segments is TextSegment[] {
+  return (
+    segments?.some((segment) => segment.bold || segment.italic || segment.code || segment.href) ??
+    false
+  );
+}
+
+/**
+ * A run of text and marks as one slot. Spacing at either end is left outside
+ * it, as a literal run's indentation is, so a rewrite keeps the break the
+ * formatter put there.
+ */
+function formattedSlot(group: AstNode[]): Slot | null {
+  let first = 0;
+  let last = group.length - 1;
+  while (first <= last && isSpacing(group[first] as AstNode)) first++;
+  while (last >= first && isSpacing(group[last] as AstNode)) last--;
+  const inner = group.slice(first, last + 1);
+  const head = inner[0];
+  const tail = inner[inner.length - 1];
+  if (!head || !tail) return null;
+  if (inner.length === 1 && head.type === 'JSXText') return literalSlot(head);
+
+  const pieces = segmentsOf(inner, {});
+  if (!pieces) return null;
+  const leading =
+    head.type === 'JSXText' ? ((head.value as string).match(/^\s*/)?.[0] ?? '').length : 0;
+  const trailing =
+    tail.type === 'JSXText' ? ((tail.value as string).match(/\s*$/)?.[0] ?? '').length : 0;
+  const segments = mergeSegments(pieces);
+  // Indentation only: a `<br />` at either end is the author's.
+  const firstPiece = segments[0];
+  if (firstPiece) firstPiece.text = firstPiece.text.replace(/^[ \t]+/, '');
+  const lastPiece = segments[segments.length - 1];
+  if (lastPiece) lastPiece.text = lastPiece.text.replace(/[ \t]+$/, '');
+  const trimmed = mergeSegments(segments);
+  return {
+    value: trimmed.map((segment) => segment.text).join(''),
+    start: head.start + leading,
+    end: tail.end - trailing,
+    escape: escapeJsxText,
+    jsx: true,
+    ...(isFormatted(trimmed) ? { segments: trimmed } : {}),
+  };
+}
+
+const NEST: Array<keyof Marks> = ['href', 'bold', 'italic', 'code'];
+
+/**
+ * Segments back to JSX. Neighbours that share a mark share one tag — a link
+ * over a bold and a plain word is one `<a>`, not two.
+ */
+function renderSegments(
+  segments: TextSegment[],
+  escapeText: (text: string) => string,
+  level = 0,
+): string {
+  const key = NEST[level];
+  if (key === undefined) {
+    return segments
+      .map((segment) => segment.text.split('\n').map(escapeText).join('<br />'))
+      .join('');
+  }
+  const groups: Array<{ value: TextSegment[keyof Marks]; items: TextSegment[] }> = [];
+  for (const segment of segments) {
+    const value = segment[key] || undefined;
+    const last = groups[groups.length - 1];
+    if (last && last.value === value) last.items.push(segment);
+    else groups.push({ value, items: [segment] });
+  }
+  return groups
+    .map(({ value, items }) => {
+      const inner = renderSegments(items, escapeText, level + 1);
+      if (!value) return inner;
+      if (key === 'href')
+        return `<a href="${String(value).split('"').join('&quot;')}">${inner}</a>`;
+      const tag = key === 'bold' ? 'strong' : key === 'italic' ? 'em' : 'code';
+      return `<${tag}>${inner}</${tag}>`;
+    })
+    .join('');
+}
+
 type Resolution = { parts: TextPart[]; slots: Slot[] };
 
 /** The element's children, each resolved to a writable slot or left as markup. */
@@ -422,19 +644,35 @@ function resolve(element: AstNode, ctx?: Context): Resolution {
   const parts: TextPart[] = [];
   const slots: Slot[] = [];
   const take = (slot: Slot): void => {
-    parts.push({ kind: 'text', index: slots.length, value: slot.value });
+    parts.push({
+      kind: 'text',
+      index: slots.length,
+      value: slot.value,
+      ...(slot.jsx ? { formattable: true as const } : {}),
+      ...(slot.segments ? { segments: slot.segments } : {}),
+    });
     slots.push(slot);
   };
 
-  for (const child of children) {
-    if (child.type === 'JSXText') {
-      if ((child.value as string).trim() !== '') take(literalSlot(child));
+  for (let at = 0; at < children.length; at++) {
+    const child = children[at] as AstNode;
+    if (isInline(child)) {
+      let end = at;
+      while (end + 1 < children.length && isInline(children[end + 1] as AstNode)) end++;
+      const group = children.slice(at, end + 1);
+      at = end;
+      const slot = formattedSlot(group);
+      if (slot && slot.value !== '') take(slot);
       continue;
     }
     const name = identifierName(child);
     const slot =
       (name === null ? undefined : bindings?.get(name)) ??
       (ctx ? (expressionSlot(child, ctx.source) ?? undefined) : undefined);
+    // `{' '}` is how JSX keeps a space across a line break. It is spacing, not
+    // words, and it renders as a node the page editor never pairs with a run
+    // — offering it made every paragraph written that way uneditable.
+    if (slot && slot.value.trim() === '') continue;
     if (slot) take(slot);
     else parts.push({ kind: 'markup', label: labelOf(child) });
   }
@@ -445,6 +683,72 @@ export function partsOf(element: AstNode): TextPart[] {
   return resolve(element).parts;
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * Text a framework component renders from an attribute
+ * ---------------------------------------------------------------------------
+ *
+ * `<Figure caption="…">` and `<DataTable columns={[{ label: '…' }]}>` print
+ * words that are not children of anything: they are attribute values at the
+ * call site. The component marks the host that prints one with the call
+ * site's loc and a path into its attributes (`data-od-prop="columns.2.label"`),
+ * and the edit is written to that string and nowhere else.
+ */
+
+function propertyKey(property: AstNode): string | undefined {
+  const key = property.key as AstNode | undefined;
+  return (key?.name as string | undefined) ?? (key?.value as string | undefined);
+}
+
+/** The string a prop path names on the element, as a writable slot. */
+function propSlot(element: AstNode, path: string, source: string): Slot | null {
+  const [name, ...steps] = path.split('.');
+  const attributes = ((element.openingElement as AstNode).attributes ?? []) as AstNode[];
+  const attribute = attributes.find(
+    (candidate) => ((candidate.name as AstNode | undefined)?.name as string | undefined) === name,
+  );
+  const value = attribute?.value as AstNode | undefined;
+  if (value?.type === 'StringLiteral' && steps.length === 0) return attributeSlot(value, source);
+  let node = value?.type === 'JSXExpressionContainer' ? (value.expression as AstNode) : undefined;
+  for (const step of steps) {
+    if (node?.type === 'ArrayExpression' && /^\d+$/.test(step)) {
+      node = ((node.elements ?? []) as (AstNode | null)[])[Number(step)] ?? undefined;
+    } else if (node?.type === 'ObjectExpression') {
+      const match = ((node.properties ?? []) as AstNode[]).find(
+        (property) => property.type === 'ObjectProperty' && propertyKey(property) === step,
+      );
+      node = match?.value as AstNode | undefined;
+    } else {
+      return null;
+    }
+  }
+  return node?.type === 'StringLiteral' ? stringSlot(node, source) : null;
+}
+
+/**
+ * Where an element's content comes from when it is data, not source: a table
+ * whose rows are an imported `.csv`. Naming the file is the useful answer —
+ * the words cannot be edited here, but the reader now knows where they can.
+ */
+function dataSource(element: AstNode, ast: AstNode): string | null {
+  const attributes = ((element.openingElement as AstNode).attributes ?? []) as AstNode[];
+  const names = attributes
+    .map((attribute) => (attribute.value as AstNode | undefined)?.expression as AstNode | undefined)
+    .filter((expression): expression is AstNode => expression?.type === 'Identifier')
+    .map((expression) => expression.name as string);
+  let found: string | null = null;
+  walkAst(ast, (node) => {
+    if (found || node.type !== 'ImportDeclaration') return;
+    const from = (node.source as AstNode).value as string;
+    if (!/\.(csv|tsv|json)$/.test(from)) return;
+    const locals = ((node.specifiers ?? []) as AstNode[]).map(
+      (specifier) => (specifier.local as AstNode).name as string,
+    );
+    if (locals.some((local) => names.includes(local))) found = from;
+  });
+  return found;
+}
+
 function describe(element: AstNode, ctx?: Context): TextTargetInfo {
   const { parts } = resolve(element, ctx);
   const texts = parts.filter(
@@ -452,13 +756,16 @@ function describe(element: AstNode, ctx?: Context): TextTargetInfo {
   );
   if (texts.length === 0) {
     const generated = parts.some((part) => part.kind === 'markup' && part.label === '{…}');
+    const data = ctx ? dataSource(element, ctx.ast) : null;
     return {
       editable: false,
       text: '',
       parts,
-      reason: generated
-        ? 'text is produced by code — edit whatever feeds it'
-        : 'element has no text of its own',
+      reason: data
+        ? `the values come from ${data} — edit that file, or leave a comment for the agent`
+        : generated
+          ? 'text is produced by code — edit whatever feeds it'
+          : 'element has no text of its own',
     };
   }
   return { editable: true, text: texts.map((part) => part.value).join(' '), parts };
@@ -490,9 +797,31 @@ export function resolveTextTarget(
   source: string,
   candidates: EditTarget[],
   expected?: string,
+  prop?: string,
 ): ResolvedTarget | null {
   const ast = parseSource(source);
   if (!ast) return null;
+  if (prop !== undefined) {
+    const first = candidates[0];
+    const element = first && findJsxAt(ast, first.line, first.column);
+    if (!first || !element) return null;
+    const slot = propSlot(element, prop, source);
+    if (!slot) {
+      return {
+        editable: false,
+        text: '',
+        parts: [],
+        reason: `\`${prop}\` is not a plain string here — edit it in source`,
+        ...first,
+      };
+    }
+    return {
+      editable: true,
+      text: slot.value,
+      parts: [{ kind: 'text', index: 0, value: slot.value }],
+      ...first,
+    };
+  }
   const ctx: Context = { ast, source, shown: expected };
   const shown = expected ? normalizeText(expected) : null;
 
@@ -537,26 +866,153 @@ export function replaceTextAt(
   source: string,
   target: EditTarget,
   text: string,
-  opts: { index?: number; expected?: string; shown?: string } = {},
+  opts: {
+    index?: number;
+    expected?: string;
+    shown?: string;
+    segments?: TextSegment[];
+    prop?: string;
+  } = {},
 ): EditResult {
-  const ast = parseSource(source);
-  if (!ast) return { ok: false, status: 422, error: 'could not parse document source' };
+  const { source: next, results } = replaceTextsAt(source, [{ ...target, ...opts, text }]);
+  const result = results[0];
+  if (!result) return { ok: false, status: 500, error: 'no result for the edit' };
+  return result.ok ? { ok: true, source: next } : result;
+}
 
-  const element = findJsxAt(ast, target.line, target.column);
+type SlotResult = { ok: true; slot: Slot } | { ok: false; status: number; error: string };
+
+function slotAt(
+  ast: AstNode,
+  source: string,
+  edit: EditTarget & { index?: number; expected?: string; shown?: string; prop?: string },
+): SlotResult {
+  const element = findJsxAt(ast, edit.line, edit.column);
   if (!element) return { ok: false, status: 404, error: 'no element at that source location' };
+  if (edit.prop !== undefined) {
+    const slot = propSlot(element, edit.prop, source);
+    if (!slot) return { ok: false, status: 422, error: `\`${edit.prop}\` is not a plain string` };
+    if (edit.expected !== undefined && normalizeText(slot.value) !== normalizeText(edit.expected)) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'source changed since this was opened — reselect it',
+      };
+    }
+    return { ok: true, slot };
+  }
 
-  const { slots } = resolve(element, { ast, source, shown: opts.shown });
+  const { slots } = resolve(element, { ast, source, shown: edit.shown });
   if (slots.length === 0) {
     return { ok: false, status: 422, error: 'element has no text to replace' };
   }
-  const slot = slots[opts.index ?? 0];
+  const slot = slots[edit.index ?? 0];
   if (!slot) return { ok: false, status: 404, error: 'no such text run in this element' };
-  if (opts.expected !== undefined && normalizeText(slot.value) !== normalizeText(opts.expected)) {
+  if (edit.expected !== undefined && normalizeText(slot.value) !== normalizeText(edit.expected)) {
     return { ok: false, status: 409, error: 'source changed since this was opened — reselect it' };
   }
+  return { ok: true, slot };
+}
 
-  return {
-    ok: true,
-    source: source.slice(0, slot.start) + slot.escape(text) + source.slice(slot.end),
-  };
+export type TextEdit = EditTarget & {
+  text: string;
+  /** A path into the element's attributes, for words a component prints from a prop. */
+  prop?: string;
+  /** The run as formatted pieces; `text` is their concatenation. */
+  segments?: TextSegment[];
+  index?: number;
+  expected?: string;
+  shown?: string;
+};
+
+/** What goes into the slot: plain escaped text, or JSX for the formatted pieces. */
+function slotText(slot: Slot, edit: TextEdit): string {
+  if (!slot.jsx || !edit.segments) return slot.escape(edit.text);
+  return renderSegments(mergeSegments(edit.segments), slot.escape);
+}
+
+export type TextEditOutcome = { ok: true } | { ok: false; status: number; error: string };
+
+/**
+ * Applies several run replacements as one write.
+ *
+ * Every edit is located against the source as the caller last saw it, before
+ * any of them lands: an edit's `line:column` is only true of that source, and
+ * resolving each against the output of the previous one would find elements
+ * shifted by whatever was typed above them. The splices then go in back to
+ * front so none moves another.
+ *
+ * A failed edit is reported and skipped; the rest still land. Two edits that
+ * reach the same span — one prop rendered by two elements — must agree, or the
+ * later one is refused rather than silently winning.
+ */
+export function replaceTextsAt(
+  source: string,
+  edits: TextEdit[],
+): { source: string; results: TextEditOutcome[] } {
+  const ast = parseStrict(source);
+  if (!ast) {
+    const error = {
+      ok: false as const,
+      status: 422,
+      error: 'the document has a syntax error — fix it in source before editing here',
+    };
+    return { source, results: edits.map(() => error) };
+  }
+
+  const results: TextEditOutcome[] = [];
+  const planned: Array<{ slot: Slot; text: string }> = [];
+  for (const edit of edits) {
+    const found = slotAt(ast, source, edit);
+    if (!found.ok) {
+      results.push(found);
+      continue;
+    }
+    if (found.slot.segments && !edit.segments) {
+      results.push({
+        ok: false,
+        status: 422,
+        error:
+          'this text carries code, emphasis or links — send it as segments so the formatting is kept',
+      });
+      continue;
+    }
+    if (isFormatted(edit.segments) && !found.slot.jsx) {
+      results.push({
+        ok: false,
+        status: 422,
+        error: 'formatting needs text written in the document itself, not passed in as a string',
+      });
+      continue;
+    }
+    const unsafe = edit.segments?.find((segment) => segment.href && !isSafeHref(segment.href));
+    if (unsafe) {
+      results.push({
+        ok: false,
+        status: 422,
+        error: `links must be web, mail, phone, or in-document addresses: ${unsafe.href}`,
+      });
+      continue;
+    }
+    const text = slotText(found.slot, edit);
+    const same = planned.find(
+      (other) => other.slot.start === found.slot.start && other.slot.end === found.slot.end,
+    );
+    if (same && same.text !== text) {
+      results.push({
+        ok: false,
+        status: 409,
+        error: 'another edit in this save rewrites the same text',
+      });
+      continue;
+    }
+    if (!same) planned.push({ slot: found.slot, text });
+    results.push({ ok: true });
+  }
+
+  let next = source;
+  for (const { slot, text } of [...planned].sort((a, b) => b.slot.start - a.slot.start)) {
+    next = next.slice(0, slot.start) + text + next.slice(slot.end);
+  }
+  return { source: next, results };
 }

@@ -1,5 +1,11 @@
 import chalk from 'chalk';
-import { closeRenderSession, type ExportFormat, exportDocument, listDocIds } from '../ops/index.ts';
+import {
+  closeRenderSession,
+  EXPORT_FORMATS,
+  type ExportFormat,
+  exportDocument,
+  listDocIds,
+} from '../ops/index.ts';
 import { cliContext } from './context.ts';
 
 export interface ExportOptions {
@@ -8,7 +14,7 @@ export interface ExportOptions {
   all?: boolean;
 }
 
-const FORMATS: ExportFormat[] = ['pdf', 'html', 'png'];
+const FORMATS: readonly ExportFormat[] = EXPORT_FORMATS;
 
 /**
  * The Download menu without a browser window — the same render pipeline, driven
