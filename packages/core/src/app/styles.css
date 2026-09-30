@@ -46,6 +46,40 @@
   --border: oklch(0.28 0 0);
 }
 
+/* The dock's content arrives from the edge it docks against. Opacity only
+   when motion is reduced; never the width, which would reflow the pages. */
+@keyframes od-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+@keyframes od-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes od-card-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+.od-panel-in {
+  animation: od-panel-in 150ms ease-out;
+}
+/* The save card rises from the edge it sits on; `translate` rather than
+   `transform`, which already centres it. */
+.od-card-in {
+  animation: od-card-in 150ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .od-panel-in,
+  .od-card-in {
+    animation-name: od-fade-in;
+  }
+}
+
 @layer base {
   * {
     border-color: var(--border);

@@ -53,6 +53,8 @@ import {
   writeSegments,
 } from '../../lib/inspector/inline-edit';
 import { PROP_ATTR } from '../../lib/source-loc';
+import { useHistory } from '../history-provider';
+import { PanelIconButton, PanelShell } from '../panel/panel-shell';
 
 type TextPart =
   | { kind: 'text'; index: number; value: string; formattable?: true; segments?: Segment[] }
@@ -84,6 +86,8 @@ export type InspectorTarget = {
  * a prop written at a call site.
  */
 type Entry = {
+  /** Stable across a reload that moves the editor to a new element, so undo can find it. */
+  id: number;
   anchor: HTMLElement;
   editor: MountedEditor;
   line: number;
@@ -506,18 +510,41 @@ function emphasisAt(entry: Entry): Emphasis {
   };
 }
 
+/** What the document view's save card drives: page edits are saved and discarded from there. */
+export type SaveOutcome = { ok: boolean; error?: string };
+
+export type InspectorControls = {
+  save: () => Promise<SaveOutcome>;
+  discard: () => void;
+};
+
 type Props = {
   docId: string;
   /** The scroll container the pages live in. */
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** The design panel shares the right dock and wins it while open. */
   panelHidden: boolean;
+  /** The save card is showing, so the hint underneath it steps aside. */
+  quiet: boolean;
   onExit: () => void;
   /** Set to a function that saves any unsaved text, then leaves edit mode. */
   exitRef: MutableRefObject<(() => void) | null>;
+  controlsRef: MutableRefObject<InspectorControls | null>;
+  onPendingChange: (count: number) => void;
 };
 
-export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }: Props) {
+export function Inspector({
+  docId,
+  containerRef,
+  panelHidden,
+  quiet,
+  onExit,
+  exitRef,
+  controlsRef,
+  onPendingChange,
+}: Props) {
+  const history = useHistory();
+  const nextIdRef = useRef(1);
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [hover, setHover] = useState<HTMLElement | null>(null);
   const [selected, setSelected] = useState<InspectorTarget | null>(null);
@@ -543,7 +570,6 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
-  const barRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const entriesRef = useRef(new Map<HTMLElement, Entry>());
   const sessionStartRef = useRef<Segment[][]>([]);
@@ -554,7 +580,6 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
   const insideChrome = useCallback(
     (node: EventTarget | null) =>
       (panelRef.current?.contains(node as Node) ?? false) ||
-      (barRef.current?.contains(node as Node) ?? false) ||
       (toolbarRef.current?.contains(node as Node) ?? false),
     [],
   );
@@ -592,6 +617,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
           return;
         }
         entry = {
+          id: nextIdRef.current++,
           anchor,
           editor,
           line: resolved.line,
@@ -616,16 +642,45 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     [],
   );
 
-  /** Ends the typing session. The change stays on the page, unsaved, unless reverted. */
+  /** Puts an editor's runs back to a snapshot, wherever a reload has since moved it. */
+  const applySnapshot = useCallback(
+    (id: number, snapshot: Segment[][]) => {
+      for (const entry of entriesRef.current.values()) {
+        if (entry.id !== id) continue;
+        restoreRuns(entry.editor.runs, snapshot);
+        refresh();
+        return;
+      }
+    },
+    [refresh],
+  );
+
+  /**
+   * Ends the typing session. The change stays on the page, unsaved, unless
+   * reverted — and becomes one step in the view's history, beside design
+   * changes. Inside the field, ⌘Z still steps through the typing itself.
+   */
   const finish = useCallback(
     (entry: Entry, revert: boolean) => {
-      if (revert) restoreRuns(entry.editor.runs, sessionStartRef.current);
-      if (dirtyRuns(entry) === 0) drop(entry);
+      const start = sessionStartRef.current;
+      if (revert) restoreRuns(entry.editor.runs, start);
+      const end = snapshotRuns(entry.editor.runs);
+      const changed = !revert && JSON.stringify(end) !== JSON.stringify(start);
+      if (changed) {
+        const { id } = entry;
+        history.record({
+          undo: () => applySnapshot(id, start),
+          redo: () => applySnapshot(id, end),
+        });
+      }
+      // An editor a history step points at stays, even when it now reads as
+      // the source does: undo and redo need it to put the words back.
+      if (dirtyRuns(entry) === 0 && !changed) drop(entry);
       else entry.editor.clone.blur();
       setActive((current) => (current === entry ? null : current));
       refresh();
     },
-    [drop, refresh],
+    [drop, refresh, history, applySnapshot],
   );
 
   const discard = useCallback(() => {
@@ -751,8 +806,12 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     return () => document.removeEventListener('selectionchange', update);
   }, [active]);
 
-  const save = useCallback(async (): Promise<boolean> => {
+  const save = useCallback(async (): Promise<SaveOutcome> => {
     if (active) finish(active, false);
+    // Editors undo brought back to the source's words have nothing to write.
+    for (const entry of [...entriesRef.current.values()]) {
+      if (dirtyRuns(entry) === 0) drop(entry);
+    }
     const entries = [...entriesRef.current.values()];
     const edits: Array<Record<string, unknown>> = [];
     const owners: Entry[] = [];
@@ -773,7 +832,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
         owners.push(entry);
       }
     }
-    if (edits.length === 0) return true;
+    if (edits.length === 0) return { ok: true };
 
     setBusy(true);
     try {
@@ -784,8 +843,9 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       });
       const body = (await res.json()) as { results?: Outcome[]; error?: string };
       if (!res.ok || !body.results) {
-        setStatus(body.error ?? 'Save failed');
-        return false;
+        const error = body.error ?? 'Save failed';
+        setStatus(error);
+        return { ok: false, error };
       }
       const results = body.results;
       const failures = results.filter(
@@ -798,30 +858,38 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       }
       refresh();
       setSelected(null);
-      setStatus(
-        failures.length === 0
-          ? 'Saved to source'
-          : `${failures.length} of ${edits.length} not saved — ${failures[0]?.error ?? 'refused'}`,
-      );
-      return failures.length === 0;
+      if (failures.length === 0) {
+        setStatus('Saved to source');
+        return { ok: true };
+      }
+      const error = `${failures.length} of ${edits.length} not saved — ${failures[0]?.error ?? 'refused'}`;
+      setStatus(error);
+      return { ok: false, error };
     } catch {
       setStatus('Save failed');
-      return false;
+      return { ok: false, error: 'Save failed' };
     } finally {
       setBusy(false);
     }
   }, [active, docId, drop, finish, refresh, settle]);
 
   const leave = useCallback(async () => {
-    if (await save()) onExit();
+    if ((await save()).ok) onExit();
   }, [save, onExit]);
 
   useEffect(() => {
     exitRef.current = () => void leave();
+    controlsRef.current = { save, discard };
     return () => {
       exitRef.current = null;
+      controlsRef.current = null;
     };
-  }, [exitRef, leave]);
+  }, [exitRef, leave, controlsRef, save, discard]);
+
+  useEffect(() => {
+    onPendingChange(pending.length);
+  }, [pending.length, onPendingChange]);
+  useEffect(() => () => onPendingChange(0), [onPendingChange]);
 
   // Leaving edit mode any other way — a route change, closing the tab — drops
   // unsaved text rather than leaving a clone on the page with nothing to own it.
@@ -1002,12 +1070,6 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.keyCode === 229) return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        if (entriesRef.current.size === 0) return;
-        e.preventDefault();
-        void save();
-        return;
-      }
       // The link field handles its own Enter and Escape.
       if (toolbarRef.current?.contains(e.target as Node)) return;
       if (e.key === 'Escape') {
@@ -1047,7 +1109,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [container, insideChrome, entryAt, active, selected, begin, finish, save, leave]);
+  }, [container, insideChrome, entryAt, active, selected, begin, finish, leave]);
 
   // Typing is applied by hand to the run under the caret — see inline-edit.ts
   // for why the browser is not allowed to. IME composition is the exception:
@@ -1309,36 +1371,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
               toolbarRef={toolbarRef}
             />
           )}
-          {pending.length > 0 ? (
-            <div
-              ref={barRef}
-              role="toolbar"
-              aria-label="Unsaved edits"
-              className="sticky bottom-3 z-40 mx-auto flex w-fit items-center gap-1 rounded-full border border-border bg-background py-1 pr-1 pl-3 text-xs shadow-md"
-            >
-              <span className="mr-1 text-muted-foreground">
-                {pending.length} unsaved edit{pending.length > 1 ? 's' : ''}
-              </span>
-              <button
-                type="button"
-                onClick={discard}
-                disabled={busy}
-                className="h-7 rounded-full px-3 transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                Discard
-              </button>
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={busy}
-                title="Save (⌘S)"
-                className="flex h-7 items-center gap-1.5 rounded-full bg-primary px-3 text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {busy ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
-                Save
-              </button>
-            </div>
-          ) : (
+          {!quiet && (
             <div className="pointer-events-none sticky bottom-3 z-40 mx-auto w-fit rounded-full bg-foreground/90 px-3 py-1.5 text-[11px] text-background">
               {status ?? hint}
             </div>
@@ -1352,26 +1385,21 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     <>
       {overlay}
       {selected && !panelHidden && (
-        <aside
-          ref={panelRef}
-          aria-label="Element"
-          className="flex w-72 flex-none flex-col border-border border-l bg-background"
-        >
-          <header className="flex h-10 flex-none items-center justify-between border-border border-b px-3">
-            <span className="font-mono text-[11px] text-muted-foreground">
+        <PanelShell
+          label="Element"
+          panelRef={panelRef}
+          header={
+            <span className="truncate font-mono text-[11px] text-muted-foreground">
               &lt;{selected.tag}&gt; · {target?.line ?? selected.line}:
               {target?.column ?? selected.column}
             </span>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={() => setSelected(null)}
-              className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
+          }
+          actions={
+            <PanelIconButton label="Close" onClick={() => setSelected(null)}>
               <X className="size-3.5" />
-            </button>
-          </header>
-
+            </PanelIconButton>
+          }
+        >
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             <span className="block text-[10px] text-muted-foreground uppercase tracking-wider">
               Text
@@ -1419,7 +1447,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
 
             {status && <p className="mt-2 text-[11px] text-muted-foreground">{status}</p>}
           </div>
-        </aside>
+        </PanelShell>
       )}
     </>
   );

@@ -62,8 +62,8 @@ test.describe('editing on the page', () => {
     await page.keyboard.press('Enter');
 
     // Kept on the page, not yet in source.
-    await expect(page.getByRole('toolbar', { name: 'Unsaved edits' })).toContainText(
-      '1 unsaved edit',
+    await expect(page.getByRole('toolbar', { name: 'Unsaved changes' })).toContainText(
+      '1 unsaved change',
     );
     expect(await readDocSource('edit-target')).toBe(original);
 
@@ -92,8 +92,8 @@ test.describe('editing on the page', () => {
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('Second change');
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('toolbar', { name: 'Unsaved edits' })).toContainText(
-      '2 unsaved edits',
+    await expect(page.getByRole('toolbar', { name: 'Unsaved changes' })).toContainText(
+      '2 unsaved changes',
     );
 
     const puts: string[] = [];
@@ -120,7 +120,7 @@ test.describe('editing on the page', () => {
 
     await expect(viewer(page).locator('[data-od-editing]')).toHaveCount(0);
     await expect(viewer(page).getByText('Editable paragraph')).toBeVisible();
-    await expect(page.getByRole('toolbar', { name: 'Unsaved edits' })).toHaveCount(0);
+    await expect(page.getByRole('toolbar', { name: 'Unsaved changes' })).toHaveCount(0);
     expect(await readDocSource('edit-target')).toBe(original);
   });
 
@@ -206,7 +206,7 @@ test.describe('editing on the page', () => {
     await page.keyboard.press('ControlOrMeta+z');
     await expect(field(page).locator('em')).toHaveCount(0);
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('toolbar', { name: 'Unsaved edits' })).toHaveCount(0);
+    await expect(page.getByRole('toolbar', { name: 'Unsaved changes' })).toHaveCount(0);
     expect(await readDocSource('edit-target')).toBe(original);
   });
 
@@ -339,6 +339,29 @@ test.describe('editing on the page', () => {
     await page.keyboard.press('Shift+Enter');
     await expect(field(page).locator('br')).toHaveCount(0);
     await expect(field(page)).toHaveText('From a prop');
+  });
+
+  test('a finished edit is one step in the card’s undo history', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('Editable heading'));
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Undone heading');
+    await page.keyboard.press('Enter');
+    const card = page.getByRole('toolbar', { name: 'Unsaved changes' });
+    await expect(card).toContainText('1 unsaved change');
+
+    // The original stays hidden behind the editor; the visible heading is what the reader sees.
+    const heading = viewer(page).locator('h1:visible');
+    await card.getByRole('button', { name: 'Undo' }).click();
+    await expect(heading).toHaveText('Editable heading');
+    await expect(card).not.toContainText('unsaved change');
+
+    await card.getByRole('button', { name: 'Redo' }).click();
+    await expect(heading).toHaveText('Undone heading');
+    await card.getByRole('button', { name: 'Save' }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('>Undone heading</h1>');
   });
 
   test('leaving edit mode saves what is still unsaved', async ({ page }) => {
