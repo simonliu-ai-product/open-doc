@@ -6,6 +6,7 @@ import {
   resolveTextTarget,
   type TextEdit,
   type TextEditOutcome,
+  type TextSegment,
 } from '../editing/edit-ops.ts';
 import type { ApiContext } from '../vite/routes/context.ts';
 import { OpsError, resolveEntry } from './documents.ts';
@@ -42,14 +43,16 @@ export async function readText(
 /**
  * `expected` is the text the caller believes is there; when it no longer
  * matches the write is refused rather than silently overwriting someone else's
- * edit. `index` picks a run when the element mixes text and markup.
+ * edit. `index` picks a run when the element mixes text and markup. A run that
+ * carries code, emphasis or links must be written as `segments`, or the write
+ * is refused rather than dropping the formatting.
  */
 export async function writeText(
   ctx: ApiContext,
   docId: string,
   loc: Loc,
   text: string,
-  opts: { index?: number; expected?: string } = {},
+  opts: { index?: number; expected?: string; segments?: TextSegment[] } = {},
 ): Promise<{ ok: true }> {
   const { entry, source } = await sourceOf(ctx, docId);
   const result = replaceTextAt(source, loc, text, opts);

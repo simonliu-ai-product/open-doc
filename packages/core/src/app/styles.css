@@ -50,6 +50,13 @@
   * {
     border-color: var(--border);
   }
+  /* The sheet is paper in both themes. Left alone, a selection on it takes the
+     dark theme's highlight — a muddy slate on white — so it takes the
+     inspector's blue instead, the colour of the frame around the text. */
+  [data-od-page] ::selection {
+    background-color: rgb(59 130 246 / 0.3);
+    color: inherit;
+  }
   /* A heading's space-above is what separates it from the section before it —
      but at the top of a page that space is just a dent. Strip it there so the
      first block of every flow page starts flush with the margin. */

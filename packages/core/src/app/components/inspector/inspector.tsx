@@ -1,4 +1,15 @@
-import { Bold, Check, Italic, Loader2, MessageSquarePlus, X } from 'lucide-react';
+import {
+  Bold,
+  Check,
+  Code,
+  Italic,
+  Link2,
+  Loader2,
+  MessageSquarePlus,
+  RemoveFormatting,
+  Unlink,
+  X,
+} from 'lucide-react';
 import {
   type CSSProperties,
   type MutableRefObject,
@@ -9,14 +20,18 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { isSafeHref } from '../../lib/href';
 import { candidateLocs, formatLocs } from '../../lib/inspector/fiber';
 import {
   cleanRun,
   cleanSegments,
+  clearFormatting,
   focusAt,
   hasMark,
+  hrefOf,
   isFormatted,
   isRunChanged,
+  linkAt,
   locate,
   type Mark,
   type MountedEditor,
@@ -29,13 +44,14 @@ import {
   restoreRuns,
   type Segment,
   selectInRun,
+  setHref,
   snapshotRuns,
   toggleMark,
   writeSegments,
 } from '../../lib/inspector/inline-edit';
 
 type TextPart =
-  | { kind: 'text'; index: number; value: string; formattable?: true }
+  | { kind: 'text'; index: number; value: string; formattable?: true; segments?: Segment[] }
   | { kind: 'markup'; label: string };
 
 type ResolvedTarget = {
@@ -201,22 +217,42 @@ function Frame({
 
 const TOOLBAR_GAP = 6;
 
+type LinkDraft = { run: Run; from: number; to: number; value: string; existing: boolean };
+
+// Icons read at 75% of the foreground and fall to 30% when disabled: dimming a
+// muted colour instead left disabled icons all but invisible on the dark theme.
+const TOOL_CLASS =
+  'flex size-8 items-center justify-center rounded text-foreground/75 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground/60 disabled:text-foreground/30 disabled:hover:bg-transparent aria-pressed:bg-accent aria-pressed:text-foreground';
+
 /**
- * Bold and italic, floating over the text being edited. Deliberately two
- * buttons: size, colour and alignment belong to the document's design system,
- * and a one-off inline style would quietly fork it.
+ * Inline formatting, floating over the text being edited: emphasis, code,
+ * links, and a way to take them off. Size, colour and alignment are not here
+ * on purpose — they belong to the document's design system, and a one-off
+ * inline style would quietly fork it.
  */
 function TextToolbar({
   anchor,
   container,
   emphasis,
+  link,
   onFormat,
+  onOpenLink,
+  onClear,
+  onLinkChange,
+  onLinkApply,
+  onLinkCancel,
   toolbarRef,
 }: {
   anchor: HTMLElement;
   container: HTMLElement;
   emphasis: Emphasis;
+  link: LinkDraft | null;
   onFormat: (mark: Mark) => void;
+  onOpenLink: () => void;
+  onClear: () => void;
+  onLinkChange: (value: string) => void;
+  onLinkApply: () => void;
+  onLinkCancel: () => void;
   toolbarRef: React.RefObject<HTMLDivElement>;
 }) {
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
@@ -243,6 +279,7 @@ function TextToolbar({
 
   const title = (label: string, keys: string) =>
     emphasis.canFormat ? `${label} (${keys})` : (emphasis.reason ?? label);
+  const invalid = link !== null && link.value.trim() !== '' && !isSafeHref(link.value.trim());
 
   return (
     <div
@@ -251,28 +288,111 @@ function TextToolbar({
       aria-label="Text formatting"
       className="pointer-events-auto absolute z-40 flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-md"
       style={position ?? { visibility: 'hidden' }}
-      // Keep focus, and the selection, in the text being edited.
-      onPointerDown={(e) => e.preventDefault()}
+      // Keep focus, and the selection, in the text being edited — except for
+      // the link field, which has to take focus to be typed into.
+      onPointerDown={(e) => {
+        if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
+      }}
     >
-      {(
-        [
-          ['bold', 'Bold', '⌘B', Bold],
-          ['italic', 'Italic', '⌘I', Italic],
-        ] as const
-      ).map(([mark, label, keys, Icon]) => (
-        <button
-          key={mark}
-          type="button"
-          aria-label={label}
-          aria-pressed={emphasis[mark]}
-          title={title(label, keys)}
-          disabled={!emphasis.canFormat}
-          onClick={() => onFormat(mark)}
-          className="flex size-8 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40 disabled:hover:bg-transparent aria-pressed:bg-accent aria-pressed:text-foreground"
-        >
-          <Icon className="size-3.5" />
-        </button>
-      ))}
+      {link ? (
+        <>
+          <input
+            // biome-ignore lint/a11y/noAutofocus: the field opens on an explicit request and is the only thing to do next
+            autoFocus
+            type="url"
+            aria-label="Link address"
+            aria-invalid={invalid}
+            placeholder="https://… or #section"
+            value={link.value}
+            onChange={(e) => onLinkChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (!invalid) onLinkApply();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                onLinkCancel();
+              }
+            }}
+            title={invalid ? 'Only web, mail, phone, or in-document addresses' : undefined}
+            className="h-8 w-64 rounded border border-border bg-transparent px-2 text-xs outline-none focus:border-foreground/40 aria-invalid:border-destructive"
+          />
+          <button
+            type="button"
+            aria-label="Apply link"
+            title="Apply (Enter)"
+            disabled={invalid}
+            onClick={onLinkApply}
+            className={TOOL_CLASS}
+          >
+            <Check className="size-3.5" />
+          </button>
+          {link.existing && (
+            <button
+              type="button"
+              aria-label="Remove link"
+              title="Remove link"
+              onClick={() => {
+                onLinkChange('');
+                onLinkApply();
+              }}
+              className={TOOL_CLASS}
+            >
+              <Unlink className="size-3.5" />
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          {(
+            [
+              ['bold', 'Bold', '⌘B', Bold],
+              ['italic', 'Italic', '⌘I', Italic],
+              ['code', 'Code', '⌘E', Code],
+            ] as const
+          ).map(([mark, label, keys, Icon]) => {
+            const styled = mark === 'bold' && emphasis.boldFromStyle;
+            return (
+              <button
+                key={mark}
+                type="button"
+                aria-label={label}
+                aria-pressed={emphasis[mark]}
+                title={
+                  styled ? 'Already bold — this element’s own style sets it' : title(label, keys)
+                }
+                disabled={!emphasis.canFormat || styled}
+                onClick={() => onFormat(mark)}
+                className={TOOL_CLASS}
+              >
+                <Icon className="size-3.5" />
+              </button>
+            );
+          })}
+          <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
+          <button
+            type="button"
+            aria-label="Link"
+            aria-pressed={emphasis.href !== null}
+            title={emphasis.linkable ? 'Link (⌘K)' : (emphasis.reason ?? 'Link')}
+            disabled={!emphasis.linkable}
+            onClick={onOpenLink}
+            className={TOOL_CLASS}
+          >
+            <Link2 className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Clear formatting"
+            title={title('Clear formatting', '⌘\\')}
+            disabled={!emphasis.canFormat}
+            onClick={onClear}
+            className={TOOL_CLASS}
+          >
+            <RemoveFormatting className="size-3.5" />
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -310,27 +430,71 @@ function selectionIn(entry: Entry): { run: Run; from: number; to: number } | nul
   return at && run ? { run, from: at.from, to: at.to } : null;
 }
 
-type Emphasis = { canFormat: boolean; reason?: string; bold: boolean; italic: boolean };
+type Emphasis = {
+  /** Words are selected, or the caret sits in a link — something the toolbar can act on. */
+  actionable: boolean;
+  canFormat: boolean;
+  /** A link can be edited from a bare caret inside it, not only from a selection. */
+  linkable: boolean;
+  reason?: string;
+  bold: boolean;
+  italic: boolean;
+  code: boolean;
+  /** Bold because the element is styled bold, not because the words are marked. */
+  boldFromStyle: boolean;
+  href: string | null;
+};
+
+const PLAIN: Omit<Emphasis, 'actionable' | 'canFormat' | 'linkable' | 'reason'> = {
+  bold: false,
+  italic: false,
+  code: false,
+  boldFromStyle: false,
+  href: null,
+};
 
 function emphasisAt(entry: Entry): Emphasis {
   const at = selectionIn(entry);
-  if (!at || at.from === at.to) {
-    return { canFormat: false, reason: 'Select words to format', bold: false, italic: false };
+  if (!at) {
+    return {
+      ...PLAIN,
+      actionable: false,
+      canFormat: false,
+      linkable: false,
+      reason: 'Select words to format',
+    };
   }
   if (!at.run.formattable) {
     return {
+      ...PLAIN,
+      actionable: at.from !== at.to,
       canFormat: false,
-      reason:
-        'This text is passed in as a string — bold and italic need text written in the document',
-      bold: false,
-      italic: false,
+      linkable: false,
+      reason: 'This text is passed in as a string — formatting needs text written in the document',
     };
   }
   const segments = readSegments(at.run.el);
+  if (at.from === at.to) {
+    const link = linkAt(segments, at.from);
+    return {
+      ...PLAIN,
+      actionable: link !== null,
+      canFormat: false,
+      linkable: link !== null,
+      reason: 'Select words to format',
+      href: link?.href ?? null,
+    };
+  }
+  const bold = hasMark(segments, at.from, at.to, 'bold');
   return {
+    actionable: true,
     canFormat: true,
-    bold: hasMark(segments, at.from, at.to, 'bold'),
+    linkable: true,
+    bold,
     italic: hasMark(segments, at.from, at.to, 'italic'),
+    code: hasMark(segments, at.from, at.to, 'code'),
+    boldFromStyle: !bold && Number.parseInt(getComputedStyle(at.run.el).fontWeight, 10) >= 600,
+    href: hrefOf(segments, at.from, at.to),
   };
 }
 
@@ -489,20 +653,76 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
    * carry it — a prop or an array entry is a string in source, and a string
    * has nowhere to put a `<strong>`.
    */
+  const reformat = useCallback(
+    (run: Run, from: number, to: number, change: (segments: Segment[]) => Segment[]) => {
+      if (!active) return;
+      active.undo.push(snapshotRuns(active.editor.runs));
+      active.redo = [];
+      active.lastInsert = 0;
+      writeSegments(run.el, change(readSegments(run.el)));
+      active.editor.clone.focus({ preventScroll: true });
+      selectInRun(run.el, from, to);
+      refresh();
+    },
+    [active, refresh],
+  );
+
   const format = useCallback(
     (mark: Mark) => {
       if (!active) return;
       const at = selectionIn(active);
       if (!at || at.from === at.to || !at.run.formattable) return;
-      active.undo.push(snapshotRuns(active.editor.runs));
-      active.redo = [];
-      active.lastInsert = 0;
-      writeSegments(at.run.el, toggleMark(readSegments(at.run.el), at.from, at.to, mark));
-      selectInRun(at.run.el, at.from, at.to);
-      refresh();
+      if (mark === 'bold' && emphasisAt(active).boldFromStyle) return;
+      reformat(at.run, at.from, at.to, (segments) => toggleMark(segments, at.from, at.to, mark));
     },
-    [active, refresh],
+    [active, reformat],
   );
+
+  const clear = useCallback(() => {
+    if (!active) return;
+    const at = selectionIn(active);
+    if (!at || at.from === at.to || !at.run.formattable) return;
+    reformat(at.run, at.from, at.to, (segments) => clearFormatting(segments, at.from, at.to));
+  }, [active, reformat]);
+
+  const [linkDraft, setLinkDraft] = useState<LinkDraft | null>(null);
+  useEffect(() => {
+    void active;
+    setLinkDraft(null);
+  }, [active]);
+
+  /** Opens the link field over the selection, or over the whole link the caret is in. */
+  const openLink = useCallback(() => {
+    if (!active) return;
+    const at = selectionIn(active);
+    if (!at?.run.formattable) return;
+    const segments = readSegments(at.run.el);
+    let { from, to } = at;
+    if (from === to) {
+      const link = linkAt(segments, from);
+      if (!link) return;
+      ({ from, to } = link);
+    }
+    const href = hrefOf(segments, from, to);
+    setLinkDraft({ run: at.run, from, to, value: href ?? '', existing: href !== null });
+  }, [active]);
+
+  const applyLink = useCallback(() => {
+    if (!linkDraft) return;
+    const href = linkDraft.value.trim();
+    if (href !== '' && !isSafeHref(href)) return;
+    const { run, from, to } = linkDraft;
+    setLinkDraft(null);
+    reformat(run, from, to, (segments) => setHref(segments, from, to, href || null));
+  }, [linkDraft, reformat]);
+
+  const cancelLink = useCallback(() => {
+    if (!active || !linkDraft) return;
+    const { run, from, to } = linkDraft;
+    setLinkDraft(null);
+    active.editor.clone.focus({ preventScroll: true });
+    selectInRun(run.el, from, to);
+  }, [active, linkDraft]);
 
   const [emphasis, setEmphasis] = useState<Emphasis | null>(null);
   useEffect(() => {
@@ -536,7 +756,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
           expected: run.expected,
           shown: entry.shown,
           text: cleanRun(run.el.textContent ?? '', run.expected),
-          ...(isFormatted(segments) ? { segments } : {}),
+          ...(run.formattable ? { segments } : {}),
         });
         owners.push(entry);
       }
@@ -645,6 +865,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
                   index: run.index,
                   value: run.expected,
                   formattable: run.formattable,
+                  ...(isFormatted(run.expectedSegments) ? { segments: run.expectedSegments } : {}),
                 })),
               )
             : null;
@@ -772,6 +993,8 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
         void save();
         return;
       }
+      // The link field handles its own Enter and Escape.
+      if (toolbarRef.current?.contains(e.target as Node)) return;
       if (e.key === 'Escape') {
         if (active) {
           e.preventDefault();
@@ -876,9 +1099,15 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       if (key === 'z' || (key === 'y' && e.ctrlKey)) {
         e.preventDefault();
         step(e.shiftKey || key === 'y');
-      } else if (key === 'b' || key === 'i') {
+      } else if (key === 'b' || key === 'i' || key === 'e') {
         e.preventDefault();
-        format(key === 'b' ? 'bold' : 'italic');
+        format(key === 'b' ? 'bold' : key === 'i' ? 'italic' : 'code');
+      } else if (key === 'k') {
+        e.preventDefault();
+        openLink();
+      } else if (key === '\\') {
+        e.preventDefault();
+        clear();
       } else if (key === 'u') {
         e.preventDefault();
       }
@@ -916,7 +1145,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       clone.removeEventListener('compositionstart', onCompositionStart);
       clone.removeEventListener('compositionend', onCompositionEnd);
     };
-  }, [active, finish, refresh, format]);
+  }, [active, finish, refresh, format, openLink, clear]);
 
   // Report the pick to the dev server so `current.json` can answer "this
   // element" for an agent. Clearing the selection clears it there too.
@@ -1044,12 +1273,20 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
             />
             <Frame anchor={selectedEl} container={container} variant="selected" />
           </div>
-          {active && emphasis && (
+          {/* Only while there is something to act on: a row of disabled
+              buttons over every caret covers the line above for nothing. */}
+          {active && emphasis && (emphasis.actionable || linkDraft) && (
             <TextToolbar
               anchor={active.editor.clone}
               container={container}
               emphasis={emphasis}
+              link={linkDraft}
               onFormat={format}
+              onOpenLink={openLink}
+              onClear={clear}
+              onLinkChange={(value) => setLinkDraft((prev) => (prev ? { ...prev, value } : prev))}
+              onLinkApply={applyLink}
+              onLinkCancel={cancelLink}
               toolbarRef={toolbarRef}
             />
           )}

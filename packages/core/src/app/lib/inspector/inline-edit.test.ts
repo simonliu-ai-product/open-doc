@@ -1,53 +1,69 @@
 import { describe, expect, it } from 'vitest';
 import {
   cleanRun,
+  clearFormatting,
   hasMark,
   holdSpaces,
+  hrefOf,
   isRunDirty,
+  linkAt,
   mapSegmentText,
-  matchRuns,
+  matchRanges,
   mergeSegments,
+  setHref,
   spliceSegments,
   toggleMark,
 } from './inline-edit.ts';
 
-describe('matchRuns', () => {
-  it('pairs runs with the element’s own text nodes, skipping separators', () => {
+const text = (value: string) => ({ text: value, inline: true });
+const mark = (value: string) => ({ text: value, inline: true });
+const markup = (value: string) => ({ text: value, inline: false });
+
+describe('matchRanges', () => {
+  it('pairs runs with text nodes, stepping over separators and markup', () => {
     // `{agency}　{kind}` renders three text nodes; the ideographic space is
-    // whitespace and never offered as a run.
+    // whitespace and never part of a run.
     const parts = [
       { index: 0, value: '範例市政府' },
       { index: 1, value: '函' },
     ];
-    expect(matchRuns(parts, ['範例市政府', '函'], ['範例市政府', '函'])).toEqual({
-      deep: false,
-      at: [0, 1],
-    });
+    expect(matchRanges(parts, [text('範例市政府'), text('　'), text('函')])).toEqual([
+      [0, 0],
+      [2, 2],
+    ]);
   });
 
-  it('prefers direct text over identical words inside markup', () => {
-    // `<p><code>mcp</code> mcp</p>`: the run is the paragraph's own word, not
-    // the one inside the code element.
-    const parts = [{ index: 0, value: 'mcp' }];
-    expect(matchRuns(parts, [' mcp'], ['mcp', ' mcp'])).toEqual({ deep: false, at: [0] });
+  it('gathers text and bare marks into one run', () => {
+    const parts = [{ index: 0, value: 'Use real h1/h2 elements' }];
+    expect(
+      matchRanges(parts, [text('Use real '), mark('h1'), text('/'), mark('h2'), text(' elements')]),
+    ).toEqual([[0, 4]]);
   });
 
-  it('falls back to descendants when a helper wraps its children', () => {
-    const parts = [{ index: 0, value: 'Vertex AI Gemini' }];
-    expect(matchRuns(parts, [], ['Vertex AI Gemini'])).toEqual({ deep: true, at: [0] });
+  it('keeps runs apart at markup that is not a bare mark', () => {
+    const parts = [
+      { index: 0, value: 'before' },
+      { index: 1, value: 'after' },
+    ];
+    expect(matchRanges(parts, [text('before '), markup('x'), text(' after')])).toEqual([
+      [0, 0],
+      [2, 2],
+    ]);
+  });
+
+  it('steps over text the source cannot claim', () => {
+    // `{count} items`, where the count is computed: its text node is not a run.
+    const parts = [{ index: 0, value: 'items' }];
+    expect(matchRanges(parts, [text('3'), text(' items')])).toEqual([[1, 1]]);
   });
 
   it('matches across JSX line collapsing', () => {
     const parts = [{ index: 0, value: 'Availability held\n      above target.' }];
-    expect(matchRuns(parts, ['Availability held above target.'], [])).toEqual({
-      deep: false,
-      at: [0],
-    });
+    expect(matchRanges(parts, [text('Availability held above target.')])).toEqual([[0, 0]]);
   });
 
   it('refuses when the rendered text is not what the source says', () => {
-    const parts = [{ index: 0, value: 'Title' }];
-    expect(matchRuns(parts, ['TITLE'], ['TITLE'])).toBeNull();
+    expect(matchRanges([{ index: 0, value: 'Title' }], [text('TITLE')])).toBeNull();
   });
 
   it('keeps runs in document order', () => {
@@ -55,7 +71,7 @@ describe('matchRuns', () => {
       { index: 0, value: 'b' },
       { index: 1, value: 'a' },
     ];
-    expect(matchRuns(parts, ['a', 'b'], ['a', 'b'])).toBeNull();
+    expect(matchRanges(parts, [text('a'), markup('-'), text('b')])).toBeNull();
   });
 });
 
@@ -138,6 +154,14 @@ describe('segments', () => {
     ]);
   });
 
+  it('keeps the formatting of the words a selection replaces', () => {
+    const bolded = toggleMark(plain, 10, 17, 'bold');
+    expect(spliceSegments(bolded, 10, 17, 'digest')).toEqual([
+      { text: 'Executive ' },
+      { text: 'digest', bold: true },
+    ]);
+  });
+
   it('deletes across pieces and merges what is left', () => {
     const bolded = toggleMark(plain, 10, 17, 'bold');
     expect(spliceSegments(bolded, 9, 17, '')).toEqual([{ text: 'Executive' }]);
@@ -161,5 +185,60 @@ describe('segments', () => {
 
   it('drops empty pieces and joins equal neighbours', () => {
     expect(mergeSegments([{ text: 'a' }, { text: '' }, { text: 'b' }])).toEqual([{ text: 'ab' }]);
+  });
+});
+
+describe('code, links and clearing', () => {
+  const plain = [{ text: 'See the guide now' }];
+
+  it('toggles code like any other mark', () => {
+    expect(toggleMark(plain, 8, 13, 'code')).toEqual([
+      { text: 'See the ' },
+      { text: 'guide', code: true },
+      { text: ' now' },
+    ]);
+  });
+
+  it('links a range, and finds the whole link from a caret inside it', () => {
+    const linked = setHref(plain, 4, 13, '/guide');
+    expect(linked).toEqual([
+      { text: 'See ' },
+      { text: 'the guide', href: '/guide' },
+      { text: ' now' },
+    ]);
+    expect(linkAt(linked, 6)).toEqual({ from: 4, to: 13, href: '/guide' });
+    expect(linkAt(linked, 13)).toEqual({ from: 4, to: 13, href: '/guide' });
+    expect(linkAt(linked, 2)).toBeNull();
+    expect(hrefOf(linked, 4, 13)).toBe('/guide');
+    expect(hrefOf(linked, 2, 13)).toBeNull();
+  });
+
+  it('unlinks with a null href', () => {
+    const linked = setHref(plain, 4, 13, '/guide');
+    expect(setHref(linked, 4, 13, null)).toEqual(plain);
+  });
+
+  it('does not extend a link when typing just past its end', () => {
+    const linked = setHref(plain, 4, 13, '/guide');
+    expect(spliceSegments(linked, 13, 13, 's')).toEqual([
+      { text: 'See ' },
+      { text: 'the guide', href: '/guide' },
+      { text: 's now' },
+    ]);
+    // Inside the link, typing stays in it.
+    expect(spliceSegments(linked, 8, 8, 'x')).toEqual([
+      { text: 'See ' },
+      { text: 'the xguide', href: '/guide' },
+      { text: ' now' },
+    ]);
+  });
+
+  it('clears every kind of formatting from the range only', () => {
+    const busy = toggleMark(setHref(toggleMark(plain, 0, 17, 'bold'), 4, 13, '/g'), 8, 13, 'code');
+    expect(clearFormatting(busy, 4, 13)).toEqual([
+      { text: 'See ', bold: true },
+      { text: 'the guide' },
+      { text: ' now', bold: true },
+    ]);
   });
 });

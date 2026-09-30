@@ -172,17 +172,29 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
     {
       title: 'Replace text at a location',
       description:
-        'Surgical edit of one text run, leaving surrounding markup untouched. Pass `expected` so a stale write is refused.',
+        'Surgical edit of one text run, leaving surrounding markup untouched. Pass `expected` so a stale write is refused. A run that read_text returned with `segments` (code, emphasis, links) must be written with `segments` too, or it is refused rather than losing its formatting.',
       inputSchema: z.object({
         docId: z.string(),
         loc: LOC,
         text: z.string(),
         index: z.number().int().nonnegative().optional().describe('which run, for mixed content'),
         expected: z.string().optional(),
+        segments: z
+          .array(
+            z.object({
+              text: z.string(),
+              bold: z.boolean().optional(),
+              italic: z.boolean().optional(),
+              code: z.boolean().optional(),
+              href: z.string().optional(),
+            }),
+          )
+          .optional()
+          .describe('the run as formatted pieces, in order; their texts concatenate to `text`'),
       }),
     },
-    ({ docId, loc, text, index, expected }) =>
-      run(() => writeText(ctx, docId, loc, text, { index, expected })),
+    ({ docId, loc, text, index, expected, segments }) =>
+      run(() => writeText(ctx, docId, loc, text, { index, expected, segments })),
   );
 
   server.registerTool(

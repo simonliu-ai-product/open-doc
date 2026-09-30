@@ -28,7 +28,13 @@ function readSegments(value: unknown): TextSegment[] | undefined {
   const segments: TextSegment[] = [];
   for (const raw of value as Record<string, unknown>[]) {
     if (typeof raw?.text !== 'string') return undefined;
-    segments.push({ text: raw.text, bold: raw.bold === true, italic: raw.italic === true });
+    segments.push({
+      text: raw.text,
+      bold: raw.bold === true,
+      italic: raw.italic === true,
+      code: raw.code === true,
+      ...(typeof raw.href === 'string' ? { href: raw.href } : {}),
+    });
   }
   return segments;
 }

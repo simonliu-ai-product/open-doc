@@ -16,40 +16,60 @@
  * left to itself the browser deletes an emptied span and puts the next
  * character beside it, where no run can claim it.
  *
- * A run is held as segments — stretches of text and the emphasis on them — so
- * bold and italic can be previewed as real `<strong>`/`<em>` inside the run
- * and still be read back as one run the source can take.
+ * A run is held as segments — stretches of text and the formatting on them —
+ * so bold, italic, code and links show as real `<strong>`, `<em>`, `<code>`
+ * and `<a>` inside the run and still read back as one run the source can take.
  */
 
 export const EDITING_ATTR = 'data-od-editing';
 const RUN_ATTR = 'data-od-run';
 
-export type RunPart = { index: number; value: string; formattable?: boolean };
+export type Mark = 'bold' | 'italic' | 'code';
+export type Segment = {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  code?: boolean;
+  href?: string;
+};
+
+export type RunPart = {
+  index: number;
+  value: string;
+  formattable?: boolean;
+  segments?: Segment[];
+};
 
 export type Run = {
   index: number;
   /** The run's text in source, as the server resolved it. */
   expected: string;
-  /** Written between tags in source, so it can take `<strong>` and `<em>`. */
+  /** The run's formatting in source; plain text when it has none. */
+  expectedSegments: Segment[];
+  /** Written between tags in source, so it can take formatting. */
   formattable: boolean;
   el: HTMLElement;
 };
 
-export type Mark = 'bold' | 'italic';
-export type Segment = { text: string; bold?: boolean; italic?: boolean };
-
 function sameMarks(a: Segment, b: Segment): boolean {
-  return Boolean(a.bold) === Boolean(b.bold) && Boolean(a.italic) === Boolean(b.italic);
+  return (
+    Boolean(a.bold) === Boolean(b.bold) &&
+    Boolean(a.italic) === Boolean(b.italic) &&
+    Boolean(a.code) === Boolean(b.code) &&
+    a.href === b.href
+  );
 }
 
 function marksOf(segment: Segment | undefined): Omit<Segment, 'text'> {
   return {
     ...(segment?.bold ? { bold: true } : {}),
     ...(segment?.italic ? { italic: true } : {}),
+    ...(segment?.code ? { code: true } : {}),
+    ...(segment?.href ? { href: segment.href } : {}),
   };
 }
 
-/** Drops empty pieces and joins neighbours that carry the same emphasis. */
+/** Drops empty pieces and joins neighbours that carry the same formatting. */
 export function mergeSegments(segments: Segment[]): Segment[] {
   const out: Segment[] = [];
   for (const segment of segments) {
@@ -76,9 +96,11 @@ function explode(segments: Segment[]): Segment[] {
 }
 
 /**
- * Replaces characters `from`–`to` with `text`. What is typed takes the
- * emphasis of the character before it — typing at the end of a bold word
- * continues the bold — or of the first character when there is none before.
+ * Replaces characters `from`–`to` with `text`. Typing over a selection takes
+ * the formatting of what it replaces — retyping a bold word keeps it bold.
+ * Typing at a caret takes the formatting of the character before it, so
+ * typing at the end of a bold word continues the bold. A link is the
+ * exception: typing just past its end does not extend it.
  */
 export function spliceSegments(
   segments: Segment[],
@@ -87,8 +109,10 @@ export function spliceSegments(
   text: string,
 ): Segment[] {
   const chars = explode(segments);
-  const like = chars[from - 1] ?? chars[from] ?? chars[0];
-  const inserted = text.split('').map((char) => ({ text: char, ...marksOf(like) }));
+  const source = to > from ? chars[from] : (chars[from - 1] ?? chars[from]);
+  const like = { ...marksOf(source ?? chars[0]) };
+  if (like.href && chars[to]?.href !== like.href && from > 0) delete like.href;
+  const inserted = text.split('').map((char) => ({ text: char, ...like }));
   return mergeSegments([...chars.slice(0, from), ...inserted, ...chars.slice(to)]);
 }
 
@@ -107,6 +131,51 @@ export function toggleMark(segments: Segment[], from: number, to: number, mark: 
   return mergeSegments(chars);
 }
 
+/** Links the range to `href`, or unlinks it when `href` is null. */
+export function setHref(
+  segments: Segment[],
+  from: number,
+  to: number,
+  href: string | null,
+): Segment[] {
+  const chars = explode(segments).map((char, at) => {
+    if (at < from || at >= to) return char;
+    const { href: _drop, ...rest } = char;
+    return href ? { ...rest, href } : rest;
+  });
+  return mergeSegments(chars);
+}
+
+/** Takes every kind of formatting off the range. */
+export function clearFormatting(segments: Segment[], from: number, to: number): Segment[] {
+  const chars = explode(segments).map((char, at) =>
+    at >= from && at < to ? { text: char.text } : char,
+  );
+  return mergeSegments(chars);
+}
+
+/** The link under `offset`, and how far it reaches either side. */
+export function linkAt(
+  segments: Segment[],
+  offset: number,
+): { from: number; to: number; href: string } | null {
+  const chars = explode(segments);
+  const href = chars[offset]?.href ?? chars[offset - 1]?.href;
+  if (!href) return null;
+  let from = chars[offset]?.href === href ? offset : offset - 1;
+  let to = from + 1;
+  while (from > 0 && chars[from - 1]?.href === href) from--;
+  while (to < chars.length && chars[to]?.href === href) to++;
+  return { from, to, href };
+}
+
+/** The href shared by every character in the range, if there is one. */
+export function hrefOf(segments: Segment[], from: number, to: number): string | null {
+  const chars = explode(segments).slice(from, to);
+  const href = chars[0]?.href;
+  return href && chars.every((char) => char.href === href) ? href : null;
+}
+
 /** A length-preserving rewrite of the text, applied across piece boundaries. */
 export function mapSegmentText(segments: Segment[], fn: (text: string) => string): Segment[] {
   const next = fn(segmentsText(segments));
@@ -116,6 +185,21 @@ export function mapSegmentText(segments: Segment[], fn: (text: string) => string
     at += segment.text.length;
     return { ...segment, text };
   });
+}
+
+/**
+ * The formatting of a run, character by character, blind to whitespace — two
+ * runs whose words carry the same marks compare equal however their spaces
+ * were written.
+ */
+function formatSignature(segments: Segment[]): string {
+  return explode(segments)
+    .filter((char) => char.text.trim() !== '')
+    .map(
+      (char) =>
+        `${char.text}${char.bold ? 'b' : ''}${char.italic ? 'i' : ''}${char.code ? 'c' : ''}${char.href ?? ''}`,
+    )
+    .join('\n');
 }
 
 export type MountedEditor = {
@@ -128,59 +212,99 @@ export function normalize(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+const MARK_ELEMENTS = new Set(['STRONG', 'B', 'EM', 'I', 'CODE']);
+
 /**
- * Pairs each source run with a rendered text node, in order.
- *
- * Direct children are tried first: that is where a run sits when the element
- * writes its own text or renders a prop. Only if that fails are descendants
- * considered — a helper may wrap its children — because matching descendants
- * first would hand a run the text of a `<code>` that happens to read the same.
- * Returns which pool matched and the node position per run, or null when any
- * run cannot be placed.
+ * The DOM side of the server's rule: a bare mark, or a link with nothing but
+ * an href, holding only text and other marks. `data-*` attributes do not
+ * count: the loc tag is ours, and extensions and tooling stamp their own onto
+ * whatever they touch. One the author wrote makes the server call the element
+ * markup, and the runs it splits into still line up here.
  */
-export function matchRuns(
-  parts: RunPart[],
-  direct: string[],
-  all: string[],
-): { deep: boolean; at: number[] } | null {
-  const attempt = (pool: string[]): number[] | null => {
-    const picked: number[] = [];
-    let from = 0;
-    for (const part of parts) {
-      const want = normalize(part.value);
-      let found = -1;
-      for (let at = from; at < pool.length; at++) {
-        if (normalize(pool[at] ?? '') === want) {
-          found = at;
-          break;
-        }
-      }
-      if (found < 0) return null;
-      picked.push(found);
-      from = found + 1;
-    }
-    return picked;
-  };
-  if (parts.length === 0) return null;
-  const shallow = attempt(direct);
-  if (shallow) return { deep: false, at: shallow };
-  const deep = all.length > direct.length ? attempt(all) : null;
-  return deep ? { deep: true, at: deep } : null;
+function isMarkElement(el: Element): boolean {
+  const own = Array.from(el.attributes)
+    .map((attribute) => attribute.name)
+    .filter((name) => !name.startsWith('data-'));
+  const bare =
+    el.tagName === 'A'
+      ? own.length === 1 && own[0] === 'href'
+      : MARK_ELEMENTS.has(el.tagName) && own.length === 0;
+  return bare && Array.from(el.children).every(isMarkElement);
 }
 
-function textNodes(root: Node, deep: boolean): Text[] {
-  const out: Text[] = [];
-  const visit = (node: Node): void => {
-    for (const child of Array.from(node.childNodes)) {
-      if (child.nodeType === Node.TEXT_NODE) {
-        if (normalize(child.nodeValue ?? '') !== '') out.push(child as Text);
-      } else if (deep) {
-        visit(child);
+export type Item = { text: string; inline: boolean };
+
+/**
+ * Pairs each source run with a stretch of the element's children, in order.
+ *
+ * A run is text and marks side by side, so its match is a contiguous range of
+ * inline children — text nodes, bare marks — whose words read as the run's.
+ * Markup between runs is stepped over; so is text a run does not claim, such
+ * as the output of an expression the source cannot trace. Returns the range
+ * per run, or null when any run cannot be placed.
+ */
+export function matchRanges(parts: RunPart[], items: Item[]): Array<[number, number]> | null {
+  if (parts.length === 0) return null;
+  const out: Array<[number, number]> = [];
+  let from = 0;
+  for (const part of parts) {
+    const want = normalize(part.value);
+    let found: [number, number] | null = null;
+    for (let start = from; start < items.length && !found; start++) {
+      const first = items[start];
+      if (!first?.inline || normalize(first.text) === '') continue;
+      let seen = '';
+      for (let end = start; end < items.length; end++) {
+        const item = items[end];
+        if (!item?.inline) break;
+        seen += item.text;
+        const have = normalize(seen);
+        if (have === want) {
+          found = [start, end];
+          break;
+        }
+        if (!want.startsWith(have)) break;
       }
     }
-  };
-  visit(root);
+    if (!found) return null;
+    out.push(found);
+    from = found[1] + 1;
+  }
   return out;
+}
+
+function itemsOf(anchor: HTMLElement): Item[] {
+  return Array.from(anchor.childNodes).map((node) => ({
+    text: node.textContent ?? '',
+    inline: node.nodeType === Node.TEXT_NODE || (node instanceof Element && isMarkElement(node)),
+  }));
+}
+
+/**
+ * A helper may wrap its children one level down, so a plain run that is not
+ * among the element's own children is looked for as a single text node
+ * anywhere inside it. A formatted run is never searched for this way: its
+ * pieces would have to be gathered from wherever they happened to fall.
+ */
+function deepTextNodes(anchor: HTMLElement, parts: RunPart[]): Text[] | null {
+  if (parts.some((part) => part.segments)) return null;
+  const pool: Text[] = [];
+  const walker = document.createTreeWalker(anchor, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (normalize(node.nodeValue ?? '') !== '') pool.push(node as Text);
+  }
+  const picked: Text[] = [];
+  let from = 0;
+  for (const part of parts) {
+    const at = pool.findIndex(
+      (node, index) => index >= from && normalize(node.nodeValue ?? '') === normalize(part.value),
+    );
+    const node = pool[at];
+    if (at < 0 || !node) return null;
+    picked.push(node);
+    from = at + 1;
+  }
+  return picked;
 }
 
 function pathOf(node: Node, root: Node): number[] {
@@ -207,13 +331,9 @@ function follow(root: Node, path: number[]): Node | null {
  * caller then says why rather than guessing which words go where.
  */
 export function mountEditor(anchor: HTMLElement, parts: RunPart[]): MountedEditor | null {
-  const direct = textNodes(anchor, false);
-  const all = textNodes(anchor, true);
-  const valuesOf = (nodes: Text[]) => nodes.map((node) => node.nodeValue ?? '');
-  const matched = matchRuns(parts, valuesOf(direct), valuesOf(all));
-  if (!matched) return null;
-  const pool = matched.deep ? all : direct;
-  const paths = matched.at.map((at) => pathOf(pool[at] as Text, anchor));
+  const ranges = matchRanges(parts, itemsOf(anchor));
+  const deep = ranges ? null : deepTextNodes(anchor, parts);
+  if (!ranges && !deep) return null;
 
   const clone = anchor.cloneNode(true) as HTMLElement;
   // Ids and loc tags belong to the original: a duplicate id would capture
@@ -224,18 +344,28 @@ export function mountEditor(anchor: HTMLElement, parts: RunPart[]): MountedEdito
     el.removeAttribute('data-od-loc');
   }
 
-  const targets = paths.map((path) => follow(clone, path));
+  // Resolve every run's nodes in the clone before moving any of them, so one
+  // run's wrapping cannot shift the positions another is found by.
+  const groups: Node[][] = ranges
+    ? ranges.map(([start, end]) => Array.from(clone.childNodes).slice(start, end + 1))
+    : (deep ?? []).map((node) => {
+        const twin = follow(clone, pathOf(node, anchor));
+        return twin ? [twin] : [];
+      });
+
   const runs: Run[] = [];
-  targets.forEach((node, at) => {
+  groups.forEach((nodes, at) => {
     const part = parts[at];
-    if (!node || !part) return;
+    const first = nodes[0];
+    if (!part || !first) return;
     const span = document.createElement('span');
     span.setAttribute(RUN_ATTR, String(part.index));
-    node.parentNode?.replaceChild(span, node);
-    span.appendChild(node);
+    first.parentNode?.insertBefore(span, first);
+    for (const node of nodes) span.appendChild(node);
     runs.push({
       index: part.index,
       expected: part.value,
+      expectedSegments: part.segments ?? [{ text: part.value }],
       formattable: part.formattable ?? false,
       el: span,
     });
@@ -257,6 +387,10 @@ export function mountEditor(anchor: HTMLElement, parts: RunPart[]): MountedEdito
   clone.style.outline = 'none';
   clone.style.cursor = 'text';
   clone.style.userSelect = 'text';
+  // A link inside the text being edited is text to edit, not a way off the page.
+  clone.addEventListener('click', (event) => {
+    if ((event.target as Element | null)?.closest?.('a')) event.preventDefault();
+  });
 
   const display = anchor.style.getPropertyValue('display');
   const priority = anchor.style.getPropertyPriority('display');
@@ -278,9 +412,15 @@ export function readRuns(runs: Run[]): string[] {
   return runs.map((run) => run.el.textContent ?? '');
 }
 
-const MARK_TAGS: Record<string, Mark> = { STRONG: 'bold', B: 'bold', EM: 'italic', I: 'italic' };
+const MARK_TAGS: Record<string, Mark> = {
+  STRONG: 'bold',
+  B: 'bold',
+  EM: 'italic',
+  I: 'italic',
+  CODE: 'code',
+};
 
-/** The run as it stands on the page, emphasis included. */
+/** The run as it stands on the page, formatting included. */
 export function readSegments(el: HTMLElement): Segment[] {
   const out: Segment[] = [];
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -289,25 +429,32 @@ export function readSegments(el: HTMLElement): Segment[] {
     for (let at = node.parentElement; at && at !== el; at = at.parentElement) {
       const mark = MARK_TAGS[at.tagName];
       if (mark) segment[mark] = true;
+      if (at.tagName === 'A' && !segment.href) {
+        const href = at.getAttribute('href');
+        if (href) segment.href = href;
+      }
     }
     out.push(segment);
   }
   return mergeSegments(out);
 }
 
+function wrap(node: Node, tag: string): Node {
+  const el = document.createElement(tag);
+  el.appendChild(node);
+  return el;
+}
+
 export function writeSegments(el: HTMLElement, segments: Segment[]): void {
   el.replaceChildren(
     ...mergeSegments(segments).map((segment) => {
       let node: Node = document.createTextNode(segment.text);
-      if (segment.italic) {
-        const em = document.createElement('em');
-        em.appendChild(node);
-        node = em;
-      }
-      if (segment.bold) {
-        const strong = document.createElement('strong');
-        strong.appendChild(node);
-        node = strong;
+      if (segment.code) node = wrap(node, 'code');
+      if (segment.italic) node = wrap(node, 'em');
+      if (segment.bold) node = wrap(node, 'strong');
+      if (segment.href) {
+        node = wrap(node, 'a');
+        (node as HTMLAnchorElement).setAttribute('href', segment.href);
       }
       return node;
     }),
@@ -326,15 +473,15 @@ export function restoreRuns(runs: Run[], snapshot: Segment[][]): void {
 }
 
 export function isFormatted(segments: Segment[]): boolean {
-  return segments.some((segment) => segment.bold || segment.italic);
+  return segments.some((segment) => segment.bold || segment.italic || segment.code || segment.href);
 }
 
 /** The segments to send, cleaned the way `cleanRun` cleans the text. */
 export function cleanSegments(segments: Segment[], expected: string): Segment[] {
-  const unbreak = !expected.includes('\u00a0');
+  const unbreak = !expected.includes(' ');
   const out = segments.map((segment) => ({
     ...segment,
-    text: unbreak ? segment.text.replace(/\u00a0/g, ' ') : segment.text,
+    text: unbreak ? segment.text.replace(/ /g, ' ') : segment.text,
   }));
   if (expected === expected.trim()) {
     const first = out[0];
@@ -346,7 +493,10 @@ export function cleanSegments(segments: Segment[], expected: string): Segment[] 
 }
 
 export function isRunChanged(run: Run): boolean {
-  return isRunDirty(run.el.textContent ?? '', run.expected) || isFormatted(readSegments(run.el));
+  return (
+    isRunDirty(run.el.textContent ?? '', run.expected) ||
+    formatSignature(readSegments(run.el)) !== formatSignature(run.expectedSegments)
+  );
 }
 
 /**
@@ -423,7 +573,7 @@ type DomRange = {
 /**
  * The run a range acts on, and its character offsets within that run. A
  * range that spills past one run — select-all, or a selection dragged over a
- * `<code>` chip — is narrowed to it, leaving the markup alone. A range that
+ * piece of markup — is narrowed to it, leaving the markup alone. A range that
  * touches two runs has no one place in source it could be written back to.
  */
 export function locate(

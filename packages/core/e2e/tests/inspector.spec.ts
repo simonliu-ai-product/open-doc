@@ -11,6 +11,10 @@ function field(page: Page) {
   return viewer(page).locator('[data-od-editing]:focus');
 }
 
+function toolbar(page: Page) {
+  return page.getByRole('toolbar', { name: 'Text formatting' });
+}
+
 /** Selects `word` inside the text being edited, as a drag across it would. */
 async function selectWord(page: Page, word: string) {
   await field(page).evaluate((el, word) => {
@@ -157,20 +161,20 @@ test.describe('editing on the page', () => {
     await expect
       .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
       .toContain(
-        "Spaced after all a long enough stretch of words that the formatter has to wrap this line{' '}",
+        'Spaced after all a long enough stretch of words that the formatter has to wrap this line <code>tag</code> spaced after',
       );
   });
 
   test('an edit that would span two runs is refused', async ({ page }) => {
     await enterEditMode(page);
-    const paragraph = viewer(page).locator('p', { hasText: 'Run before' });
+    const paragraph = viewer(page).locator('p', { hasText: 'Left side' });
     await editAt(page, paragraph, { x: 4, y: 6 });
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('x');
 
-    await expect(field(page)).toContainText('before');
-    await expect(field(page)).toContainText('run after');
-    await expect(field(page).locator('code')).toHaveText('open-doc dev');
+    await expect(field(page)).toContainText('Left side');
+    await expect(field(page)).toContainText('right side');
+    await expect(field(page).locator('kbd')).toHaveText('Enter');
   });
 
   test('bold from the toolbar is written as <strong>', async ({ page }) => {
@@ -224,6 +228,83 @@ test.describe('editing on the page', () => {
     await expect
       .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
       .toContain('<Label text="From a attribute" />');
+  });
+
+  test('bold already in the source can be taken off again', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).locator('p', { hasText: 'Already' }), { x: 4, y: 6 });
+    await selectWord(page, 'bold');
+    const bold = toolbar(page).getByRole('button', { name: 'Bold' });
+    await expect(bold).toHaveAttribute('aria-pressed', 'true');
+    await bold.click();
+    await expect(field(page).locator('strong')).toHaveCount(0);
+
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('<p>\n      Already bold words\n    </p>');
+  });
+
+  test('words inside existing bold stay bold when rewritten', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).locator('p', { hasText: 'Already' }), { x: 4, y: 6 });
+    await selectWord(page, 'bold');
+    await page.keyboard.type('heavy');
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('Already <strong>heavy</strong> words');
+  });
+
+  test('⌘E marks code, and clear formatting takes everything off', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('Editable paragraph'));
+    await selectWord(page, 'paragraph');
+    await page.keyboard.press('ControlOrMeta+e');
+    await expect(field(page).locator('code')).toHaveText('paragraph');
+    await page.keyboard.press('ControlOrMeta+b');
+    await expect(field(page).locator('strong code')).toHaveText('paragraph');
+
+    await toolbar(page).getByRole('button', { name: 'Clear formatting' }).click();
+    await expect(field(page).locator('code, strong')).toHaveCount(0);
+    await page.keyboard.press('ControlOrMeta+e');
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('<p>Editable <code>paragraph</code></p>');
+  });
+
+  test('a link is added from the toolbar and written as <a href>', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('Editable paragraph'));
+    await selectWord(page, 'paragraph');
+    await toolbar(page).getByRole('button', { name: 'Link' }).click();
+    const address = toolbar(page).getByRole('textbox', { name: 'Link address' });
+    await expect(address).toBeFocused();
+
+    await address.fill('javascript:alert(1)');
+    await expect(toolbar(page).getByRole('button', { name: 'Apply link' })).toBeDisabled();
+    await address.fill('https://example.com/guide');
+    await address.press('Enter');
+    await expect(field(page).locator('a')).toHaveAttribute('href', 'https://example.com/guide');
+    await expect(field(page)).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('<p>Editable <a href="https://example.com/guide">paragraph</a></p>');
+  });
+
+  test('bold is not offered where the element is already bold', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('Editable heading'));
+    await selectWord(page, 'heading');
+    await expect(toolbar(page).getByRole('button', { name: 'Bold' })).toBeDisabled();
+    await expect(toolbar(page).getByRole('button', { name: 'Italic' })).toBeEnabled();
   });
 
   test('leaving edit mode saves what is still unsaved', async ({ page }) => {

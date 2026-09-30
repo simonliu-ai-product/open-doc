@@ -319,15 +319,32 @@ describe('readTextAt', () => {
     ]);
   });
 
-  it('splits mixed content into runs, keeping the markup as placeholders', () => {
+  it('reads text and bare marks as one formatted run', () => {
     const info = readTextAt(MIXED, MIXED_P);
     expect(info?.editable).toBe(true);
     expect(info?.parts).toEqual([
-      { kind: 'text', index: 0, value: '對外端點為', formattable: true },
+      {
+        kind: 'text',
+        index: 0,
+        value: '對外端點為 /mcp，另外自訂 /healthz 供探針使用。',
+        formattable: true,
+        segments: [
+          { text: '對外端點為 ' },
+          { text: '/mcp', code: true },
+          { text: '，另外自訂 ' },
+          { text: '/healthz', code: true },
+          { text: ' 供探針使用。' },
+        ],
+      },
+    ]);
+  });
+
+  it('keeps an element with attributes as markup between runs', () => {
+    const styled = `const P = () => (\n  <p>\n    before <code style={mono}>x</code> after\n  </p>\n);\n`;
+    expect(readTextAt(styled, { line: 2, column: 2 })?.parts).toEqual([
+      { kind: 'text', index: 0, value: 'before', formattable: true },
       { kind: 'markup', label: '<code>' },
-      { kind: 'text', index: 1, value: '，另外自訂', formattable: true },
-      { kind: 'markup', label: '<code>' },
-      { kind: 'text', index: 2, value: '供探針使用。', formattable: true },
+      { kind: 'text', index: 1, value: 'after', formattable: true },
     ]);
   });
 
@@ -365,18 +382,19 @@ describe('replaceTextAt', () => {
     expect(result.source).toContain("a {'<'} b {'{'}c{'}'}");
   });
 
-  it('edits one run of mixed content without touching the markup', () => {
+  it('refuses plain text over a formatted run rather than drop its formatting', () => {
     const result = replaceTextAt(MIXED, MIXED_P, '端點是', { index: 0 });
+    expect(result).toMatchObject({ ok: false, status: 422 });
+  });
+
+  it('rewrites a formatted run from segments', () => {
+    const result = replaceTextAt(MIXED, MIXED_P, '端點是 /mcp。', {
+      index: 0,
+      segments: [{ text: '端點是 ' }, { text: '/mcp', code: true }, { text: '。' }],
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.source).toContain('端點是 <code>/mcp</code>');
-    expect(result.source).toContain('<code>/healthz</code>');
-    expect(readTextAt(result.source, MIXED_P)?.parts[0]).toEqual({
-      kind: 'text',
-      index: 0,
-      value: '端點是',
-      formattable: true,
-    });
+    expect(result.source).toContain('<p style={p}>\n      端點是 <code>/mcp</code>。\n    </p>');
   });
 
   it('refuses a write when the source moved under it', () => {
@@ -443,24 +461,37 @@ describe('JSX spacing', () => {
 );
 `;
 
-  it('does not offer {" "} as a run of text', () => {
+  it("reads {' '} as the space it renders, inside one run", () => {
     const info = readTextAt(SPACED, { line: 3, column: 4 });
     const runs = info?.parts.filter((part) => part.kind === 'text') ?? [];
     expect(runs.map((part) => part.kind === 'text' && part.value)).toEqual([
-      'fill',
-      '. Page numbers come from',
-      'and',
-      '.',
+      'fill x. Page numbers come from y and z.',
     ]);
-    expect(runs.map((part) => part.kind === 'text' && part.index)).toEqual([0, 1, 2, 3]);
   });
 
-  it('leaves the spacing in place when a neighbouring run is edited', () => {
+  it('rewrites the run on one line, rendering exactly as before', () => {
     const { source, results } = replaceTextsAt(SPACED, [
-      { line: 3, column: 4, index: 2, text: 'plus', expected: 'and' },
+      {
+        line: 3,
+        column: 4,
+        index: 0,
+        text: 'fill x. Page numbers come from y plus z.',
+        expected: 'fill x. Page numbers come from y and z.',
+        segments: [
+          { text: 'fill ' },
+          { text: 'x', code: true },
+          { text: '. Page numbers come from ' },
+          { text: 'y', code: true },
+          { text: ' plus ' },
+          { text: 'z', code: true },
+          { text: '.' },
+        ],
+      },
     ]);
     expect(results).toEqual([{ ok: true }]);
-    expect(source).toContain("<code>y</code>{' '}\n      plus <code>z</code>");
+    expect(source).toContain(
+      '<p style={p}>\n      fill <code>x</code>. Page numbers come from <code>y</code> plus <code>z</code>.\n    </p>',
+    );
   });
 });
 
@@ -478,15 +509,44 @@ describe('replaceTextsAt', () => {
     expect(source).not.toContain('Availability held');
   });
 
-  it('edits several runs of one element around its markup', () => {
-    const { source, results } = replaceTextsAt(MIXED, [
-      { ...MIXED_P, index: 0, text: '端點是', expected: '對外端點為' },
-      { ...MIXED_P, index: 2, text: '供健康檢查使用。', expected: '供探針使用。' },
+  it('writes links, and shares one tag across neighbours that share a mark', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      {
+        ...H1,
+        text: 'See the docs now',
+        segments: [
+          { text: 'See ' },
+          { text: 'the ', href: 'https://example.com/?a="b"' },
+          { text: 'docs', href: 'https://example.com/?a="b"', bold: true },
+          { text: ' now' },
+        ],
+      },
     ]);
-    expect(results.every((result) => result.ok)).toBe(true);
+    expect(results).toEqual([{ ok: true }]);
     expect(source).toContain(
-      '端點是 <code>/mcp</code>，另外自訂 <code>/healthz</code> 供健康檢查使用。',
+      '<h1 style={h1}>See <a href="https://example.com/?a=&quot;b&quot;">the <strong>docs</strong></a> now</h1>',
     );
+  });
+
+  it('reads a written link back as the same segments', () => {
+    const linked = `const P = () => (\n  <p>\n    See <a href="/guide">the <strong>guide</strong></a>.\n  </p>\n);\n`;
+    expect(readTextAt(linked, { line: 2, column: 2 })?.parts[0]).toMatchObject({
+      value: 'See the guide.',
+      segments: [
+        { text: 'See ' },
+        { text: 'the ', href: '/guide' },
+        { text: 'guide', href: '/guide', bold: true },
+        { text: '.' },
+      ],
+    });
+  });
+
+  it('refuses a link that would run script', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'x', segments: [{ text: 'x', href: ' JavaScript:alert(1)' }] },
+    ]);
+    expect(results[0]).toMatchObject({ ok: false, status: 422 });
+    expect(source).toBe(SOURCE);
   });
 
   it('skips a stale edit and still writes the rest', () => {
