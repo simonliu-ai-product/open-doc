@@ -99,7 +99,12 @@ test.describe('layout diagnostics', () => {
       // The inspector's source tag is what makes a finding actionable.
       expect(overflow?.loc).toMatch(/^\d+:\d+$/);
     } finally {
+      // Deleting a document reloads every open viewer, a moment later. Wait
+      // for it here, where the page is this test's, rather than let it land on
+      // the page the next test has just opened.
+      const reloaded = page.waitForEvent('load', { timeout: 15_000 }).catch(() => {});
       await deleteDoc(request, 'layout-faults');
+      await reloaded;
     }
   });
 });

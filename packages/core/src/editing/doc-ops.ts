@@ -1,18 +1,4 @@
-import { parse as babelParse } from '@babel/parser';
-
-type AstNode = { type: string; start: number; end: number };
-
-function parseSource(source: string): AstNode | null {
-  try {
-    return babelParse(source, {
-      sourceType: 'module',
-      plugins: ['typescript', 'jsx'],
-      errorRecovery: true,
-    }) as unknown as AstNode;
-  } catch {
-    return null;
-  }
-}
+import { type AstNode, parseSource, parseStrict } from './babel-walk.ts';
 
 function programBody(ast: AstNode): AstNode[] {
   return (ast as unknown as { program?: { body?: AstNode[] } }).program?.body ?? [];
@@ -62,7 +48,7 @@ export function validateDocTitle(v: unknown): string | null {
  * the caller reports that rather than inventing an export.
  */
 export function setMetaTitle(source: string, title: string): string | null {
-  const ast = parseSource(source);
+  const ast = parseStrict(source);
   if (!ast) return null;
   const object = findMetaObject(ast);
   if (!object) return null;

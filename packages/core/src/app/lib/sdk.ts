@@ -64,6 +64,14 @@ export type FlowSection = {
 /** What a document's default export may contain: fixed pages, flow sections, or both. */
 export type DocEntry = DocPage | FlowSection;
 
+/**
+ * Every format `open-doc export` can write. The CLI's `--format`, the MCP
+ * `export_document` schema and `ops/layout.ts` all read this tuple, so adding a
+ * format is one edit here and its branch in `exportDocument`.
+ */
+export const EXPORT_FORMATS = ['pdf', 'html', 'png', 'docx'] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
 export type DocMeta = {
   title?: string;
   subtitle?: string;

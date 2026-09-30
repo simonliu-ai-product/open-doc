@@ -183,8 +183,10 @@ variables, so it prints with the same ink and faces as the prose around it.
 Never reach for an image of a diagram when the diagram can be written.
 
 Supported: `flowchart`/`graph` with `TD` or `LR`; nodes as `A[box]`, `A(round)`,
-`A([stadium])`, `A{decision}`, `A((circle))`; links `-->`, `---`, `-.->`, `==>`
-with optional `|labels|`; chains `A --> B --> C`; `%%` comments. Anything else
+`A([stadium])`, `A[(database)]`, `A{decision}`, `A((circle))`; links `-->`,
+`---`, `-.->`, `==>` with optional `|labels|`; chains `A --> B --> C`; `%%`
+comments. A link back to an earlier step is drawn round the side, clear of the
+steps in between. Anything else
 in Mermaid's syntax — subgraphs, class diagrams, sequence diagrams — is not
 supported, and a bad diagram fails the build with the line to fix.
 
@@ -358,7 +360,8 @@ A document is not a slide deck. Long-form copy is the point — but it still has
 - **Assets panel** (`/assets` in the dev UI): upload, rename, and delete files in the global `assets/` folder or any document's `assets/` folder, with an "unused" badge and a copy-ready import line. Files you reference in source are what it scans, so an import you write by hand shows up there immediately.
 - **Inspect mode** (the "Inspect" button, dev only): click any element on a page to edit its text in place — the change is written straight back into `docs/<id>/index.tsx` — or leave a note for the agent, which is stored as a `@doc-comment` marker and processed by the `apply-comments` skill.
 - **Download menu** — PDF (true page size) and self-contained HTML.
-- **Headless render** — `open-doc export <id> --format pdf|html|png` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
+- **Headless render** — `open-doc export <id> --format pdf|html|png|docx` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
+- **Word (DOCX)** — for review that runs in Word. It carries structure, not page breaks: headings become Word heading styles, `<TableOfContents />` a TOC field, `<Footnote>` real footnotes, a `flow()` footer a Word footer with page-number fields, and the theme's CJK font the East Asian font. Write headings as real `h1`–`h3` and tables as `<table>`/`<DataTable>` so they arrive as structure; anything drawn with boxes (a chart made of `div`s) arrives as a picture, and absolutely positioned layouts on fixed pages flow as plain paragraphs.
 - **Design panel** (the "Design" button in the document view, dev only): live-tweaks the `design` const — palette, fonts, type scale, margin, leading, radius — previewing on the real pages and writing the values back into `docs/<id>/index.tsx` on save.
 
 ### Writing for the inspector

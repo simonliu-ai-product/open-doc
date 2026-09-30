@@ -55,7 +55,7 @@ test.describe('current.json cursor', () => {
 
   test('picking an element in the inspector publishes the selection', async ({ page }) => {
     await openDoc(page, 'edit-target');
-    await page.getByRole('button', { name: 'Inspect' }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
     await viewer(page).getByText('Editable heading').click();
 
     await expect
@@ -76,7 +76,7 @@ test.describe('current.json cursor', () => {
 
   test('moving to another document clears a stale selection', async ({ page }) => {
     await openDoc(page, 'edit-target');
-    await page.getByRole('button', { name: 'Inspect' }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
     await viewer(page).getByText('Editable heading').click();
     await expect
       .poll(async () => (await readCurrent())?.selection?.text, { timeout: 15_000 })

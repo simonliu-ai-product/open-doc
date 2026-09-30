@@ -7,9 +7,9 @@ import { type AstNode, parseSource, walkJsx } from '../editing/babel-walk.ts';
 // far more reliable than reading React's `_debugSource`, which goes stale
 // across hot reloads.
 
-// Capitalized components that forward `data-od-loc` to a host root, so the
-// inspector can target them like a host element.
-const FORWARDING_COMPONENTS = new Set(['ImagePlaceholder']);
+// Capitalized components that forward `data-od-loc` to the hosts they render,
+// so the inspector can target them like a host element. See `app/lib/source-loc.ts`.
+const FORWARDING_COMPONENTS = new Set(['ImagePlaceholder', 'Figure', 'DataTable', 'Footnote']);
 
 function taggableName(opening: AstNode): string | null {
   const name = opening.name as { type?: string; name?: string } | undefined;

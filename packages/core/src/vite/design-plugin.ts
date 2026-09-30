@@ -1,23 +1,9 @@
 import fs from 'node:fs/promises';
-import { parse as babelParse } from '@babel/parser';
 import type { Plugin, ViteDevServer } from 'vite';
 import { type DesignSystem, defaultDesign } from '../app/lib/design.ts';
+import { type AstNode, parseSource, parseStrict } from '../editing/babel-walk.ts';
 import { validateMutationRequest } from '../http/request-guard.ts';
 import { json, readBody, resolveDocPath } from './routes/context.ts';
-
-type AstNode = { type: string; start: number; end: number };
-
-function parseSource(source: string): AstNode | null {
-  try {
-    return babelParse(source, {
-      sourceType: 'module',
-      plugins: ['typescript', 'jsx'],
-      errorRecovery: true,
-    }) as unknown as AstNode;
-  } catch {
-    return null;
-  }
-}
 
 type DesignDeclLocation = {
   declStart: number;
@@ -228,34 +214,48 @@ function findImports(ast: AstNode): ImportInfo[] {
   return out;
 }
 
-function ensureDesignSystemImport(source: string, ast: AstNode): string {
-  const imports = findImports(ast);
-  const coreImport = imports.find((imp) => imp.source === '@open-document/core');
-  if (coreImport) {
-    const hasDesignSystem = coreImport.specifiers.some((spec) => {
-      if (spec.type !== 'ImportSpecifier') return false;
-      const imported = (spec as unknown as { imported?: { name?: string } }).imported;
-      return imported?.name === 'DesignSystem';
-    });
-    if (hasDesignSystem) return source;
-
-    const node = coreImport.node;
-    const importText = source.slice(node.start, node.end);
-    const braceClose = importText.lastIndexOf('}');
-    if (braceClose === -1) return source;
-    const absoluteBrace = node.start + braceClose;
-    const insertText =
-      coreImport.specifiers.length > 0 ? ', type DesignSystem' : 'type DesignSystem';
-    return source.slice(0, absoluteBrace) + insertText + source.slice(absoluteBrace);
-  }
-
+function addDesignSystemImport(source: string, imports: ImportInfo[]): string {
   const stmt = `import type { DesignSystem } from '@open-document/core';\n`;
   if (imports.length > 0) {
-    const insertAt = imports[imports.length - 1].node.end;
+    const insertAt = (imports[imports.length - 1] as ImportInfo).node.end;
     const trail = source[insertAt] === '\n' ? '' : '\n';
     return `${source.slice(0, insertAt)}\n${stmt.slice(0, -1)}${trail}${source.slice(insertAt)}`;
   }
   return `${stmt}\n${source}`;
+}
+
+function ensureDesignSystemImport(source: string, ast: AstNode): string {
+  const imports = findImports(ast);
+  const coreImport = imports.find((imp) => imp.source === '@open-document/core');
+  if (!coreImport) return addDesignSystemImport(source, imports);
+
+  const hasDesignSystem = coreImport.specifiers.some((spec) => {
+    if (spec.type !== 'ImportSpecifier') return false;
+    const imported = (spec as unknown as { imported?: { name?: string } }).imported;
+    return imported?.name === 'DesignSystem';
+  });
+  if (hasDesignSystem) return source;
+
+  // `import type { … }` already applies to every specifier; repeating the
+  // modifier on one is a TypeScript error.
+  const typeOnly = (coreImport.node as unknown as { importKind?: string }).importKind === 'type';
+  const specifier = typeOnly ? 'DesignSystem' : 'type DesignSystem';
+
+  // After the last named specifier, not before the brace: `{ a, }` would
+  // otherwise become `{ a, , type DesignSystem }`.
+  const named = coreImport.specifiers.filter((spec) => spec.type === 'ImportSpecifier');
+  const lastNamed = named[named.length - 1];
+  if (lastNamed) {
+    return `${source.slice(0, lastNamed.end)}, ${specifier}${source.slice(lastNamed.end)}`;
+  }
+
+  const node = coreImport.node;
+  const braceClose = source.slice(node.start, node.end).lastIndexOf('}');
+  // A namespace, default-only, or side-effect import has no named list to
+  // extend, so the type needs an import statement of its own.
+  if (braceClose === -1) return addDesignSystemImport(source, imports);
+  const absoluteBrace = node.start + braceClose;
+  return `${source.slice(0, absoluteBrace)}${specifier}${source.slice(absoluteBrace)}`;
 }
 
 function findInsertionPoint(source: string, ast: AstNode): number {
@@ -279,8 +279,14 @@ export function applyDesignWrite(source: string, next: DesignSystem): WriteResul
     return { ok: false, status: 422, error: `serialize failed: ${(err as Error).message}` };
   }
 
-  const ast = parseSource(source);
-  if (!ast) return { ok: false, status: 422, error: 'could not parse document source' };
+  const ast = parseStrict(source);
+  if (!ast) {
+    return {
+      ok: false,
+      status: 422,
+      error: 'the document has a syntax error — fix it in source before saving the design',
+    };
+  }
 
   const found = findDesign(ast);
   if (found) {
@@ -289,7 +295,7 @@ export function applyDesignWrite(source: string, next: DesignSystem): WriteResul
   }
 
   const withImport = ensureDesignSystemImport(source, ast);
-  const ast2 = parseSource(withImport);
+  const ast2 = parseStrict(withImport);
   if (!ast2) return { ok: false, status: 422, error: 'failed to re-parse after adding import' };
   const insertAt = findInsertionPoint(withImport, ast2);
   const block = `\nexport const design: DesignSystem = ${body};\n`;

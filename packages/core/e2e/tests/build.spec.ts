@@ -84,10 +84,10 @@ test.describe('static build and preview', () => {
     expect(mutation.headers()['content-type'] ?? '').not.toContain('application/json');
   });
 
-  test('the inspector and design panel are not shipped', async ({ page }) => {
+  test('edit mode and the design panel are not shipped', async ({ page }) => {
     await page.goto(`${baseUrl}/d/alpha`);
     await expect(page.locator('[data-od-viewer]')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole('button', { name: 'Inspect' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Design' })).toHaveCount(0);
   });
 });

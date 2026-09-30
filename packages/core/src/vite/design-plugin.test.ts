@@ -115,9 +115,49 @@ describe('applyDesignWrite', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.created).toBe(true);
-    expect(result.source).toContain('type DesignSystem');
+    // `import type { … }` already covers the new specifier; `type` twice is an error.
+    expect(result.source).toContain(
+      "import type { DocPage, DesignSystem } from '@open-document/core';",
+    );
     expect(result.source).toContain('export const design: DesignSystem = {');
     expect(parseDocDesign(result.source).ok).toBe(true);
+  });
+
+  it('marks the specifier as a type in a value import', () => {
+    const result = applyDesignWrite(
+      `import { flow } from '@open-document/core';\nconst Cover = () => null;\n`,
+      defaultDesign,
+    );
+    if (!result.ok) throw new Error(result.error);
+    expect(result.source).toContain(
+      "import { flow, type DesignSystem } from '@open-document/core';",
+    );
+  });
+
+  it('extends a list that ends in a trailing comma without doubling it', () => {
+    const result = applyDesignWrite(
+      `import {\n  flow,\n  Figure,\n} from '@open-document/core';\nconst Cover = () => null;\n`,
+      defaultDesign,
+    );
+    if (!result.ok) throw new Error(result.error);
+    expect(result.source).toContain('Figure, type DesignSystem,\n}');
+    expect(result.source).not.toContain(', ,');
+  });
+
+  it('adds an import of its own beside a namespace import', () => {
+    const result = applyDesignWrite(
+      `import * as od from '@open-document/core';\nconst Cover = () => null;\n`,
+      defaultDesign,
+    );
+    if (!result.ok) throw new Error(result.error);
+    expect(result.source).toContain("import * as od from '@open-document/core';");
+    expect(result.source).toContain("import type { DesignSystem } from '@open-document/core';");
+  });
+
+  it('refuses to write into a document with a syntax error', () => {
+    const broken = `${DOC_WITH_DESIGN}\nconst Oops = () => (<div>;\n`;
+    const result = applyDesignWrite(broken, defaultDesign);
+    expect(result).toMatchObject({ ok: false, status: 422 });
   });
 
   it('adds a core import when the document imports nothing from it', () => {

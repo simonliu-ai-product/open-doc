@@ -93,8 +93,8 @@ describe('compileDiagram', () => {
   it('produces themed SVG sized to the drawing', () => {
     const compiled = compileDiagram('flowchart TD\n A[開始] --> B[結束]');
     expect(compiled.svg.startsWith('<svg')).toBe(true);
-    expect(compiled.svg).toContain('var(--od-text)');
-    expect(compiled.svg).toContain('var(--od-font-body)');
+    expect(compiled.svg).toContain('var(--od-text, #16181d)');
+    expect(compiled.svg).toContain('var(--od-font-body, sans-serif)');
     expect(compiled.svg).toContain(`viewBox="0 0 ${compiled.width} ${compiled.height}"`);
     expect(compiled.svg).toContain('開始');
   });
@@ -114,5 +114,30 @@ describe('compileDiagram', () => {
 
   it('draws no arrowhead for an open link', () => {
     expect(compileDiagram('flowchart TD\n A --- B').svg).not.toContain('marker-end');
+  });
+});
+
+describe('links against the flow', () => {
+  const inside = (
+    p: { x: number; y: number },
+    n: { x: number; y: number; width: number; height: number },
+  ) => p.x > n.x && p.x < n.x + n.width && p.y > n.y && p.y < n.y + n.height;
+
+  it('go round the side of a column instead of through the steps between', () => {
+    const result = layout('flowchart TD\n A --> B --> C --> D\n D -.->|again| B');
+    const back = result.edges.find((e) => e.from === 'D' && e.to === 'B');
+    if (!back?.labelAt) throw new Error('no back edge');
+    const c = nodeAt(result, 'C');
+    expect(Math.min(...back.points.slice(1, -1).map((p) => p.x))).toBeGreaterThan(c.x + c.width);
+    expect(inside(back.labelAt, c)).toBe(false);
+    expect(result.width).toBeGreaterThan(Math.max(...back.points.map((p) => p.x)));
+  });
+
+  it('go underneath a row', () => {
+    const result = layout('flowchart LR\n A --> B --> C\n C --> A');
+    const back = result.edges.find((e) => e.from === 'C' && e.to === 'A');
+    const b = nodeAt(result, 'B');
+    expect(back?.points[1]?.y).toBeGreaterThan(b.y + b.height);
+    expect(result.height).toBeGreaterThan(back?.points[1]?.y ?? 0);
   });
 });

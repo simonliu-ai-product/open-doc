@@ -11,11 +11,13 @@ import {
   useState,
 } from 'react';
 import { LABEL_ATTR, LABEL_ID_ATTR, useDocLabel, useLabelVocabulary } from '../lib/labels';
+import { LOC_PROP, sourceAttrs } from '../lib/source-loc';
 
 /** Stands in for a number the scan has not produced yet, or never will. */
 const UNNUMBERED = '\u2022';
 
-export type CollectedNote = { id: string; content: ReactNode };
+/** `loc` is the `<Footnote>` call site, so the printed note can be edited where it prints. */
+export type CollectedNote = { id: string; content: ReactNode; loc?: string };
 
 type Collector = {
   /** Registration order, which is document order. */
@@ -28,7 +30,8 @@ type Collector = {
    * from here in whatever render follows.
    */
   contents: Map<string, ReactNode>;
-  register: (id: string, content: ReactNode) => void;
+  locs: Map<string, string>;
+  register: (id: string, content: ReactNode, loc?: string) => void;
   unregister: (id: string) => void;
 };
 
@@ -51,22 +54,26 @@ const FootnoteContext = g[GLOBAL_KEY];
  */
 export function FootnoteCollector({ children }: { children?: ReactNode }) {
   const contents = useRef<Map<string, ReactNode>>(new Map()).current;
+  const locs = useRef<Map<string, string>>(new Map()).current;
   const [ids, setIds] = useState<string[]>([]);
 
   const value = useMemo<Collector>(
     () => ({
       ids,
       contents,
-      register: (id, content) => {
+      locs,
+      register: (id, content, loc) => {
         contents.set(id, content);
+        if (loc) locs.set(id, loc);
         setIds((current) => (current.includes(id) ? current : [...current, id]));
       },
       unregister: (id) => {
         contents.delete(id);
+        locs.delete(id);
         setIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : current));
       },
     }),
-    [ids, contents],
+    [ids, contents, locs],
   );
 
   return <FootnoteContext.Provider value={value}>{children}</FootnoteContext.Provider>;
@@ -78,6 +85,8 @@ export type FootnoteProps = {
   /** Stable id, so `<Ref to>` can point at the note. Generated when omitted. */
   id?: string;
   children?: ReactNode;
+  /** Stamped in dev by the loc-tags plugin; see `lib/source-loc.ts`. */
+  [LOC_PROP]?: string;
 };
 
 export function markerStyle(): CSSProperties {
@@ -114,7 +123,7 @@ export function FootnoteMarker({ id }: { id: string }) {
  * framework lifts it to the foot of whatever page the marker lands on; on a
  * fixed page, put a `<Footnotes />` where you want them printed.
  */
-export function Footnote({ id, children }: FootnoteProps) {
+export function Footnote({ id, children, [LOC_PROP]: loc }: FootnoteProps) {
   const generated = useId();
   const noteId = id ?? generated;
   const collector = useContext(FootnoteContext);
@@ -124,7 +133,7 @@ export function Footnote({ id, children }: FootnoteProps) {
   // state, so this settles instead of looping.
   useEffect(() => {
     latest.current = collector;
-    collector?.register(noteId, children);
+    collector?.register(noteId, children, loc);
   });
 
   useEffect(() => () => latest.current?.unregister(noteId), [noteId]);
@@ -145,6 +154,8 @@ export type FootnotesProps = {
 export const FOOTNOTE_AREA_MARGIN_TOP = 12;
 
 export const FOOTNOTE_ROW_ATTR = 'data-od-footnote-row';
+/** The note's id on its row, so an exporter can pair a marker with its text. */
+export const FOOTNOTE_ID_ATTR = 'data-od-footnote-id';
 
 export function footnoteAreaStyle(): CSSProperties {
   return {
@@ -158,10 +169,13 @@ export function footnoteAreaStyle(): CSSProperties {
 }
 
 /** One note's row. Shared with the measurement pass so the reserved space is real. */
-export function FootnoteRow({ id, content }: CollectedNote) {
+export function FootnoteRow({ id, content, loc }: CollectedNote) {
   const entry = useDocLabel(id);
   return (
-    <div {...{ [FOOTNOTE_ROW_ATTR]: '' }} style={{ display: 'flex', gap: 5, marginBottom: 3 }}>
+    <div
+      {...{ [FOOTNOTE_ROW_ATTR]: '', [FOOTNOTE_ID_ATTR]: id }}
+      style={{ display: 'flex', gap: 5, marginBottom: 3 }}
+    >
       <span
         style={{
           flex: 'none',
@@ -171,7 +185,9 @@ export function FootnoteRow({ id, content }: CollectedNote) {
       >
         {entry?.number ?? UNNUMBERED}
       </span>
-      <span style={{ minWidth: 0 }}>{content}</span>
+      <span {...sourceAttrs(loc)} style={{ minWidth: 0 }}>
+        {content}
+      </span>
     </div>
   );
 }
@@ -180,7 +196,13 @@ export function Footnotes({ notes, style, className }: FootnotesProps) {
   const collector = useContext(FootnoteContext);
   const vocabulary = useLabelVocabulary();
   const list =
-    notes ?? collector?.ids.map((id) => ({ id, content: collector.contents.get(id) })) ?? [];
+    notes ??
+    collector?.ids.map((id) => ({
+      id,
+      content: collector.contents.get(id),
+      loc: collector.locs.get(id),
+    })) ??
+    [];
   if (list.length === 0) return null;
 
   return (
@@ -189,7 +211,7 @@ export function Footnotes({ notes, style, className }: FootnotesProps) {
         <div style={{ fontWeight: 600, marginBottom: 3 }}>{vocabulary.footnotes}</div>
       ) : null}
       {list.map((note) => (
-        <FootnoteRow key={note.id} id={note.id} content={note.content} />
+        <FootnoteRow key={note.id} id={note.id} content={note.content} loc={note.loc} />
       ))}
     </div>
   );

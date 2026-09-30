@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { LOC_PROP, sourceAttrs } from '../lib/source-loc';
 import { Figure } from './numbering';
 
 export type DataAlign = 'left' | 'center' | 'right';
@@ -36,6 +37,8 @@ export type DataTableProps = {
   emptyValue?: ReactNode;
   style?: CSSProperties;
   className?: string;
+  /** Stamped in dev by the loc-tags plugin; see `lib/source-loc.ts`. */
+  [LOC_PROP]?: string;
 };
 
 function normalizeColumn(column: DataColumn | string): DataColumn {
@@ -95,6 +98,7 @@ export function DataTable({
   emptyValue = '—',
   style,
   className,
+  [LOC_PROP]: loc,
 }: DataTableProps) {
   const resolved: DataColumn[] = (columns ?? Object.keys(rows[0] ?? {})).map(normalizeColumn);
 
@@ -105,6 +109,7 @@ export function DataTable({
 
   const table = (
     <table
+      {...(caption ? {} : sourceAttrs(loc))}
       className={className}
       style={{
         width: '100%',
@@ -116,11 +121,16 @@ export function DataTable({
     >
       <thead>
         <tr>
-          {resolved.map((column) => {
+          {resolved.map((column, index) => {
             const align = column.align ?? inferAlign(rows, column.key);
+            const authored = columns?.[index];
+            // Only a label written as a string can be edited where it prints;
+            // a bare key would rename the column the data is read from.
+            const labelled = typeof authored === 'object' && typeof authored.label === 'string';
             return (
               <th
                 key={column.key}
+                {...(labelled ? sourceAttrs(loc, `columns.${index}.label`) : {})}
                 style={{
                   textAlign: align,
                   width: column.width,
@@ -189,7 +199,12 @@ export function DataTable({
   if (!caption) return table;
 
   return (
-    <Figure kind="table" caption={caption} {...(id !== undefined ? { id } : {})}>
+    <Figure
+      kind="table"
+      caption={caption}
+      {...(id !== undefined ? { id } : {})}
+      {...sourceAttrs(loc)}
+    >
       {table}
     </Figure>
   );
