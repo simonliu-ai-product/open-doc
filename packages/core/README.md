@@ -24,6 +24,7 @@ import {
   type DocMeta,
   type DocPage,
   ImagePlaceholder,
+  PAGE_SIZE_NAMES,
   PAGE_SIZES,
   TableOfContents,
   resolvePageGeometry,

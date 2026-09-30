@@ -39,7 +39,16 @@ export type {
   PageGeometry,
   PageSizeName,
 } from './app/lib/sdk.ts';
-export { DEFAULT_PAGE_SIZE, PAGE_SIZES, resolvePageGeometry } from './app/lib/sdk.ts';
+export {
+  DEFAULT_ORIENTATION,
+  DEFAULT_PAGE_SIZE,
+  isOrientation,
+  isPageSizeName,
+  ORIENTATIONS,
+  PAGE_SIZE_NAMES,
+  PAGE_SIZES,
+  resolvePageGeometry,
+} from './app/lib/sdk.ts';
 export type { OpenDocBuildConfig, OpenDocConfig } from './config.ts';
 export type { CellValue, DelimitedTable } from './data/delimited.ts';
 export { parseDelimited } from './data/delimited.ts';

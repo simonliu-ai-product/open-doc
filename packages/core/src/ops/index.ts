@@ -4,6 +4,12 @@
  * so an agent and a person act on one implementation.
  */
 
+export {
+  ORIENTATIONS,
+  type Orientation,
+  PAGE_SIZE_NAMES,
+  type PageSizeName,
+} from '../app/lib/sdk.ts';
 export { type ApiContext, makeContext } from '../vite/routes/context.ts';
 export {
   createDocument,
@@ -28,6 +34,7 @@ export {
 export {
   checkLayout,
   closeRenderSession,
+  EXPORT_FORMATS,
   type ExportFormat,
   type ExportResult,
   exportDocument,
@@ -48,4 +55,4 @@ export {
   type ThemeSummary,
   writeAsset,
 } from './library.ts';
-export { addComment, type Loc, readText, writeText } from './text.ts';
+export { addComment, type Loc, readText, writeText, writeTexts } from './text.ts';

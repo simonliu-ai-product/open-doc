@@ -9,6 +9,7 @@ import {
   deleteAsset,
   deleteDocument,
   duplicateDocument,
+  EXPORT_FORMATS,
   exportDocument,
   fileDocument,
   findAssetUsages,
@@ -18,6 +19,8 @@ import {
   listFolders,
   listThemes,
   OpsError,
+  ORIENTATIONS,
+  PAGE_SIZE_NAMES,
   readDocument,
   readText,
   readTheme,
@@ -160,9 +163,15 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         docId: z.string(),
         locs: z.array(LOC).min(1),
         shown: z.string().optional().describe('rendered text, disambiguates helper components'),
+        prop: z
+          .string()
+          .optional()
+          .describe(
+            'a path into the element’s attributes for words a component prints from a prop, e.g. `caption` or `columns.2.label` (the `data-od-prop` on the rendered element)',
+          ),
       }),
     },
-    ({ docId, locs, shown }) => run(() => readText(ctx, docId, locs, shown)),
+    ({ docId, locs, shown, prop }) => run(() => readText(ctx, docId, locs, shown, prop)),
   );
 
   server.registerTool(
@@ -170,17 +179,30 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
     {
       title: 'Replace text at a location',
       description:
-        'Surgical edit of one text run, leaving surrounding markup untouched. Pass `expected` so a stale write is refused.',
+        'Surgical edit of one text run, leaving surrounding markup untouched. Pass `expected` so a stale write is refused. A run that read_text returned with `segments` (code, emphasis, links) must be written with `segments` too, or it is refused rather than losing its formatting.',
       inputSchema: z.object({
         docId: z.string(),
         loc: LOC,
         text: z.string(),
         index: z.number().int().nonnegative().optional().describe('which run, for mixed content'),
         expected: z.string().optional(),
+        segments: z
+          .array(
+            z.object({
+              text: z.string(),
+              bold: z.boolean().optional(),
+              italic: z.boolean().optional(),
+              code: z.boolean().optional(),
+              href: z.string().optional(),
+            }),
+          )
+          .optional()
+          .describe('the run as formatted pieces, in order; their texts concatenate to `text`'),
+        prop: z.string().optional().describe('as in read_text'),
       }),
     },
-    ({ docId, loc, text, index, expected }) =>
-      run(() => writeText(ctx, docId, loc, text, { index, expected })),
+    ({ docId, loc, text, index, expected, segments, prop }) =>
+      run(() => writeText(ctx, docId, loc, text, { index, expected, segments, prop })),
   );
 
   server.registerTool(
@@ -354,10 +376,10 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
     {
       title: 'Export a document',
       description:
-        'Writes the document to disk headlessly — pdf, html, or one png per page. The output directory must stay inside the workspace.',
+        'Writes the document to disk headlessly — pdf, html, one png per page, or docx (structure Word flows itself, for review in Word). The output directory must stay inside the workspace.',
       inputSchema: z.object({
         docId: z.string(),
-        format: z.enum(['pdf', 'html', 'png']).default('pdf'),
+        format: z.enum(EXPORT_FORMATS).default('pdf'),
         outDir: z.string().optional().describe('relative to the workspace root; defaults to `out`'),
       }),
     },
@@ -378,7 +400,8 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         subtitle: z.string().optional(),
         author: z.string().optional(),
         theme: z.string().optional(),
-        pageSize: z.enum(['A4', 'Letter', 'A5', 'Legal']).optional(),
+        pageSize: z.enum(PAGE_SIZE_NAMES).optional(),
+        orientation: z.enum(ORIENTATIONS).optional(),
         cover: z.boolean().optional().describe('open with a title page; defaults to true'),
         contents: z.boolean().optional().describe('add a self-filling contents page'),
       }),

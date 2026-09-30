@@ -1,5 +1,307 @@
 # @open-document/core
 
+## 0.9.1
+
+### Patch Changes
+
+- [#45](https://github.com/simonliu-ai-product/open-doc/pull/45) [`e8b352d`](https://github.com/simonliu-ai-product/open-doc/commit/e8b352d5c9fd2f4fc51645d8ee1603ea4a629f43) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Fixes on the printed page:
+  
+  - A plain `<ul>` or `<ol>` in a document prints as a list again — bullets,
+    numbers and indent. The viewer's CSS reset had stripped them on the sheet as
+    well as in the chrome. The measuring pass gets the same styles, so pages break
+    where the list actually ends, and a list the document styles itself keeps its
+    own style.
+  - Inline SVG gradients, clip paths and diagram arrowheads show in PDF export.
+    Each copy of a page had pointed its `url(#…)` references at the first element
+    with that id, which is the thumbnail's, and printing hides the thumbnails.
+  - Diagrams: `A[(database)]` draws a cylinder instead of a box with brackets in
+    its label. A link back to an earlier step goes round the side instead of
+    through the steps in between. A document without a `design` no longer gets
+    solid black shapes.
+
+## 0.9.0
+
+### Minor Changes
+
+- [#43](https://github.com/simonliu-ai-product/open-doc/pull/43) [`c598b3b`](https://github.com/simonliu-ai-product/open-doc/commit/c598b3bc0cc76f5fc0e53b03d65ec09a3fd73b73) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Export to Word (`.docx`), for review that runs in Word — track changes, Word
+  comments, pasting a section into someone else's template.
+  
+  ```bash
+  open-doc export my-report --format docx
+  ```
+  
+  and **Word (DOCX)** in the viewer's Download menu, with the same page range
+  prompt as the other formats. MCP's `export_document` takes `docx` too.
+  
+  The output is structure that Word lays out itself, not a picture of the pages —
+  Word repaginates the moment anyone edits:
+  
+  - Page size, orientation and margins from the document; each fixed page starts
+    a new Word page, and a `flow()` section's pages continue one another. A fixed
+    page keeps where it placed its words — a cover's title low on the sheet, a
+    closing line centred — and sits in a section without the flow's footer.
+  - Headings become Word's Heading styles, so the navigation pane works; the
+    cover's title becomes Title, and a heading kept out of the outline ("Contents")
+    becomes TOC Heading.
+  - `<TableOfContents />` becomes a TOC field Word updates when the file opens;
+    `<ListOfFigures />` and `<ListOfTables />` point at bookmarked captions with
+    `PAGEREF` fields, dot leaders and all.
+  - Bold, italic, underline, strikethrough, colour, size, code and links are read
+    from the rendered page's own styles; line breaks, lists (each ordered list
+    counting on its own) and code blocks with their indentation survive. A code
+    block's panel and a quote's rule come across as a shaded, bordered box, and
+    code is kept out of the spelling check.
+  - Tables keep their column widths, cell borders and a header row that repeats
+    across pages; captions use the Caption style.
+  - `<Footnote>` becomes a real Word footnote.
+  - A `flow()` footer becomes the Word footer, with `PAGE` and `NUMPAGES` fields
+    where the page numbers were.
+  - Fonts come from the design: the first real family in each stack, and a CJK
+    family anywhere in it as the East Asian font (`w:eastAsia`), so Word does not
+    substitute one and change the line breaks. A font table names a stand-in of
+    the same kind for each, so code stays monospaced where the web font is not
+    installed.
+  - Images are embedded; anything drawn rather than written — a chart made of
+    boxes, a compiled diagram — is placed as a picture.
+  
+  Not carried over: decoration drawn with no text (a coloured band), running
+  lines drawn inside fixed pages, rounded corners, and page-for-page breaks.
+  
+  Also fixes PNG and SVG downloads from the viewer laying a page out against no
+  height: anything placed against the foot of the sheet — a footer, a cover's
+  title, a centred closing page — moved up to the top.
+
+## 0.8.0
+
+### Minor Changes
+
+- [#41](https://github.com/simonliu-ai-product/open-doc/pull/41) [`0e8f077`](https://github.com/simonliu-ai-product/open-doc/commit/0e8f077bd6a30f342d5df97eb1a1311f73a317aa) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Read several pages at once: a Continuous / Two-up / Grid control beside the
+  zoom buttons.
+  
+  - **Two-up** faces pages the way a bound document is read — page 1 alone on the
+    right, then 2–3, 4–5 — so you can see whether a figure still sits with its
+    caption and whether facing pages balance.
+  - **Grid** is a contact sheet: sheets in columns that line up, as many across
+    as fit, for scanning a chapter at once.
+  - Zoom and mode compose: fit width fits the spread in two-up and a row of three
+    in grid, and the auto zoom keeps the unit readable.
+  - Everything that worked in one column still does. The page counter follows
+    the row in view (and reports the page you jumped to), page jump, the outline,
+    find, the thumbnails and editing on the page all behave as before, and
+    switching modes keeps you on the page you were reading.
+  - The mode is remembered per document.
+
+## 0.7.0
+
+### Minor Changes
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The design panel works the way open-slide 2.0's does.
+  
+  - **Undo and redo.** Every design change is a step in the document view's
+    history — a slider drag is one step, not fifty — alongside each finished edit
+    made on the page. ⌘Z and ⇧⌘Z outside a field, or the buttons on the card.
+  - **One save card.** Page edits and the design draft are counted, saved and
+    discarded together from one card at the foot of the view; ⌘S saves both. The
+    panel's own Save and Discard buttons are gone. The two are written one after
+    the other, never at once, since both rewrite the same file.
+  - **One dock.** The design panel and the element panel share the right-hand
+    dock and its chrome; design wins while open. `D` toggles it.
+  - **Fields.** A colour only reaches the draft as a complete `#rrggbb`, and a
+    half-typed one reverts when you leave the field. Every slider has a number
+    beside it that can be typed or stepped with the arrow keys. A font list shows
+    "Custom" only when the source holds a stack no preset matches, and gains
+    Inter. The header marks an unsaved draft, and a document that has no `design`
+    yet.
+  - The panel opens once its draft is ready rather than on a spinner, and its
+    content fades in instead of the dock resizing the pages frame by frame.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Captions, table headings and footnotes can be selected and edited on the page.
+  
+  `Figure`, `DataTable` and `Footnote` now point what they print back at their
+  call site in dev, so clicking a table, a figure or a note selects it. A caption
+  is written to the `caption` attribute, a table heading to its column's `label`,
+  and a footnote printed at the foot of the page to the text inside its
+  `<Footnote>`. Rows that come from an imported `.csv` are not editable here: the
+  table is selected and the panel names the file to edit, with a comment box for
+  the agent.
+  
+  `read_text` and `write_text` take a `prop` path (`caption`, `columns.2.label`)
+  for words a component prints from an attribute.
+  
+  Edit mode also survives the reload the dev server sends when a document is
+  added or removed.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Formatting already in a document can be edited on the page, and the toolbar
+  gains code, links, and clear formatting.
+  
+  Text written beside bare `<strong>`, `<em>`, `<code>` or `<a href>` is now one
+  run: a paragraph like `Use real <code>h1</code> elements` is edited as the
+  sentence it is, bold can be taken off after it was saved, and the words inside
+  it can be retyped. A tag with any other attribute — a `style`, a `className` —
+  is still left as written. A changed run is rewritten on one line, so a
+  formatter's `{' '}` line breaks are folded into plain spaces; it renders the
+  same.
+  
+  - Code: ⌘E. Link: ⌘K, or the toolbar, with the address typed in place; a caret
+    inside a link edits it, and an empty address removes it. Only web, mail,
+    phone and in-document addresses are accepted — the server checks too, since
+    links survive into exported HTML. Clear formatting: ⌘\.
+  - Bold is disabled, and says why, where the element is already bold by its
+    own style.
+  - The toolbar shows only when there is something to act on, reads clearly in
+    both themes, and a selection on the page takes the inspector's blue rather
+    than the dark theme's highlight.
+  
+  `write_text` (and `PUT /__edit/text`) refuse plain text over a run that carries
+  formatting rather than drop it; pass `segments`, which `read_text` now returns.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Text is edited on the page, where it is printed.
+  
+  The viewer has a Preview / Edit switch in place of the Inspect button. In edit
+  mode a click selects an element and a double-click (or Enter) opens its text
+  right on the sheet; Enter keeps the change, Escape reverts it. Changes stay on
+  the page, marked as unsaved, until Save (⌘S) — or leaving edit mode — writes
+  them all to source in one request and one hot reload. Discard puts back what
+  was there. Inline markup between runs of text stays as written, and an edit
+  that would reach across it is refused.
+  
+  `PUT /__edit/texts` applies several run replacements at once. Every edit is
+  located against the source the reader saw, so a heading that grew does not
+  shift the paragraph below it; a stale edit is reported and the rest still land.
+  
+  The design panel and the element panel share the right-hand dock; design wins
+  while it is open.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Bold and italic while editing on the page.
+  
+  A small toolbar floats over the text being edited, with Bold (⌘B) and Italic
+  (⌘I). Select words and toggle; the emphasis shows on the page at once, stays
+  unsaved with the rest of the edit, and is written to source as `<strong>` and
+  `<em>` on Save. Undo and Escape take it back like any other change.
+  
+  Only text written in the document itself can take emphasis. Text passed in as a
+  string — a prop, an entry in an array — has nowhere in source to hold a tag, so
+  the buttons are disabled there and say why; the words themselves stay editable.
+  Size, colour and alignment are not offered: they belong to the document's
+  design system.
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Shift+Enter breaks the line while editing on the page, written to source as
+  `<br />`. A `<br />` already in a paragraph no longer splits it into separate
+  runs: the paragraph is edited as one, and its breaks are kept. Enter still
+  keeps the change; text passed in as a string cannot hold a break, so
+  Shift+Enter does nothing there.
+
+### Patch Changes
+
+- [#39](https://github.com/simonliu-ai-product/open-doc/pull/39) [`1996ca7`](https://github.com/simonliu-ai-product/open-doc/commit/1996ca7bf212b58b1e736e83f6eb4a7026983ff3) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Nothing is written into a document that has a syntax error. Reading still
+  tolerates a document mid-edit, but the design panel, on-page text edits,
+  comment markers and renames all splice by position in the parsed source, and a
+  tree Babel recovered from an error could put the splice in the wrong place —
+  they now refuse and say why.
+  
+  The design panel's `DesignSystem` import is added correctly in every shape of
+  import: after the last name rather than before the brace (so `{ a, }` no longer
+  becomes `{ a, , type DesignSystem }`), without a second `type` inside
+  `import type { … }`, and as its own statement beside a namespace or
+  default-only import, which used to be left without it.
+
+## 0.6.0
+
+### Minor Changes
+
+- [#32](https://github.com/simonliu-ai-product/open-doc/pull/32) [`906390b`](https://github.com/simonliu-ai-product/open-doc/commit/906390bf466f723721debf659374691222a97a45) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The inspector edits text wherever it actually lives.
+  
+  A document written through helpers used to report `text is produced by code` for
+  most of itself: the words behind `{agency}`, `{line}` or `{children}` are not in
+  the element that renders them. Each child of the selected element now resolves
+  on its own — to a call site's attribute, to one entry of an array the call site
+  passed, to whatever sits between its tags, or to a template literal. Runs that
+  cannot be told apart by what is on screen are still refused, so a save never
+  rewrites a sibling.
+  
+  Resolving the element as a whole was also why `{label}：{value}` offered nothing
+  but the colon: the literal was found, so the props were never looked for.
+  
+  A contents row selects the heading it was generated from, and scrolls to it —
+  the list stays a view of the headings rather than something to type into.
+  
+  The text panel is one field instead of one per run. A sentence interrupted by
+  five `<code>` spans is still a sentence; it now reads like one, with the markup
+  between the words as inert chips.
+
+## 0.5.0
+
+### Minor Changes
+
+- [#30](https://github.com/simonliu-ai-product/open-doc/pull/30) [`a08c7f9`](https://github.com/simonliu-ai-product/open-doc/commit/a08c7f9b23a5ef730e113e4be94c12fd629b017e) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Viewer: find in document, page jump, distinct zoom icons, and PNG/SVG export with a page range.
+  
+  - The toolbar had two identical square icons — fit-page and fullscreen. Fit-page is
+    now an up-down arrow, pairing with the left-right arrow that fits the width, and a
+    per-cent button resets the zoom to 100%.
+  - The page counter is an input: type a number to jump there.
+  - A find control beside it searches the rendered document. Matches are painted with
+    the CSS Custom Highlight API rather than wrapped in markup, so nothing React owns
+    is edited; a browser without the API still navigates between hits.
+  - Download offers PNG and SVG alongside PDF and HTML, and asks which pages first —
+    all, the current one, or a range like `1-3, 5`. One page downloads as one file;
+    several arrive as a zip.
+
+## 0.4.0
+
+### Minor Changes
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Restrict page sizes to A4, B4 and A3, portrait or landscape — and fix the landscape `@page` descriptor
+  
+  A document could previously be laid out on A4, Letter, A5 or Legal. The set is
+  now A4, JIS B4 (257 × 364mm) and A3 — six sheets counting orientation, all
+  metric, all sold by the same print shop.
+  
+  `PAGE_SIZE_NAMES` is exported as the single source of truth and `PageSizeName`
+  is derived from it, so the CLI's `--page-size`, the MCP `import_markdown`
+  schema, and `ops/import.ts` all read one list instead of restating it.
+  `open-doc import` also gained `--orientation`, and `import_markdown` an
+  `orientation` argument; both reject a size or orientation off the list, as does
+  a `pageSize:` in imported Markdown frontmatter.
+  
+  Landscape documents printed at the wrong sheet size. `resolvePageGeometry()`
+  emitted `@page { size: 210mm 297mm landscape }`, but the `landscape` keyword is
+  only valid beside a page-size *name* — Chromium dropped the whole descriptor and
+  printed at whatever the dialog defaulted to, while the content was laid out
+  1123 × 794. The descriptor now carries the swapped millimetres (`297mm 210mm`),
+  which Chromium accepts.
+  
+  `PAGE_SIZES` entries therefore expose `mm: [width, height]` (portrait) in place
+  of the old pre-rendered `css` string; `resolvePageGeometry().css` is unchanged
+  as the way to get an `@page` descriptor.
+  
+  `resolvePageGeometry()` still falls back to portrait A4 for an unrecognised
+  value, so a document that already says `pageSize: 'Letter'` renders as A4
+  rather than breaking — but the type no longer accepts it.
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Add `home` to the config: the viewer's back arrow points at that URL instead of the app's own document browser. A viewer mounted under a larger site can now return to that site rather than to its own index.
+
+### Patch Changes
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Fix the core version reported by the dev API, the MCP server, and `cliContext` — it resolved `package.json` at a fixed depth, which the bundler's chunk placement made wrong, so it silently fell back to `0.0.0`.
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Hide the document header's back arrow when there is nowhere for it to go — no
+  `home` configured and `showDocBrowser: false`, where `/` renders "not found".
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Centre the document title in the viewer header and drop the subtitle line
+  
+  The header laid the title out in a `flex-1` block right after the back link, so
+  it sat at the centre of the *leftover* space — visibly left of the bar's centre,
+  because the control cluster on the right is many times wider than the back link.
+  The header is now a three-column grid with equal `1fr` rails, which puts the
+  title at the true centre whenever the controls fit their share, and slides it
+  rather than colliding when they don't.
+  
+  `meta.subtitle` no longer renders in the header. It was a second line of small
+  grey text competing with the page it describes; the document browser still shows
+  it, and it still belongs on a cover page.
+
+- [#28](https://github.com/simonliu-ai-product/open-doc/pull/28) [`f9d35f2`](https://github.com/simonliu-ai-product/open-doc/commit/f9d35f288a589eb51cf7a465d97d38df939b0c4f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Show the theme toggle in the document viewer when the document browser is not built. The browser's sidebar was the only place it lived, so a viewer mounted on its own left a reader with no way to switch between light and dark.
+
 ## 0.3.0
 
 ### Minor Changes

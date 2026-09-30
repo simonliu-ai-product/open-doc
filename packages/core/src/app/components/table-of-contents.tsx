@@ -50,6 +50,10 @@ export function TableOfContents({
       {entries.map((entry) => (
         <div
           key={entry.id}
+          /* Which heading this line stands for. The inspector follows it: a
+           * contents row holds no text of its own, so clicking one has to land
+           * on the heading that produced it. */
+          data-od-toc-entry={entry.id}
           style={{
             display: 'flex',
             alignItems: 'baseline',

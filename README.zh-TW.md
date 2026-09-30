@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/preview-dark.png">
+  <img src=".github/assets/preview.png" alt="open-doc——為 agent 打造的文件框架。" width="100%">
+</picture>
+
 # open-doc
 
 [![CI](https://github.com/simonliu-ai-product/open-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/simonliu-ai-product/open-doc/actions/workflows/ci.yml)
@@ -5,7 +10,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/simonliu-ai-product/open-doc?style=flat)](https://github.com/simonliu-ai-product/open-doc/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](https://opensource.org/licenses/MIT)
 
-[English](README.md) · **繁體中文**
+[English](README.md) · **繁體中文** · [costaffs.app/tools/open-doc](https://costaffs.app/zhtw/tools/open-doc/)
 
 **為 agent 打造的文件框架。** 用自然語言描述你要的報告，你的 coding agent 負責寫 React，open-doc 負責頁面尺寸、大綱、目錄、頁碼、列印版面與匯出。
 
@@ -27,7 +32,7 @@ npx @open-document/cli init my-docs
 
 ### 📄 真實的頁面尺寸
 
-每個頁面元件都渲染成一張真正的紙：A4（794 × 1123 px @96dpi）、Letter、A5 或 Legal，直式或橫式。螢幕上看到的就是 PDF 裡的樣子——`@page` 尺寸一致，列印時不會被重新縮放。
+每個頁面元件都渲染成一張真正的紙：A4（794 × 1123 px @96dpi）、JIS B4 或 A3，直式或橫式——就這六種組合，沒有別的，所以文件永遠落在買得到的紙上。螢幕上看到的就是 PDF 裡的樣子——`@page` 尺寸一致，列印時不會被重新縮放。
 
 ### 🤖 為 agent 設計的撰寫流程
 

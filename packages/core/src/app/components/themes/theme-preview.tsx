@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type DocPage, resolvePageGeometry } from '../../lib/sdk';
+import { type DocPage, isPageSizeName, resolvePageGeometry } from '../../lib/sdk';
 import { loadThemeDemo, type ThemeDemoModule, type ThemeMeta } from '../../lib/themes';
 import { PageFrame } from '../page-frame';
 
@@ -29,7 +29,7 @@ export function ThemePreview({ theme, width, all = false }: Props) {
   }, [theme.id, theme.hasDemo]);
 
   const geometry = resolvePageGeometry(
-    theme.pageSize ? { pageSize: theme.pageSize as never } : undefined,
+    isPageSizeName(theme.pageSize) ? { pageSize: theme.pageSize } : undefined,
   );
   const scale = width / geometry.width;
   const pages = (demo?.default ?? []).filter(

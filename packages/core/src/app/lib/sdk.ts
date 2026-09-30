@@ -2,23 +2,42 @@ import type { ComponentType, ReactNode } from 'react';
 import type { DesignSystem } from './design.ts';
 import type { LabelVocabulary } from './labels.ts';
 
-export type PageSizeName = 'A4' | 'Letter' | 'A5' | 'Legal';
+/** The only sheets a document may be laid out on. */
+export const PAGE_SIZE_NAMES = ['A4', 'B4', 'A3'] as const;
 
-export type Orientation = 'portrait' | 'landscape';
+export type PageSizeName = (typeof PAGE_SIZE_NAMES)[number];
+
+export const ORIENTATIONS = ['portrait', 'landscape'] as const;
+
+export type Orientation = (typeof ORIENTATIONS)[number];
 
 /**
- * Page dimensions in CSS pixels at 96dpi — the unit authors write in — paired
- * with the physical `@page size` used when printing. Keeping both means a page
- * laid out at 794×1123 on screen maps to a real A4 sheet with no rescaling.
+ * Portrait dimensions in CSS pixels at 96dpi — the unit authors write in —
+ * paired with the physical millimetres used when printing. Keeping both means a
+ * page laid out at 794×1123 on screen maps to a real A4 sheet with no rescaling.
  */
-export const PAGE_SIZES: Record<PageSizeName, { width: number; height: number; css: string }> = {
-  A4: { width: 794, height: 1123, css: '210mm 297mm' },
-  Letter: { width: 816, height: 1056, css: '8.5in 11in' },
-  A5: { width: 559, height: 794, css: '148mm 210mm' },
-  Legal: { width: 816, height: 1344, css: '8.5in 14in' },
+export const PAGE_SIZES: Record<
+  PageSizeName,
+  { width: number; height: number; mm: readonly [number, number] }
+> = {
+  A4: { width: 794, height: 1123, mm: [210, 297] },
+  // JIS B4, not the ISO B4 (250×353mm) that the CSS `size: B4` keyword means —
+  // which is why the descriptor is written in millimetres rather than by name.
+  B4: { width: 971, height: 1376, mm: [257, 364] },
+  A3: { width: 1123, height: 1587, mm: [297, 420] },
 };
 
 export const DEFAULT_PAGE_SIZE: PageSizeName = 'A4';
+
+export const DEFAULT_ORIENTATION: Orientation = 'portrait';
+
+export function isPageSizeName(value: unknown): value is PageSizeName {
+  return typeof value === 'string' && value in PAGE_SIZES;
+}
+
+export function isOrientation(value: unknown): value is Orientation {
+  return value === 'portrait' || value === 'landscape';
+}
 
 export type PageGeometry = {
   width: number;
@@ -44,6 +63,14 @@ export type FlowSection = {
 
 /** What a document's default export may contain: fixed pages, flow sections, or both. */
 export type DocEntry = DocPage | FlowSection;
+
+/**
+ * Every format `open-doc export` can write. The CLI's `--format`, the MCP
+ * `export_document` schema and `ops/layout.ts` all read this tuple, so adding a
+ * format is one edit here and its branch in `exportDocument`.
+ */
+export const EXPORT_FORMATS = ['pdf', 'html', 'png', 'docx'] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 export type DocMeta = {
   title?: string;
@@ -81,9 +108,13 @@ export type DocModule = {
 export function resolvePageGeometry(meta?: DocMeta): PageGeometry {
   const size = PAGE_SIZES[meta?.pageSize ?? DEFAULT_PAGE_SIZE] ?? PAGE_SIZES[DEFAULT_PAGE_SIZE];
   const landscape = meta?.orientation === 'landscape';
+  const [across, down] = landscape ? [size.mm[1], size.mm[0]] : size.mm;
   return {
     width: landscape ? size.height : size.width,
     height: landscape ? size.width : size.height,
-    css: landscape ? `${size.css} landscape` : size.css,
+    // Not `<mm> <mm> landscape`: the `landscape` keyword is only valid next to a
+    // page-size *name*, and Chromium drops the whole descriptor if it sees both,
+    // which silently prints a landscape sheet at the dialog's default size.
+    css: `${across}mm ${down}mm`,
   };
 }

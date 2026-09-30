@@ -15,7 +15,7 @@ Screen conventions do not transfer. Hover states, scroll affordances, viewport u
 
 ## The ten non-negotiable standards
 
-1. **One geometry source.** Page size comes from `resolvePageGeometry(meta)` (`app/lib/sdk.ts`), which owns both the CSS-pixel box and the `@page size` descriptor. A hardcoded `794` / `1123` / `210mm` anywhere else is a block — it silently breaks Letter, A5, Legal, and landscape.
+1. **One geometry source.** Page size comes from `resolvePageGeometry(meta)` (`app/lib/sdk.ts`), which owns both the CSS-pixel box and the `@page size` descriptor. A hardcoded `794` / `1123` / `210mm` anywhere else is a block — it silently breaks B4, A3, and landscape. The allowed sizes are the closed set in `PAGE_SIZE_NAMES`; a change that restates that list instead of reading it is also a block.
 
 2. **Physical units, honestly.** Authors write CSS px at 96dpi; paper is mm. 1pt ≈ 1.333px, so `body: 14` prints at ~10.5pt. Any type below ~9pt (12px) in body copy, or a hairline under 0.5pt, is a finding — screens forgive it, toner does not.
 

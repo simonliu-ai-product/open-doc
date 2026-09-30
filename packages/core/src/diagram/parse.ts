@@ -1,6 +1,6 @@
 export type Direction = 'TD' | 'LR';
 
-export type NodeShape = 'rect' | 'round' | 'stadium' | 'diamond' | 'circle';
+export type NodeShape = 'rect' | 'round' | 'stadium' | 'diamond' | 'circle' | 'cylinder';
 
 export type DiagramNode = {
   id: string;
@@ -36,8 +36,9 @@ export class DiagramSyntaxError extends Error {
 
 const HEADER_RE = /^(?:flowchart|graph)(?:\s+(TB|TD|BT|LR|RL))?$/i;
 
-/** `A[Label]`, `A(Label)`, `A([Label])`, `A{Label}`, `A((Label))`, or a bare `A`. */
-const NODE_RE = /^([A-Za-z0-9_.-]+)(?:(\(\(|\(\[|\[|\(|\{)([\s\S]*?)(\)\)|\]\)|\]|\)|\}))?$/;
+/** `A[Label]`, `A(Label)`, `A([Label])`, `A[(Label)]`, `A{Label}`, `A((Label))`, or a bare `A`. */
+const NODE_RE =
+  /^([A-Za-z0-9_.-]+)(?:(\(\(|\(\[|\[\(|\[|\(|\{)([\s\S]*?)(\)\)|\]\)|\)\]|\]|\)|\}))?$/;
 
 const SHAPES: Record<string, NodeShape> = {
   '[': 'rect',
@@ -45,6 +46,7 @@ const SHAPES: Record<string, NodeShape> = {
   '([': 'stadium',
   '{': 'diamond',
   '((': 'circle',
+  '[(': 'cylinder',
 };
 
 /**

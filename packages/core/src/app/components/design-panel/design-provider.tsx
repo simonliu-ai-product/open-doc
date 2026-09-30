@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { type DesignSystem, defaultDesign, designToCssVars } from '../../lib/design';
 import { shuffleDesign } from '../../lib/design-presets';
+import { useHistory } from '../history-provider';
 import { useDesign as useDesignFetch } from './use-design';
 
 type DesignCtx = {
@@ -22,8 +23,9 @@ type DesignCtx = {
   dirty: boolean;
   committing: boolean;
   error: string | null;
-  update: (mut: (next: DesignSystem) => void) => void;
-  commit: () => Promise<void>;
+  /** `coalesceKey` folds a run of changes to one field — a slider drag — into one undo step. */
+  update: (mut: (next: DesignSystem) => void, coalesceKey?: string) => void;
+  commit: () => Promise<{ ok: boolean; error?: string }>;
   discard: () => void;
   resetToDefaults: () => void;
   shuffle: () => void;
@@ -46,6 +48,7 @@ export function DesignProvider({ docId, children }: { docId: string; children: R
   const [draft, setDraft] = useState<DesignSystem | null>(null);
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const history = useHistory();
   const draftRef = useRef<DesignSystem | null>(null);
   draftRef.current = draft;
 
@@ -58,29 +61,46 @@ export function DesignProvider({ docId, children }: { docId: string; children: R
     return JSON.stringify(draft) !== JSON.stringify(design);
   }, [draft, design]);
 
-  const update = useCallback((mut: (next: DesignSystem) => void) => {
-    const prev = draftRef.current;
-    if (!prev) return;
-    const next = clone(prev);
-    mut(next);
-    setDraft(next);
-  }, []);
+  /** Every change to the draft goes through here, so every change can be undone. */
+  const change = useCallback(
+    (next: DesignSystem, coalesceKey?: string) => {
+      const prev = draftRef.current;
+      if (!prev) return;
+      setDraft(next);
+      history.record({ coalesceKey, undo: () => setDraft(prev), redo: () => setDraft(next) });
+    },
+    [history],
+  );
+
+  const update = useCallback(
+    (mut: (next: DesignSystem) => void, coalesceKey?: string) => {
+      const prev = draftRef.current;
+      if (!prev) return;
+      const next = clone(prev);
+      mut(next);
+      change(next, coalesceKey);
+    },
+    [change],
+  );
 
   const commit = useCallback(async () => {
-    if (!draft) return;
+    const current = draftRef.current;
+    if (!current) return { ok: true };
     setCommitting(true);
-    const result = await save(draft);
+    const result = await save(current);
     setCommitting(false);
-    setError(result.ok ? null : (result.error ?? 'Failed to save'));
-  }, [draft, save]);
+    const error = result.ok ? null : (result.error ?? 'Failed to save');
+    setError(error);
+    return error ? { ok: false, error } : { ok: true };
+  }, [save]);
 
   const discard = useCallback(() => {
     if (design) setDraft(clone(design));
     setError(null);
   }, [design]);
 
-  const resetToDefaults = useCallback(() => setDraft(clone(defaultDesign)), []);
-  const shuffle = useCallback(() => setDraft(clone(shuffleDesign(draftRef.current))), []);
+  const resetToDefaults = useCallback(() => change(clone(defaultDesign)), [change]);
+  const shuffle = useCallback(() => change(clone(shuffleDesign(draftRef.current))), [change]);
 
   // PageFrame writes its design vars inline on each page root, so the draft
   // overlay has to outrank inline styles — hence `!important`.

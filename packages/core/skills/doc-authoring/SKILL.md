@@ -1,6 +1,6 @@
 ---
 name: doc-authoring
-description: Technical reference for writing or editing open-doc pages — file contract, the A4/Letter page canvas, print type scale, the vertical budget that decides where a page breaks, tables, charts, table of contents, page numbers, running headers/footers, and assets. Consult this whenever you are about to write or modify any file under `docs/<id>/`, including from inside the `create-doc` workflow, or for any ad-hoc document edit. Triggers on phrases like "edit the report", "fix this page", "add a section", "change the margins", "add a table", "page numbers", "table of contents", "how do documents work here".
+description: Technical reference for writing or editing open-doc pages — file contract, the A4/B4/A3 page canvas, print type scale, the vertical budget that decides where a page breaks, tables, charts, table of contents, page numbers, running headers/footers, and assets. Consult this whenever you are about to write or modify any file under `docs/<id>/`, including from inside the `create-doc` workflow, or for any ad-hoc document edit. Triggers on phrases like "edit the report", "fix this page", "add a section", "change the margins", "add a table", "page numbers", "table of contents", "how do documents work here".
 ---
 
 # Authoring open-doc pages
@@ -59,7 +59,7 @@ export default [Cover, Body] satisfies DocPage[];
 
 - `export default` is a **non-empty array of entries**. An entry is either a zero-prop React component (one fixed page) or a `flow(<>…</>)` section the framework paginates by measuring. Mix them freely — the usual shape is a fixed cover, a fixed contents page, then one flow section for the body.
 - **Default to `flow()` for body content.** Hand-splitting prose into fixed pages produces documents where every heading starts a half-empty page. Read `references/pagination.md` before writing either kind.
-- `meta.pageSize` is `'A4' | 'Letter' | 'A5' | 'Legal'` (default `'A4'`), `meta.orientation` is `'portrait' | 'landscape'` (default portrait). The same value drives the on-screen page, the `@page` size when printing, and the HTML export.
+- `meta.pageSize` is `'A4' | 'B4' | 'A3'` (default `'A4'`) and `meta.orientation` is `'portrait' | 'landscape'` (default portrait). **These six combinations are the only sheets there are** — there is no Letter, no A5, no custom size, and no way to set a page's dimensions by hand. The same value drives the on-screen page, the `@page` size when printing, and the HTML export.
 - `meta.createdAt` is an **ISO 8601 string literal** set once when the doc is scaffolded — the home page sorts on it. **Immediately before writing the file, run `node -e "console.log(new Date().toISOString())"` and paste the exact output.** It must stay a plain string literal (no `new Date(...)`): the framework reads it with a regex at build time, it never evaluates the module.
 
 ## Two ways to fill pages
@@ -87,10 +87,11 @@ Fixed `DocPage` components remain the right tool for the cover, a contents page,
 
 | Size | Portrait px (96dpi) | Text block at 76px margins |
 | --- | --- | --- |
-| A4 | 794 × 1123 | 642 × 971 |
-| Letter | 816 × 1056 | 664 × 904 |
-| A5 | 559 × 794 | 407 × 642 |
-| Legal | 816 × 1344 | 664 × 1192 |
+| A4 (210 × 297mm) | 794 × 1123 | 642 × 971 |
+| B4 (JIS, 257 × 364mm) | 971 × 1376 | 819 × 1224 |
+| A3 (297 × 420mm) | 1123 × 1587 | 971 × 1435 |
+
+Landscape swaps the two numbers. B4 and A3 are for wide tables, plans, and posters — a body of prose set the full width of an A3 sheet is unreadable, so give a large sheet columns or wider margins.
 
 You design as if the viewport is literally the page in CSS pixels. The viewer only scales the whole sheet.
 
@@ -182,8 +183,10 @@ variables, so it prints with the same ink and faces as the prose around it.
 Never reach for an image of a diagram when the diagram can be written.
 
 Supported: `flowchart`/`graph` with `TD` or `LR`; nodes as `A[box]`, `A(round)`,
-`A([stadium])`, `A{decision}`, `A((circle))`; links `-->`, `---`, `-.->`, `==>`
-with optional `|labels|`; chains `A --> B --> C`; `%%` comments. Anything else
+`A([stadium])`, `A[(database)]`, `A{decision}`, `A((circle))`; links `-->`,
+`---`, `-.->`, `==>` with optional `|labels|`; chains `A --> B --> C`; `%%`
+comments. A link back to an earlier step is drawn round the side, clear of the
+steps in between. Anything else
 in Mermaid's syntax — subgraphs, class diagrams, sequence diagrams — is not
 supported, and a bad diagram fails the build with the line to fix.
 
@@ -357,7 +360,8 @@ A document is not a slide deck. Long-form copy is the point — but it still has
 - **Assets panel** (`/assets` in the dev UI): upload, rename, and delete files in the global `assets/` folder or any document's `assets/` folder, with an "unused" badge and a copy-ready import line. Files you reference in source are what it scans, so an import you write by hand shows up there immediately.
 - **Inspect mode** (the "Inspect" button, dev only): click any element on a page to edit its text in place — the change is written straight back into `docs/<id>/index.tsx` — or leave a note for the agent, which is stored as a `@doc-comment` marker and processed by the `apply-comments` skill.
 - **Download menu** — PDF (true page size) and self-contained HTML.
-- **Headless render** — `open-doc export <id> --format pdf|html|png` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
+- **Headless render** — `open-doc export <id> --format pdf|html|png|docx` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
+- **Word (DOCX)** — for review that runs in Word. It carries structure, not page breaks: headings become Word heading styles, `<TableOfContents />` a TOC field, `<Footnote>` real footnotes, a `flow()` footer a Word footer with page-number fields, and the theme's CJK font the East Asian font. Write headings as real `h1`–`h3` and tables as `<table>`/`<DataTable>` so they arrive as structure; anything drawn with boxes (a chart made of `div`s) arrives as a picture, and absolutely positioned layouts on fixed pages flow as plain paragraphs.
 - **Design panel** (the "Design" button in the document view, dev only): live-tweaks the `design` const — palette, fonts, type scale, margin, leading, radius — previewing on the real pages and writing the values back into `docs/<id>/index.tsx` on save.
 
 ### Writing for the inspector

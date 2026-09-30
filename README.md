@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/preview-dark.png">
+  <img src=".github/assets/preview.png" alt="open-doc — the document framework built for agents." width="100%">
+</picture>
+
 # open-doc
 
 [![CI](https://github.com/simonliu-ai-product/open-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/simonliu-ai-product/open-doc/actions/workflows/ci.yml)
@@ -5,7 +10,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/simonliu-ai-product/open-doc?style=flat)](https://github.com/simonliu-ai-product/open-doc/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](https://opensource.org/licenses/MIT)
 
-**English** · [繁體中文](README.zh-TW.md)
+**English** · [繁體中文](README.zh-TW.md) · [costaffs.app/tools/open-doc](https://costaffs.app/tools/open-doc/)
 
 **The document framework built for agents.** Describe the report you need in natural language — your coding agent writes the React. open-doc handles the page geometry, the outline, the table of contents, page numbers, print layout, and export.
 
@@ -27,7 +32,7 @@ Reports are the output nobody wants to format. Agents write excellent prose and 
 
 ### 📄 Real page geometry
 
-Every page component renders into a true sheet: A4 (794 × 1123 px @96dpi), Letter, A5, or Legal, portrait or landscape. What you see on screen is what the PDF contains — the `@page` size matches, so nothing is rescaled at print time.
+Every page component renders into a true sheet: A4 (794 × 1123 px @96dpi), JIS B4, or A3, portrait or landscape — those six combinations and nothing else, so a document always maps onto paper someone can actually buy. What you see on screen is what the PDF contains — the `@page` size matches, so nothing is rescaled at print time.
 
 ### 🤖 Agent-native authoring
 
@@ -102,7 +107,7 @@ Clipped content, blank sheets, stranded headings, type too small to print, image
 ### ⌨️ Headless export — the Download menu without a browser
 
 ```bash
-open-doc export q3-infra-review --format pdf   # or html, or one png per page
+open-doc export q3-infra-review --format pdf   # or html, docx, or one png per page
 open-doc export --all --out-dir out
 ```
 

@@ -10,6 +10,7 @@ export interface ImportOptions {
   author?: string;
   theme?: string;
   pageSize?: string;
+  orientation?: string;
   cover?: boolean;
   contents?: boolean;
 }
@@ -26,6 +27,7 @@ export async function importDoc(file: string, opts: ImportOptions = {}): Promise
     ...(opts.author !== undefined ? { author: opts.author } : {}),
     ...(opts.theme !== undefined ? { theme: opts.theme } : {}),
     ...(opts.pageSize !== undefined ? { pageSize: opts.pageSize } : {}),
+    ...(opts.orientation !== undefined ? { orientation: opts.orientation } : {}),
     ...(opts.cover !== undefined ? { cover: opts.cover } : {}),
     ...(opts.contents !== undefined ? { contents: opts.contents } : {}),
   });

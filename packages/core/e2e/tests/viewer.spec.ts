@@ -12,8 +12,22 @@ test.describe('document viewer', () => {
   test('the header shows the title and the page counter', async ({ page }) => {
     await openDoc(page, 'alpha');
     await expect(page.getByRole('heading', { name: 'Alpha Report' })).toBeVisible();
-    await expect(page.getByText('Fixture document one')).toBeVisible();
-    await expect(page.locator('header').getByText(/^\d+ \/ 3$/)).toBeVisible();
+    /* The counter is a field you can type a page into, so it is read by its
+       accessible name and its value rather than as loose text. */
+    await expect(page.getByLabel('Page number, 3 pages')).toBeVisible();
+  });
+
+  test('the title sits at the centre of the header, not of the leftover space', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openDoc(page, 'alpha');
+
+    const header = await page.locator('header').boundingBox();
+    const title = await page.locator('header h1').boundingBox();
+    if (!header || !title) throw new Error('header or title not rendered');
+
+    expect(Math.abs(title.x + title.width / 2 - (header.x + header.width / 2))).toBeLessThan(2);
   });
 
   test('a sheet is a real A4 box at 96dpi', async ({ page }) => {
@@ -42,7 +56,7 @@ test.describe('document viewer', () => {
   test('the thumbnail rail jumps to a page', async ({ page }) => {
     await openDoc(page, 'alpha');
     await page.locator('[data-thumb-page="3"]').click();
-    await expect(page.locator('header').getByText('3 / 3')).toBeVisible();
+    await expect(page.getByLabel('Page number, 3 pages')).toHaveValue('3');
   });
 
   test('the outline lists headings with their page numbers', async ({ page }) => {
@@ -53,7 +67,7 @@ test.describe('document viewer', () => {
     await expect(outline.getByText('Alpha page two')).toBeVisible();
 
     await outline.getByText('Alpha page three').click();
-    await expect(page.locator('header').getByText('3 / 3')).toBeVisible();
+    await expect(page.getByLabel('Page number, 3 pages')).toHaveValue('3');
   });
 
   test('the back link returns to the browser', async ({ page }) => {
