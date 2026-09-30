@@ -1,4 +1,4 @@
-import { Check, Loader2, MessageSquarePlus, X } from 'lucide-react';
+import { Bold, Check, Italic, Loader2, MessageSquarePlus, X } from 'lucide-react';
 import {
   type CSSProperties,
   type MutableRefObject,
@@ -12,18 +12,31 @@ import { createPortal } from 'react-dom';
 import { candidateLocs, formatLocs } from '../../lib/inspector/fiber';
 import {
   cleanRun,
+  cleanSegments,
   focusAt,
-  isRunDirty,
+  hasMark,
+  isFormatted,
+  isRunChanged,
+  locate,
+  type Mark,
   type MountedEditor,
   mountEditor,
   normalize,
   placeCaret,
-  readRuns,
+  type Run,
+  readSegments,
   replaceInRun,
-  writeRuns,
+  restoreRuns,
+  type Segment,
+  selectInRun,
+  snapshotRuns,
+  toggleMark,
+  writeSegments,
 } from '../../lib/inspector/inline-edit';
 
-type TextPart = { kind: 'text'; index: number; value: string } | { kind: 'markup'; label: string };
+type TextPart =
+  | { kind: 'text'; index: number; value: string; formattable?: true }
+  | { kind: 'markup'; label: string };
 
 type ResolvedTarget = {
   line: number;
@@ -55,8 +68,8 @@ type Entry = {
   column: number;
   shown: string;
   pre: boolean;
-  undo: string[][];
-  redo: string[][];
+  undo: Segment[][][];
+  redo: Segment[][][];
   lastInsert: number;
 };
 
@@ -184,9 +197,86 @@ function Frame({
   );
 }
 
+const TOOLBAR_GAP = 6;
+
+/**
+ * Bold and italic, floating over the text being edited. Deliberately two
+ * buttons: size, colour and alignment belong to the document's design system,
+ * and a one-off inline style would quietly fork it.
+ */
+function TextToolbar({
+  anchor,
+  container,
+  emphasis,
+  onFormat,
+  toolbarRef,
+}: {
+  anchor: HTMLElement;
+  container: HTMLElement;
+  emphasis: Emphasis;
+  onFormat: (mark: Mark) => void;
+  toolbarRef: React.RefObject<HTMLDivElement>;
+}) {
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  // Same measuring contract as Frame: after every render, compared by value.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const a = anchor.getBoundingClientRect();
+      const c = container.getBoundingClientRect();
+      const height = toolbarRef.current?.offsetHeight ?? 36;
+      const above = a.top - c.top - height - TOOLBAR_GAP;
+      const next = {
+        left: a.left - c.left + container.scrollLeft,
+        top: (above >= 0 ? above : a.bottom - c.top + TOOLBAR_GAP) + container.scrollTop,
+      };
+      setPosition((prev) =>
+        prev && prev.left === next.left && prev.top === next.top ? prev : next,
+      );
+    };
+    measure();
+    container.addEventListener('scroll', measure, { passive: true });
+    return () => container.removeEventListener('scroll', measure);
+  });
+
+  const title = (label: string, keys: string) =>
+    emphasis.canFormat ? `${label} (${keys})` : (emphasis.reason ?? label);
+
+  return (
+    <div
+      ref={toolbarRef}
+      role="toolbar"
+      aria-label="Text formatting"
+      className="pointer-events-auto absolute z-40 flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-md"
+      style={position ?? { visibility: 'hidden' }}
+      // Keep focus, and the selection, in the text being edited.
+      onPointerDown={(e) => e.preventDefault()}
+    >
+      {(
+        [
+          ['bold', 'Bold', '⌘B', Bold],
+          ['italic', 'Italic', '⌘I', Italic],
+        ] as const
+      ).map(([mark, label, keys, Icon]) => (
+        <button
+          key={mark}
+          type="button"
+          aria-label={label}
+          aria-pressed={emphasis[mark]}
+          title={title(label, keys)}
+          disabled={!emphasis.canFormat}
+          onClick={() => onFormat(mark)}
+          className="flex size-8 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40 disabled:hover:bg-transparent aria-pressed:bg-accent aria-pressed:text-foreground"
+        >
+          <Icon className="size-3.5" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function dirtyRuns(entry: Entry): number {
-  const texts = readRuns(entry.editor.runs);
-  return entry.editor.runs.filter((run, at) => isRunDirty(texts[at] ?? '', run.expected)).length;
+  return entry.editor.runs.filter(isRunChanged).length;
 }
 
 /** The DOM range an input will act on, when the browser does not say. */
@@ -208,6 +298,38 @@ function fallbackRange(inputType: string): StaticRange | null {
     endContainer: range.endContainer,
     endOffset: range.endOffset,
   });
+}
+
+function selectionIn(entry: Entry): { run: Run; from: number; to: number } | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const at = locate(entry.editor.clone, selection.getRangeAt(0));
+  const run = at && entry.editor.runs.find((candidate) => candidate.el === at.run);
+  return at && run ? { run, from: at.from, to: at.to } : null;
+}
+
+type Emphasis = { canFormat: boolean; reason?: string; bold: boolean; italic: boolean };
+
+function emphasisAt(entry: Entry): Emphasis {
+  const at = selectionIn(entry);
+  if (!at || at.from === at.to) {
+    return { canFormat: false, reason: 'Select words to format', bold: false, italic: false };
+  }
+  if (!at.run.formattable) {
+    return {
+      canFormat: false,
+      reason:
+        'This text is passed in as a string — bold and italic need text written in the document',
+      bold: false,
+      italic: false,
+    };
+  }
+  const segments = readSegments(at.run.el);
+  return {
+    canFormat: true,
+    bold: hasMark(segments, at.from, at.to, 'bold'),
+    italic: hasMark(segments, at.from, at.to, 'italic'),
+  };
 }
 
 type Props = {
@@ -246,8 +368,9 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
   const [status, setStatus] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const entriesRef = useRef(new Map<HTMLElement, Entry>());
-  const sessionStartRef = useRef<string[]>([]);
+  const sessionStartRef = useRef<Segment[][]>([]);
   const firstClickRef = useRef<{ anchor: HTMLElement; at: At; time: number } | null>(null);
 
   useLayoutEffect(() => setContainer(containerRef.current), [containerRef]);
@@ -255,7 +378,8 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
   const insideChrome = useCallback(
     (node: EventTarget | null) =>
       (panelRef.current?.contains(node as Node) ?? false) ||
-      (barRef.current?.contains(node as Node) ?? false),
+      (barRef.current?.contains(node as Node) ?? false) ||
+      (toolbarRef.current?.contains(node as Node) ?? false),
     [],
   );
 
@@ -304,7 +428,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
         };
         entriesRef.current.set(anchor, entry);
       }
-      sessionStartRef.current = readRuns(entry.editor.runs);
+      sessionStartRef.current = snapshotRuns(entry.editor.runs);
       setStatus(null);
       setActive(entry);
       focusAt(entry.editor.clone, pointIn(entry.editor.clone, at), selectWord);
@@ -315,7 +439,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
   /** Ends the typing session. The change stays on the page, unsaved, unless reverted. */
   const finish = useCallback(
     (entry: Entry, revert: boolean) => {
-      if (revert) writeRuns(entry.editor.runs, sessionStartRef.current);
+      if (revert) restoreRuns(entry.editor.runs, sessionStartRef.current);
       if (dirtyRuns(entry) === 0) drop(entry);
       else entry.editor.clone.blur();
       setActive((current) => (current === entry ? null : current));
@@ -355,26 +479,58 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     [container],
   );
 
+  /**
+   * Bold or italic on the selected words. Only text written between tags can
+   * carry it — a prop or an array entry is a string in source, and a string
+   * has nowhere to put a `<strong>`.
+   */
+  const format = useCallback(
+    (mark: Mark) => {
+      if (!active) return;
+      const at = selectionIn(active);
+      if (!at || at.from === at.to || !at.run.formattable) return;
+      active.undo.push(snapshotRuns(active.editor.runs));
+      active.redo = [];
+      active.lastInsert = 0;
+      writeSegments(at.run.el, toggleMark(readSegments(at.run.el), at.from, at.to, mark));
+      selectInRun(at.run.el, at.from, at.to);
+      refresh();
+    },
+    [active, refresh],
+  );
+
+  const [emphasis, setEmphasis] = useState<Emphasis | null>(null);
+  useEffect(() => {
+    if (!active) {
+      setEmphasis(null);
+      return;
+    }
+    const update = () => setEmphasis(emphasisAt(active));
+    update();
+    document.addEventListener('selectionchange', update);
+    return () => document.removeEventListener('selectionchange', update);
+  }, [active]);
+
   const save = useCallback(async (): Promise<boolean> => {
     if (active) finish(active, false);
     const entries = [...entriesRef.current.values()];
     const edits: Array<Record<string, unknown>> = [];
     const owners: Entry[] = [];
     for (const entry of entries) {
-      const texts = readRuns(entry.editor.runs);
-      entry.editor.runs.forEach((run, at) => {
-        const current = texts[at] ?? '';
-        if (!isRunDirty(current, run.expected)) return;
+      for (const run of entry.editor.runs) {
+        if (!isRunChanged(run)) continue;
+        const segments = cleanSegments(readSegments(run.el), run.expected);
         edits.push({
           line: entry.line,
           column: entry.column,
           index: run.index,
           expected: run.expected,
           shown: entry.shown,
-          text: cleanRun(current, run.expected),
+          text: cleanRun(run.el.textContent ?? '', run.expected),
+          ...(isFormatted(segments) ? { segments } : {}),
         });
         owners.push(entry);
-      });
+      }
     }
     if (edits.length === 0) return true;
 
@@ -462,6 +618,31 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
           `The document reloaded — ${lost} unsaved edit${lost > 1 ? 's were' : ' was'} lost`,
         );
       }
+      // A selection carries over to the element that replaced it at the same
+      // source location — otherwise a reload between the two clicks of a
+      // double-click leaves the edit waiting on a node that is gone.
+      const successor = (anchor: HTMLElement): HTMLElement | null => {
+        if (anchor.isConnected) return anchor;
+        const loc = anchor.getAttribute(LOC_ATTR);
+        return loc
+          ? container.querySelector<HTMLElement>(`[${LOC_ATTR}="${CSS.escape(loc)}"]`)
+          : null;
+      };
+      setSelected((prev) => {
+        if (!prev || prev.anchor.isConnected) return prev;
+        const anchor = successor(prev.anchor);
+        return anchor ? { ...prev, anchor } : null;
+      });
+      setWantEdit((prev) => {
+        if (!prev || prev.anchor.isConnected) return prev;
+        const anchor = successor(prev.anchor);
+        return anchor ? { ...prev, anchor } : null;
+      });
+      const first = firstClickRef.current;
+      if (first && !first.anchor.isConnected) {
+        const anchor = successor(first.anchor);
+        firstClickRef.current = anchor ? { ...first, anchor } : null;
+      }
     });
     observer.observe(container, { childList: true, subtree: true });
     return () => observer.disconnect();
@@ -533,7 +714,9 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       });
     };
     const onPointerDown = (e: PointerEvent) => {
-      if (active && !active.editor.clone.contains(e.target as Node)) finish(active, false);
+      if (!active || active.editor.clone.contains(e.target as Node)) return;
+      if (toolbarRef.current?.contains(e.target as Node)) return;
+      finish(active, false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || e.keyCode === 229) return;
@@ -588,9 +771,9 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
   useEffect(() => {
     if (!active) return;
     const { clone, runs } = active.editor;
-    let beforeComposition: { html: Node; texts: string[] } | null = null;
+    let beforeComposition: { html: Node; snapshot: Segment[][] } | null = null;
 
-    const record = (before: string[], coalesce: boolean) => {
+    const record = (before: Segment[][], coalesce: boolean) => {
       const now = Date.now();
       if (!(coalesce && now - active.lastInsert < 1000)) active.undo.push(before);
       active.lastInsert = coalesce ? now : 0;
@@ -601,8 +784,8 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       const to = forward ? active.undo : active.redo;
       const texts = from.pop();
       if (!texts) return;
-      to.push(readRuns(runs));
-      writeRuns(runs, texts);
+      to.push(snapshotRuns(runs));
+      restoreRuns(runs, texts);
       active.lastInsert = 0;
       const last = runs[runs.length - 1];
       if (last) placeCaret(last.el, (last.el.textContent ?? '').length);
@@ -635,7 +818,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       }
       const range = e.getTargetRanges()[0] ?? fallbackRange(type);
       if (!range) return;
-      const before = readRuns(runs);
+      const before = snapshotRuns(runs);
       if (replaceInRun(clone, range, text)) {
         record(before, type === 'insertText' && text.trim() !== '');
         refresh();
@@ -647,18 +830,21 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       if (key === 'z' || (key === 'y' && e.ctrlKey)) {
         e.preventDefault();
         step(e.shiftKey || key === 'y');
-      } else if (key === 'b' || key === 'i' || key === 'u') {
+      } else if (key === 'b' || key === 'i') {
+        e.preventDefault();
+        format(key === 'b' ? 'bold' : 'italic');
+      } else if (key === 'u') {
         e.preventDefault();
       }
     };
     const onCompositionStart = () => {
-      beforeComposition = { html: clone.cloneNode(true), texts: readRuns(runs) };
+      beforeComposition = { html: clone.cloneNode(true), snapshot: snapshotRuns(runs) };
     };
     const onCompositionEnd = () => {
       const snapshot = beforeComposition;
       beforeComposition = null;
       if (runs.every((run) => clone.contains(run.el))) {
-        if (snapshot) record(snapshot.texts, false);
+        if (snapshot) record(snapshot.snapshot, false);
         refresh();
         return;
       }
@@ -684,7 +870,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       clone.removeEventListener('compositionstart', onCompositionStart);
       clone.removeEventListener('compositionend', onCompositionEnd);
     };
-  }, [active, finish, refresh]);
+  }, [active, finish, refresh, format]);
 
   // Report the pick to the dev server so `current.json` can answer "this
   // element" for an agent. Clearing the selection clears it there too.
@@ -812,6 +998,15 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
             />
             <Frame anchor={selectedEl} container={container} variant="selected" />
           </div>
+          {active && emphasis && (
+            <TextToolbar
+              anchor={active.editor.clone}
+              container={container}
+              emphasis={emphasis}
+              onFormat={format}
+              toolbarRef={toolbarRef}
+            />
+          )}
           {pending.length > 0 ? (
             <div
               ref={barRef}

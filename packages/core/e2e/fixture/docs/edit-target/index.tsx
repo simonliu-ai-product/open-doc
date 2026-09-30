@@ -36,6 +36,8 @@ const sheet: CSSProperties = {
   fontSize: 'var(--od-size-body)',
 };
 
+const Label = ({ text }: { text: string }) => <p>{text}</p>;
+
 const Only: DocPage = () => (
   <div style={sheet}>
     <h1 style={{ fontSize: 'var(--od-size-h1)', margin: 0 }}>Editable heading</h1>
@@ -44,6 +46,7 @@ const Only: DocPage = () => (
     <p>
       Run before <code>open-doc dev</code> run after
     </p>
+    <Label text="From a prop" />
   </div>
 );
 

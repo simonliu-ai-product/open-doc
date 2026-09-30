@@ -15,19 +15,108 @@
  * by hand to the run the caret is in, which is what keeps the runs intact:
  * left to itself the browser deletes an emptied span and puts the next
  * character beside it, where no run can claim it.
+ *
+ * A run is held as segments — stretches of text and the emphasis on them — so
+ * bold and italic can be previewed as real `<strong>`/`<em>` inside the run
+ * and still be read back as one run the source can take.
  */
 
 export const EDITING_ATTR = 'data-od-editing';
 const RUN_ATTR = 'data-od-run';
 
-export type RunPart = { index: number; value: string };
+export type RunPart = { index: number; value: string; formattable?: boolean };
 
 export type Run = {
   index: number;
   /** The run's text in source, as the server resolved it. */
   expected: string;
+  /** Written between tags in source, so it can take `<strong>` and `<em>`. */
+  formattable: boolean;
   el: HTMLElement;
 };
+
+export type Mark = 'bold' | 'italic';
+export type Segment = { text: string; bold?: boolean; italic?: boolean };
+
+function sameMarks(a: Segment, b: Segment): boolean {
+  return Boolean(a.bold) === Boolean(b.bold) && Boolean(a.italic) === Boolean(b.italic);
+}
+
+function marksOf(segment: Segment | undefined): Omit<Segment, 'text'> {
+  return {
+    ...(segment?.bold ? { bold: true } : {}),
+    ...(segment?.italic ? { italic: true } : {}),
+  };
+}
+
+/** Drops empty pieces and joins neighbours that carry the same emphasis. */
+export function mergeSegments(segments: Segment[]): Segment[] {
+  const out: Segment[] = [];
+  for (const segment of segments) {
+    if (segment.text === '') continue;
+    const last = out[out.length - 1];
+    if (last && sameMarks(last, segment)) last.text += segment.text;
+    else out.push({ text: segment.text, ...marksOf(segment) });
+  }
+  return out;
+}
+
+export function segmentsText(segments: Segment[]): string {
+  return segments.map((segment) => segment.text).join('');
+}
+
+/**
+ * One piece per UTF-16 unit — the unit DOM offsets count in, so a range read
+ * off the selection lines up with these indices even past an emoji.
+ */
+function explode(segments: Segment[]): Segment[] {
+  return segments.flatMap((segment) =>
+    segment.text.split('').map((char) => ({ text: char, ...marksOf(segment) })),
+  );
+}
+
+/**
+ * Replaces characters `from`–`to` with `text`. What is typed takes the
+ * emphasis of the character before it — typing at the end of a bold word
+ * continues the bold — or of the first character when there is none before.
+ */
+export function spliceSegments(
+  segments: Segment[],
+  from: number,
+  to: number,
+  text: string,
+): Segment[] {
+  const chars = explode(segments);
+  const like = chars[from - 1] ?? chars[from] ?? chars[0];
+  const inserted = text.split('').map((char) => ({ text: char, ...marksOf(like) }));
+  return mergeSegments([...chars.slice(0, from), ...inserted, ...chars.slice(to)]);
+}
+
+/** Whether every character in `from`–`to` carries the mark. */
+export function hasMark(segments: Segment[], from: number, to: number, mark: Mark): boolean {
+  const chars = explode(segments).slice(from, to);
+  return chars.length > 0 && chars.every((char) => char[mark]);
+}
+
+/** Adds the mark to the range, or takes it off when the whole range already has it. */
+export function toggleMark(segments: Segment[], from: number, to: number, mark: Mark): Segment[] {
+  const on = !hasMark(segments, from, to, mark);
+  const chars = explode(segments).map((char, at) =>
+    at >= from && at < to ? { ...char, [mark]: on } : char,
+  );
+  return mergeSegments(chars);
+}
+
+/** A length-preserving rewrite of the text, applied across piece boundaries. */
+export function mapSegmentText(segments: Segment[], fn: (text: string) => string): Segment[] {
+  const next = fn(segmentsText(segments));
+  let at = 0;
+  return segments.map((segment) => {
+    const text = next.slice(at, at + segment.text.length);
+    at += segment.text.length;
+    return { ...segment, text };
+  });
+}
 
 export type MountedEditor = {
   clone: HTMLElement;
@@ -144,7 +233,12 @@ export function mountEditor(anchor: HTMLElement, parts: RunPart[]): MountedEdito
     span.setAttribute(RUN_ATTR, String(part.index));
     node.parentNode?.replaceChild(span, node);
     span.appendChild(node);
-    runs.push({ index: part.index, expected: part.value, el: span });
+    runs.push({
+      index: part.index,
+      expected: part.value,
+      formattable: part.formattable ?? false,
+      el: span,
+    });
   });
   if (runs.length !== parts.length) return null;
 
@@ -184,10 +278,75 @@ export function readRuns(runs: Run[]): string[] {
   return runs.map((run) => run.el.textContent ?? '');
 }
 
-export function writeRuns(runs: Run[], texts: string[]): void {
+const MARK_TAGS: Record<string, Mark> = { STRONG: 'bold', B: 'bold', EM: 'italic', I: 'italic' };
+
+/** The run as it stands on the page, emphasis included. */
+export function readSegments(el: HTMLElement): Segment[] {
+  const out: Segment[] = [];
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const segment: Segment = { text: (node as Text).data };
+    for (let at = node.parentElement; at && at !== el; at = at.parentElement) {
+      const mark = MARK_TAGS[at.tagName];
+      if (mark) segment[mark] = true;
+    }
+    out.push(segment);
+  }
+  return mergeSegments(out);
+}
+
+export function writeSegments(el: HTMLElement, segments: Segment[]): void {
+  el.replaceChildren(
+    ...mergeSegments(segments).map((segment) => {
+      let node: Node = document.createTextNode(segment.text);
+      if (segment.italic) {
+        const em = document.createElement('em');
+        em.appendChild(node);
+        node = em;
+      }
+      if (segment.bold) {
+        const strong = document.createElement('strong');
+        strong.appendChild(node);
+        node = strong;
+      }
+      return node;
+    }),
+  );
+}
+
+/** Every run's segments — what undo and Escape put back. */
+export function snapshotRuns(runs: Run[]): Segment[][] {
+  return runs.map((run) => readSegments(run.el));
+}
+
+export function restoreRuns(runs: Run[], snapshot: Segment[][]): void {
   runs.forEach((run, at) => {
-    run.el.textContent = texts[at] ?? '';
+    writeSegments(run.el, snapshot[at] ?? []);
   });
+}
+
+export function isFormatted(segments: Segment[]): boolean {
+  return segments.some((segment) => segment.bold || segment.italic);
+}
+
+/** The segments to send, cleaned the way `cleanRun` cleans the text. */
+export function cleanSegments(segments: Segment[], expected: string): Segment[] {
+  const unbreak = !expected.includes('\u00a0');
+  const out = segments.map((segment) => ({
+    ...segment,
+    text: unbreak ? segment.text.replace(/\u00a0/g, ' ') : segment.text,
+  }));
+  if (expected === expected.trim()) {
+    const first = out[0];
+    if (first) out[0] = { ...first, text: first.text.trimStart() };
+    const last = out[out.length - 1];
+    if (last) out[out.length - 1] = { ...last, text: last.text.trimEnd() };
+  }
+  return mergeSegments(out);
+}
+
+export function isRunChanged(run: Run): boolean {
+  return isRunDirty(run.el.textContent ?? '', run.expected) || isFormatted(readSegments(run.el));
 }
 
 /**
@@ -254,18 +413,23 @@ export function placeCaret(run: HTMLElement, offset: number): void {
   selection.collapse(run, run.childNodes.length);
 }
 
+type DomRange = {
+  startContainer: Node;
+  startOffset: number;
+  endContainer: Node;
+  endOffset: number;
+};
+
 /**
- * Replaces the text a StaticRange covers with `text`, provided the range
- * touches one run. A range that spills past it — select-all, or a selection
- * dragged over a `<code>` chip — is narrowed to that run, leaving the markup
- * alone. Returns false, changing nothing, when it touches two runs: a single
- * replacement has no one place in source it could be written back to.
+ * The run a range acts on, and its character offsets within that run. A
+ * range that spills past one run — select-all, or a selection dragged over a
+ * `<code>` chip — is narrowed to it, leaving the markup alone. A range that
+ * touches two runs has no one place in source it could be written back to.
  */
-export function replaceInRun(
+export function locate(
   clone: HTMLElement,
-  range: { startContainer: Node; startOffset: number; endContainer: Node; endOffset: number },
-  text: string,
-): boolean {
+  range: DomRange,
+): { run: HTMLElement; from: number; to: number } | null {
   let run = runOf(range.startContainer, clone);
   if (!run || runOf(range.endContainer, clone) !== run) {
     const live = document.createRange();
@@ -274,21 +438,41 @@ export function replaceInRun(
     const touched = Array.from(clone.querySelectorAll<HTMLElement>(`[${RUN_ATTR}]`)).filter(
       (candidate) => live.intersectsNode(candidate),
     );
-    if (touched.length !== 1) return false;
+    if (touched.length !== 1) return null;
     run = touched[0] as HTMLElement;
   }
-  const current = run.textContent ?? '';
+  const length = (run.textContent ?? '').length;
   const start = run.contains(range.startContainer)
     ? offsetIn(run, range.startContainer, range.startOffset)
     : 0;
   const end = run.contains(range.endContainer)
     ? offsetIn(run, range.endContainer, range.endOffset)
-    : current.length;
-  const [from, to] = start <= end ? [start, end] : [end, start];
-  const next = current.slice(0, from) + text + current.slice(to);
-  run.textContent = getComputedStyle(run).whiteSpace.startsWith('pre') ? next : holdSpaces(next);
+    : length;
+  return start <= end ? { run, from: start, to: end } : { run, from: end, to: start };
+}
+
+/** Replaces the text a range covers with `text`. Returns false, changing nothing, when it cannot. */
+export function replaceInRun(clone: HTMLElement, range: DomRange, text: string): boolean {
+  const at = locate(clone, range);
+  if (!at) return false;
+  const { run, from, to } = at;
+  let next = spliceSegments(readSegments(run), from, to, text);
+  if (!getComputedStyle(run).whiteSpace.startsWith('pre')) next = mapSegmentText(next, holdSpaces);
+  writeSegments(run, next);
   placeCaret(run, from + text.length);
   return true;
+}
+
+export function selectInRun(run: HTMLElement, from: number, to: number): void {
+  const selection = window.getSelection();
+  if (!selection) return;
+  placeCaret(run, from);
+  const anchor = { node: selection.anchorNode, offset: selection.anchorOffset };
+  placeCaret(run, to);
+  const focus = { node: selection.focusNode, offset: selection.focusOffset };
+  if (anchor.node && focus.node) {
+    selection.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
+  }
 }
 
 /** Puts the caret where the reader clicked, and selects the word there on a double-click. */

@@ -28,7 +28,7 @@ export function normalizeText(value: string): string {
  * having to understand — or destroy — the inline markup.
  */
 export type TextPart =
-  | { kind: 'text'; index: number; value: string }
+  | { kind: 'text'; index: number; value: string; formattable?: true }
   | { kind: 'markup'; label: string };
 
 export type TextTargetInfo = {
@@ -75,8 +75,18 @@ function labelOf(node: AstNode): string {
  * the literal text was found, so the props were never looked for.
  */
 
-/** A span of source an edit may rewrite, and the escaping that span needs. */
-type Slot = { value: string; start: number; end: number; escape: (text: string) => string };
+/**
+ * A span of source an edit may rewrite, and the escaping that span needs.
+ * `jsx` marks text written between tags — the only kind that can take
+ * `<strong>` or `<em>`; an attribute or a string literal holds a string.
+ */
+type Slot = {
+  value: string;
+  start: number;
+  end: number;
+  escape: (text: string) => string;
+  jsx?: true;
+};
 
 type Context = { ast: AstNode; source: string; shown?: string };
 
@@ -90,6 +100,7 @@ function literalSlot(node: AstNode): Slot {
     start: node.start + leading,
     end: node.end - trailing,
     escape: escapeJsxText,
+    jsx: true,
   };
 }
 
@@ -422,7 +433,12 @@ function resolve(element: AstNode, ctx?: Context): Resolution {
   const parts: TextPart[] = [];
   const slots: Slot[] = [];
   const take = (slot: Slot): void => {
-    parts.push({ kind: 'text', index: slots.length, value: slot.value });
+    parts.push({
+      kind: 'text',
+      index: slots.length,
+      value: slot.value,
+      ...(slot.jsx ? { formattable: true as const } : {}),
+    });
     slots.push(slot);
   };
 
@@ -572,12 +588,35 @@ function slotAt(
   return { ok: true, slot };
 }
 
+/** A stretch of a run and the emphasis it carries. */
+export type TextSegment = { text: string; bold?: boolean; italic?: boolean };
+
 export type TextEdit = EditTarget & {
   text: string;
+  /** The run as formatted pieces; `text` is their concatenation. */
+  segments?: TextSegment[];
   index?: number;
   expected?: string;
   shown?: string;
 };
+
+function isFormatted(segments: TextSegment[] | undefined): segments is TextSegment[] {
+  return segments?.some((segment) => segment.bold || segment.italic) ?? false;
+}
+
+/** What goes into the slot: plain escaped text, or JSX with emphasis around the pieces. */
+function slotText(slot: Slot, edit: TextEdit): string {
+  if (!isFormatted(edit.segments)) return slot.escape(edit.text);
+  return edit.segments
+    .filter((segment) => segment.text !== '')
+    .map((segment) => {
+      let out = slot.escape(segment.text);
+      if (segment.italic) out = `<em>${out}</em>`;
+      if (segment.bold) out = `<strong>${out}</strong>`;
+      return out;
+    })
+    .join('');
+}
 
 export type TextEditOutcome = { ok: true } | { ok: false; status: number; error: string };
 
@@ -612,10 +651,20 @@ export function replaceTextsAt(
       results.push(found);
       continue;
     }
+    if (isFormatted(edit.segments) && !found.slot.jsx) {
+      results.push({
+        ok: false,
+        status: 422,
+        error:
+          'bold and italic need text written in the document itself, not passed in as a string',
+      });
+      continue;
+    }
+    const text = slotText(found.slot, edit);
     const same = planned.find(
       (other) => other.slot.start === found.slot.start && other.slot.end === found.slot.end,
     );
-    if (same && same.text !== edit.text) {
+    if (same && same.text !== text) {
       results.push({
         ok: false,
         status: 409,
@@ -623,13 +672,13 @@ export function replaceTextsAt(
       });
       continue;
     }
-    if (!same) planned.push({ slot: found.slot, text: edit.text });
+    if (!same) planned.push({ slot: found.slot, text });
     results.push({ ok: true });
   }
 
   let next = source;
   for (const { slot, text } of [...planned].sort((a, b) => b.slot.start - a.slot.start)) {
-    next = next.slice(0, slot.start) + slot.escape(text) + next.slice(slot.end);
+    next = next.slice(0, slot.start) + text + next.slice(slot.end);
   }
   return { source: next, results };
 }

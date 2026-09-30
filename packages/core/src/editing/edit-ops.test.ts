@@ -180,8 +180,8 @@ describe('text that arrives as children', () => {
     expect(info?.editable).toBe(true);
     expect(info?.parts).toEqual([
       { kind: 'text', index: 0, value: '主旨' },
-      { kind: 'text', index: 1, value: '：' },
-      { kind: 'text', index: 2, value: '本府訂於115年10月14日辦理研習營。' },
+      { kind: 'text', index: 1, value: '：', formattable: true },
+      { kind: 'text', index: 2, value: '本府訂於115年10月14日辦理研習營。', formattable: true },
     ]);
   });
 
@@ -246,7 +246,7 @@ describe('text that comes from a mapped array', () => {
     const info = readTextAt(VIA_PAIRS, VIA_PAIRS_DIV, '發文日期：中華民國115年8月16日');
     expect(info?.parts).toEqual([
       { kind: 'text', index: 0, value: '發文日期' },
-      { kind: 'text', index: 1, value: '：' },
+      { kind: 'text', index: 1, value: '：', formattable: true },
       { kind: 'text', index: 2, value: '中華民國115年8月16日' },
     ]);
   });
@@ -314,18 +314,20 @@ describe('readTextAt', () => {
     const info = readTextAt(SOURCE, H1);
     expect(info?.editable).toBe(true);
     expect(info?.text).toBe('Executive summary');
-    expect(info?.parts).toEqual([{ kind: 'text', index: 0, value: 'Executive summary' }]);
+    expect(info?.parts).toEqual([
+      { kind: 'text', index: 0, value: 'Executive summary', formattable: true },
+    ]);
   });
 
   it('splits mixed content into runs, keeping the markup as placeholders', () => {
     const info = readTextAt(MIXED, MIXED_P);
     expect(info?.editable).toBe(true);
     expect(info?.parts).toEqual([
-      { kind: 'text', index: 0, value: '對外端點為' },
+      { kind: 'text', index: 0, value: '對外端點為', formattable: true },
       { kind: 'markup', label: '<code>' },
-      { kind: 'text', index: 1, value: '，另外自訂' },
+      { kind: 'text', index: 1, value: '，另外自訂', formattable: true },
       { kind: 'markup', label: '<code>' },
-      { kind: 'text', index: 2, value: '供探針使用。' },
+      { kind: 'text', index: 2, value: '供探針使用。', formattable: true },
     ]);
   });
 
@@ -373,6 +375,7 @@ describe('replaceTextAt', () => {
       kind: 'text',
       index: 0,
       value: '端點是',
+      formattable: true,
     });
   });
 
@@ -462,6 +465,41 @@ describe('replaceTextsAt', () => {
     expect(results[1]).toEqual({ ok: true });
     expect(source).toContain('Executive summary');
     expect(source).toContain('Kept.');
+  });
+
+  it('writes emphasis as JSX around the formatted pieces', () => {
+    const { source, results } = replaceTextsAt(SOURCE, [
+      {
+        ...H1,
+        text: 'Executive summary',
+        expected: 'Executive summary',
+        segments: [{ text: 'Executive ' }, { text: 'summary', bold: true, italic: true }],
+      },
+    ]);
+    expect(results).toEqual([{ ok: true }]);
+    expect(source).toContain('<h1 style={h1}>Executive <strong><em>summary</em></strong></h1>');
+  });
+
+  it('escapes formatted text like any other', () => {
+    const { source } = replaceTextsAt(SOURCE, [
+      { ...H1, text: 'a {b}', segments: [{ text: 'a ' }, { text: '{b}', bold: true }] },
+    ]);
+    expect(source).toContain("<h1 style={h1}>a <strong>{'{'}b{'}'}</strong></h1>");
+  });
+
+  it('refuses emphasis in text that is a string, not JSX', () => {
+    const { source, results } = replaceTextsAt(VIA_PROPS, [
+      {
+        line: 2,
+        column: 2,
+        index: 0,
+        text: '範例市政府',
+        shown: '範例市政府 函',
+        segments: [{ text: '範例市政府', bold: true }],
+      },
+    ]);
+    expect(results[0]).toMatchObject({ ok: false, status: 422 });
+    expect(source).toBe(VIA_PROPS);
   });
 
   it('refuses two edits that disagree about the same span', () => {

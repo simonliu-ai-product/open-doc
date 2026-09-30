@@ -11,6 +11,20 @@ function field(page: Page) {
   return viewer(page).locator('[data-od-editing]:focus');
 }
 
+/** Selects `word` inside the text being edited, as a drag across it would. */
+async function selectWord(page: Page, word: string) {
+  await field(page).evaluate((el, word) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const at = (node as Text).data.indexOf(word);
+      if (at < 0) continue;
+      window.getSelection()?.setBaseAndExtent(node, at, node, at + word.length);
+      return;
+    }
+    throw new Error(`no "${word}" in the field`);
+  }, word);
+}
+
 /** Double-click opens the editor once the source has said which words are editable. */
 async function editAt(page: Page, target: Locator, position?: { x: number; y: number }) {
   await target.dblclick(position ? { position } : undefined);
@@ -143,6 +157,59 @@ test.describe('editing on the page', () => {
     await expect(field(page)).toContainText('before');
     await expect(field(page)).toContainText('run after');
     await expect(field(page).locator('code')).toHaveText('open-doc dev');
+  });
+
+  test('bold from the toolbar is written as <strong>', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('Editable paragraph'));
+    await selectWord(page, 'paragraph');
+    const bold = page.getByRole('toolbar', { name: 'Text formatting' }).getByRole('button', {
+      name: 'Bold',
+    });
+    await expect(bold).toHaveAttribute('aria-pressed', 'false');
+    await bold.click();
+    await expect(bold).toHaveAttribute('aria-pressed', 'true');
+    await expect(field(page).locator('strong')).toHaveText('paragraph');
+
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('<p>Editable <strong>paragraph</strong></p>');
+  });
+
+  test('⌘I italicises and undo takes it back', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('Editable heading'));
+    await selectWord(page, 'heading');
+    await page.keyboard.press('ControlOrMeta+i');
+    await expect(field(page).locator('em')).toHaveText('heading');
+
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(field(page).locator('em')).toHaveCount(0);
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('toolbar', { name: 'Unsaved edits' })).toHaveCount(0);
+    expect(await readDocSource('edit-target')).toBe(original);
+  });
+
+  test('text passed in as a string cannot be made bold', async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).getByText('From a prop'));
+    await selectWord(page, 'prop');
+    const bold = page.getByRole('toolbar', { name: 'Text formatting' }).getByRole('button', {
+      name: 'Bold',
+    });
+    await expect(bold).toBeDisabled();
+    await page.keyboard.press('ControlOrMeta+b');
+    await expect(field(page).locator('strong')).toHaveCount(0);
+
+    // The words themselves are still editable.
+    await page.keyboard.type('attribute');
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain('<Label text="From a attribute" />');
   });
 
   test('leaving edit mode saves what is still unsaved', async ({ page }) => {

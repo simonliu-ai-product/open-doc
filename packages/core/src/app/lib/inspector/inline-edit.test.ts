@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { cleanRun, holdSpaces, isRunDirty, matchRuns } from './inline-edit.ts';
+import {
+  cleanRun,
+  hasMark,
+  holdSpaces,
+  isRunDirty,
+  mapSegmentText,
+  matchRuns,
+  mergeSegments,
+  spliceSegments,
+  toggleMark,
+} from './inline-edit.ts';
 
 describe('matchRuns', () => {
   it('pairs runs with the element’s own text nodes, skipping separators', () => {
@@ -80,5 +90,76 @@ describe('holdSpaces', () => {
 
   it('holds runs of spaces and leading spaces, not single inner ones', () => {
     expect(holdSpaces(' a  b c')).toBe('\u00a0a \u00a0b c');
+  });
+});
+
+describe('segments', () => {
+  const plain = [{ text: 'Executive summary' }];
+
+  it('bolds a range and splits the run around it', () => {
+    expect(toggleMark(plain, 10, 17, 'bold')).toEqual([
+      { text: 'Executive ' },
+      { text: 'summary', bold: true },
+    ]);
+  });
+
+  it('takes the mark off when the whole range already has it', () => {
+    const bolded = toggleMark(plain, 10, 17, 'bold');
+    expect(toggleMark(bolded, 10, 17, 'bold')).toEqual(plain);
+  });
+
+  it('adds the mark when only part of the range has it', () => {
+    const bolded = toggleMark(plain, 10, 17, 'bold');
+    expect(hasMark(bolded, 5, 17, 'bold')).toBe(false);
+    expect(toggleMark(bolded, 5, 17, 'bold')).toEqual([
+      { text: 'Execu' },
+      { text: 'tive summary', bold: true },
+    ]);
+  });
+
+  it('keeps bold and italic independent', () => {
+    const both = toggleMark(toggleMark(plain, 0, 9, 'bold'), 5, 9, 'italic');
+    expect(both).toEqual([
+      { text: 'Execu', bold: true },
+      { text: 'tive', bold: true, italic: true },
+      { text: ' summary' },
+    ]);
+  });
+
+  it('continues the emphasis of the character before the caret', () => {
+    const bolded = toggleMark(plain, 10, 17, 'bold');
+    expect(spliceSegments(bolded, 17, 17, '!')).toEqual([
+      { text: 'Executive ' },
+      { text: 'summary!', bold: true },
+    ]);
+    expect(spliceSegments(bolded, 10, 10, 'x')).toEqual([
+      { text: 'Executive x' },
+      { text: 'summary', bold: true },
+    ]);
+  });
+
+  it('deletes across pieces and merges what is left', () => {
+    const bolded = toggleMark(plain, 10, 17, 'bold');
+    expect(spliceSegments(bolded, 9, 17, '')).toEqual([{ text: 'Executive' }]);
+  });
+
+  it('counts UTF-16 units, as DOM offsets do', () => {
+    // The emoji is two units; the selection's offsets for "ab" are 2–4.
+    expect(toggleMark([{ text: '😀ab' }], 2, 4, 'bold')).toEqual([
+      { text: '😀' },
+      { text: 'ab', bold: true },
+    ]);
+  });
+
+  it('rewrites text across piece boundaries without moving them', () => {
+    const pieces = [{ text: 'a ' }, { text: ' b', bold: true }];
+    expect(mapSegmentText(pieces, holdSpaces)).toEqual([
+      { text: 'a ' },
+      { text: '\u00a0b', bold: true },
+    ]);
+  });
+
+  it('drops empty pieces and joins equal neighbours', () => {
+    expect(mergeSegments([{ text: 'a' }, { text: '' }, { text: 'b' }])).toEqual([{ text: 'ab' }]);
   });
 });

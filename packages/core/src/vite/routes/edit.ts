@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import type { ViteDevServer } from 'vite';
 import { insertMarker, parseMarkers, removeMarker } from '../../editing/comments.ts';
-import { replaceTextAt, resolveTextTarget } from '../../editing/edit-ops.ts';
+import { replaceTextAt, resolveTextTarget, type TextSegment } from '../../editing/edit-ops.ts';
 import { validateMutationRequest } from '../../http/request-guard.ts';
 import { OpsError } from '../../ops/documents.ts';
 import { writeTexts } from '../../ops/text.ts';
@@ -9,7 +9,7 @@ import { type ApiContext, json, readBody, resolveDocEntry } from './context.ts';
 
 // GET    /__edit/text?docId=…&locs=12:4,296:10&shown=…   resolve what was clicked
 // PUT    /__edit/text   { docId, line, column, text, index?, expected? }
-// PUT    /__edit/texts  { docId, edits: [{ line, column, text, index?, expected?, shown? }] }
+// PUT    /__edit/texts  { docId, edits: [{ line, column, text, segments?, index?, expected?, shown? }] }
 // POST   /__edit/comment                         { docId, line, column, note, hint? }
 // GET    /__comments?docId=…                     list pending markers
 // DELETE /__comments?docId=…&id=…                drop one marker
@@ -21,6 +21,16 @@ function readLoc(body: Record<string, unknown>): Loc | null {
   if (typeof docId !== 'string') return null;
   if (typeof line !== 'number' || typeof column !== 'number') return null;
   return { docId, line, column };
+}
+
+function readSegments(value: unknown): TextSegment[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const segments: TextSegment[] = [];
+  for (const raw of value as Record<string, unknown>[]) {
+    if (typeof raw?.text !== 'string') return undefined;
+    segments.push({ text: raw.text, bold: raw.bold === true, italic: raw.italic === true });
+  }
+  return segments;
 }
 
 export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void {
@@ -94,6 +104,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
             line: loc.line,
             column: loc.column,
             text: raw.text,
+            segments: readSegments(raw.segments),
             index: typeof raw.index === 'number' ? raw.index : undefined,
             expected: typeof raw.expected === 'string' ? raw.expected : undefined,
             shown: typeof raw.shown === 'string' ? raw.shown : undefined,
