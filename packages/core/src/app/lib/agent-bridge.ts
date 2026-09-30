@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { diagnosePages, type LayoutFinding } from './diagnostics';
+import { buildDocDocx } from './export-docx';
 import { buildDocHtmlBundle } from './export-html';
 import { mountPrintCopy } from './export-pdf';
 import type { DocModule, PageGeometry } from './sdk';
@@ -29,6 +30,7 @@ export type OpenDocBridge = {
   preparePrint(): Promise<{ pageCount: number }>;
   releasePrint(): void;
   htmlBundle(): Promise<BridgeBundle | null>;
+  docxBundle(): Promise<BridgeBundle | null>;
 };
 
 type BridgeInput = {
@@ -111,6 +113,17 @@ export function useAgentBridge(input: BridgeInput): void {
         const { docId, doc, pages } = latest.current;
         if (!doc || pages.length === 0) return null;
         const bundle = await buildDocHtmlBundle(doc, docId, pages);
+        if (!bundle) return null;
+        return {
+          filename: bundle.filename,
+          mimeType: bundle.mimeType,
+          base64: toBase64(bundle.bytes),
+        };
+      },
+      async docxBundle() {
+        const { docId, doc, pages } = latest.current;
+        if (!doc || pages.length === 0) return null;
+        const bundle = await buildDocDocx(doc, docId, pages);
         if (!bundle) return null;
         return {
           filename: bundle.filename,

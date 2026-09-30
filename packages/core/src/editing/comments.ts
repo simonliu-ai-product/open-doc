@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type AstNode, findJsxAt, parseSource } from './babel-walk.ts';
+import { type AstNode, findJsxAt, parseStrict } from './babel-walk.ts';
 
 const MARKER_RE =
   /\{\/\*\s*@doc-comment\s+id="(c-[a-f0-9]+)"\s+ts="([^"]+)"\s+text="([A-Za-z0-9_-]+={0,2})"\s*\*\/\}/;
@@ -84,7 +84,7 @@ export function insertMarker(
   note: string,
   hint?: string,
 ): { source: string; id: string } | null {
-  const ast = parseSource(source);
+  const ast = parseStrict(source);
   if (!ast) return null;
   const element = findJsxAt(ast, target.line, target.column);
   if (!element) return null;

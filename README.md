@@ -107,7 +107,7 @@ Clipped content, blank sheets, stranded headings, type too small to print, image
 ### ⌨️ Headless export — the Download menu without a browser
 
 ```bash
-open-doc export q3-infra-review --format pdf   # or html, or one png per page
+open-doc export q3-infra-review --format pdf   # or html, docx, or one png per page
 open-doc export --all --out-dir out
 ```
 

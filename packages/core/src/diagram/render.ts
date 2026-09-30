@@ -20,11 +20,13 @@ function escapeXml(text: string): string {
  * Every colour and face is a `--od-*` variable rather than a literal, which is
  * the entire reason this renderer exists: the drawing inherits the document's
  * theme, in the viewer and in the PDF, instead of arriving with a palette of
- * its own.
+ * its own. Each carries a fallback, since a document without a `design` sets
+ * none of them and an unset `fill` paints the shapes solid black.
  */
 function shapePath(node: LaidOutNode): string {
   const { x, y, width: w, height: h } = node;
-  const common = 'fill="var(--od-bg)" stroke="var(--od-text)" stroke-width="1.25"';
+  const common =
+    'fill="var(--od-bg, #ffffff)" stroke="var(--od-text, #16181d)" stroke-width="1.25"';
 
   switch (node.shape) {
     case 'diamond': {
@@ -40,6 +42,16 @@ function shapePath(node: LaidOutNode): string {
       return `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}" ${common} />`;
     case 'stadium':
       return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" ry="${h / 2}" ${common} />`;
+    case 'cylinder': {
+      // A database: a body with an elliptical lid, the lid's front edge drawn
+      // again over the body so it reads as a rim rather than a flat top.
+      const ry = Math.min(8, h / 6);
+      const body =
+        `M${x},${y + ry} A${w / 2},${ry} 0 0 1 ${x + w},${y + ry} ` +
+        `L${x + w},${y + h - ry} A${w / 2},${ry} 0 0 1 ${x},${y + h - ry} Z`;
+      const rim = `M${x},${y + ry} A${w / 2},${ry} 0 0 0 ${x + w},${y + ry}`;
+      return `<path d="${body}" ${common} /><path d="${rim}" fill="none" stroke="var(--od-text, #16181d)" stroke-width="1.25" />`;
+    }
     case 'round':
       return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" ry="10" ${common} />`;
     default:
@@ -57,7 +69,7 @@ function nodeText(node: LaidOutNode, fontSize: number): string {
       const y = firstBaseline + i * fontSize * LINE_HEIGHT;
       return (
         `<text x="${node.x + node.width / 2}" y="${y}" text-anchor="middle" ` +
-        `font-family="var(--od-font-body)" font-size="${fontSize}" fill="var(--od-text)">` +
+        `font-family="var(--od-font-body, sans-serif)" font-size="${fontSize}" fill="var(--od-text, #16181d)">` +
         `${escapeXml(line)}</text>`
       );
     })
@@ -74,7 +86,7 @@ function edgePath(edge: LaidOutEdge, marker: string): string {
   const head = edge.arrow ? ` marker-end="url(#${marker})"` : '';
 
   return (
-    `<path d="${d}" fill="none" stroke="var(--od-text)" stroke-width="${width}"` +
+    `<path d="${d}" fill="none" stroke="var(--od-text, #16181d)" stroke-width="${width}"` +
     `${dash} stroke-linejoin="round"${head} />`
   );
 }
@@ -86,10 +98,10 @@ function edgeLabel(edge: LaidOutEdge, fontSize: number): string {
   const width = measureText(edge.label, size) + 10;
   return (
     `<rect x="${round(edge.labelAt.x - width / 2)}" y="${round(edge.labelAt.y - size * 0.8)}" ` +
-    `width="${round(width)}" height="${round(size * 1.6)}" fill="var(--od-bg)" />` +
+    `width="${round(width)}" height="${round(size * 1.6)}" fill="var(--od-bg, #ffffff)" />` +
     `<text x="${round(edge.labelAt.x)}" y="${round(edge.labelAt.y + size * 0.34)}" ` +
-    `text-anchor="middle" font-family="var(--od-font-body)" font-size="${size}" ` +
-    `fill="var(--od-muted)">${escapeXml(edge.label)}</text>`
+    `text-anchor="middle" font-family="var(--od-font-body, sans-serif)" font-size="${size}" ` +
+    `fill="var(--od-muted, #6b7280)">${escapeXml(edge.label)}</text>`
   );
 }
 
@@ -104,7 +116,7 @@ export function renderDiagram(diagram: LaidOutDiagram, options: RenderOptions = 
   const defs =
     `<defs><marker id="${marker}" viewBox="0 0 10 10" refX="9" refY="5" ` +
     `markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
-    `<path d="M0,1 L10,5 L0,9 z" fill="var(--od-text)" /></marker></defs>`;
+    `<path d="M0,1 L10,5 L0,9 z" fill="var(--od-text, #16181d)" /></marker></defs>`;
 
   const body = [
     ...diagram.edges.map((edge) => edgePath(edge, marker)),
