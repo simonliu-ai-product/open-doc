@@ -71,6 +71,8 @@ type Entry = {
   undo: Segment[][][];
   redo: Segment[][][];
   lastInsert: number;
+  /** Where the caret was, so a transplanted editor can put it back. */
+  caret: { run: number; from: number; to: number } | null;
 };
 
 type Outcome = { ok: true } | { ok: false; status: number; error: string };
@@ -357,6 +359,8 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
   // laid over this one's text.
   const target = resolution && resolution.anchor === selected?.anchor ? resolution.value : null;
   const [active, setActive] = useState<Entry | null>(null);
+  const activeRef = useRef<Entry | null>(null);
+  activeRef.current = active;
   const [wantEdit, setWantEdit] = useState<{
     anchor: HTMLElement;
     at: At | null;
@@ -425,6 +429,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
           undo: [],
           redo: [],
           lastInsert: 0,
+          caret: null,
         };
         entriesRef.current.set(anchor, entry);
       }
@@ -505,7 +510,11 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
       setEmphasis(null);
       return;
     }
-    const update = () => setEmphasis(emphasisAt(active));
+    const update = () => {
+      const at = selectionIn(active);
+      if (at) active.caret = { run: active.editor.runs.indexOf(at.run), from: at.from, to: at.to };
+      setEmphasis(emphasisAt(active));
+    };
     update();
     document.addEventListener('selectionchange', update);
     return () => document.removeEventListener('selectionchange', update);
@@ -599,28 +608,15 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [pending.length]);
 
-  // An external write (an agent, the design panel) reloads the document and may
-  // replace an element that has unsaved text over it. Its clone goes with it;
-  // say so rather than let the edit vanish silently.
+  // An external write — an agent, the design panel, another save — reloads the
+  // document and replaces elements, clones and all. When the element at the
+  // same source location still reads what it did when editing began, the
+  // reload did not touch these words: the editor moves onto it with its unsaved
+  // text, its undo history and its caret. Only when the words themselves
+  // changed is the edit given up, and said so.
   useEffect(() => {
     if (!container) return;
     const observer = new MutationObserver(() => {
-      let lost = 0;
-      for (const entry of [...entriesRef.current.values()]) {
-        if (entry.anchor.isConnected) continue;
-        drop(entry);
-        lost++;
-        setActive((current) => (current === entry ? null : current));
-      }
-      if (lost > 0) {
-        refresh();
-        setStatus(
-          `The document reloaded — ${lost} unsaved edit${lost > 1 ? 's were' : ' was'} lost`,
-        );
-      }
-      // A selection carries over to the element that replaced it at the same
-      // source location — otherwise a reload between the two clicks of a
-      // double-click leaves the edit waiting on a node that is gone.
       const successor = (anchor: HTMLElement): HTMLElement | null => {
         if (anchor.isConnected) return anchor;
         const loc = anchor.getAttribute(LOC_ATTR);
@@ -628,6 +624,56 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
           ? container.querySelector<HTMLElement>(`[${LOC_ATTR}="${CSS.escape(loc)}"]`)
           : null;
       };
+
+      let lost = 0;
+      let replaced = false;
+      for (const entry of [...entriesRef.current.values()]) {
+        if (entry.anchor.isConnected) continue;
+        replaced = true;
+        const wasActive = activeRef.current === entry;
+        const changed = dirtyRuns(entry) > 0;
+        const snapshot = snapshotRuns(entry.editor.runs);
+        entriesRef.current.delete(entry.anchor);
+        entry.editor.restore();
+
+        const next = successor(entry.anchor);
+        const editor =
+          next && normalize(next.textContent ?? '') === entry.shown
+            ? mountEditor(
+                next,
+                entry.editor.runs.map((run) => ({
+                  index: run.index,
+                  value: run.expected,
+                  formattable: run.formattable,
+                })),
+              )
+            : null;
+        if (!next || !editor) {
+          if (changed) lost++;
+          if (wasActive) setActive(null);
+          continue;
+        }
+        restoreRuns(editor.runs, snapshot);
+        const moved: Entry = { ...entry, anchor: next, editor };
+        entriesRef.current.set(next, moved);
+        if (wasActive) {
+          setActive(moved);
+          moved.editor.clone.focus({ preventScroll: true });
+          const caret = entry.caret;
+          const run = caret ? moved.editor.runs[caret.run] : undefined;
+          if (caret && run) selectInRun(run.el, caret.from, caret.to);
+        }
+      }
+      if (replaced) refresh();
+      if (lost > 0) {
+        setStatus(
+          `The document reloaded with new text here — ${lost} unsaved edit${lost > 1 ? 's were' : ' was'} lost`,
+        );
+      }
+
+      // A selection carries over the same way — otherwise a reload between
+      // the two clicks of a double-click leaves the edit waiting on a node
+      // that is gone.
       setSelected((prev) => {
         if (!prev || prev.anchor.isConnected) return prev;
         const anchor = successor(prev.anchor);
@@ -646,7 +692,7 @@ export function Inspector({ docId, containerRef, panelHidden, onExit, exitRef }:
     });
     observer.observe(container, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [container, drop, refresh]);
+  }, [container, refresh]);
 
   useEffect(() => {
     if (!container) return;

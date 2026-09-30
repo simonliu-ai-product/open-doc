@@ -147,6 +147,20 @@ test.describe('editing on the page', () => {
       .toContain('Text before <code>open-doc dev</code> run after');
   });
 
+  test("a paragraph that keeps its spacing with {' '} is editable", async ({ page }) => {
+    await enterEditMode(page);
+    await editAt(page, viewer(page).locator('p', { hasText: 'Spaced before' }), { x: 4, y: 6 });
+    await selectWord(page, 'before');
+    await page.keyboard.type('after all');
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain(
+        "Spaced after all a long enough stretch of words that the formatter has to wrap this line{' '}",
+      );
+  });
+
   test('an edit that would span two runs is refused', async ({ page }) => {
     await enterEditMode(page);
     const paragraph = viewer(page).locator('p', { hasText: 'Run before' });

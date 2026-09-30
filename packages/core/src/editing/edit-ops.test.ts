@@ -431,6 +431,39 @@ describe('resolveTextTarget', () => {
   });
 });
 
+describe('JSX spacing', () => {
+  const SPACED = `const Page = () => (
+  <div>
+    <p style={p}>
+      fill{' '}
+      <code>x</code>. Page numbers come from <code>y</code>{' '}
+      and <code>z</code>.
+    </p>
+  </div>
+);
+`;
+
+  it('does not offer {" "} as a run of text', () => {
+    const info = readTextAt(SPACED, { line: 3, column: 4 });
+    const runs = info?.parts.filter((part) => part.kind === 'text') ?? [];
+    expect(runs.map((part) => part.kind === 'text' && part.value)).toEqual([
+      'fill',
+      '. Page numbers come from',
+      'and',
+      '.',
+    ]);
+    expect(runs.map((part) => part.kind === 'text' && part.index)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('leaves the spacing in place when a neighbouring run is edited', () => {
+    const { source, results } = replaceTextsAt(SPACED, [
+      { line: 3, column: 4, index: 2, text: 'plus', expected: 'and' },
+    ]);
+    expect(results).toEqual([{ ok: true }]);
+    expect(source).toContain("<code>y</code>{' '}\n      plus <code>z</code>");
+  });
+});
+
 describe('replaceTextsAt', () => {
   it('locates every edit against the source the caller saw', () => {
     // The heading grows by a line's worth of text; the paragraph below it must

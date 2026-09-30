@@ -451,6 +451,10 @@ function resolve(element: AstNode, ctx?: Context): Resolution {
     const slot =
       (name === null ? undefined : bindings?.get(name)) ??
       (ctx ? (expressionSlot(child, ctx.source) ?? undefined) : undefined);
+    // `{' '}` is how JSX keeps a space across a line break. It is spacing, not
+    // words, and it renders as a node the page editor never pairs with a run
+    // — offering it made every paragraph written that way uneditable.
+    if (slot && slot.value.trim() === '') continue;
     if (slot) take(slot);
     else parts.push({ kind: 'markup', label: labelOf(child) });
   }

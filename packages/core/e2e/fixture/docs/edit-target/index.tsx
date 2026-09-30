@@ -47,6 +47,10 @@ const Only: DocPage = () => (
       Run before <code>open-doc dev</code> run after
     </p>
     <Label text="From a prop" />
+    <p>
+      Spaced before a long enough stretch of words that the formatter has to wrap this line{' '}
+      <code>tag</code> spaced after
+    </p>
   </div>
 );
 

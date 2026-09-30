@@ -1,14 +1,35 @@
-import { expect, test } from '@playwright/test';
+import { type Download, expect, type Page, test } from '@playwright/test';
 import { openDoc } from './helpers.ts';
+
+/**
+ * Downloads the open document as HTML. Other specs write to the shared
+ * fixture — diagnostics deletes its document as it finishes — and the docs
+ * module that change regenerates reloads whatever page is open, taking an
+ * export in flight with it. A reload is therefore a reason to ask again, not a
+ * failure.
+ */
+async function downloadHtml(page: Page, docId: string): Promise<Download> {
+  for (let attempt = 0; ; attempt++) {
+    const reloaded = page
+      .waitForEvent('framenavigated', { timeout: 20_000 })
+      .then(() => null)
+      .catch(() => null);
+    const download = page.waitForEvent('download', { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Download' }).click();
+    await page.getByRole('menuitem', { name: 'HTML' }).click();
+    const file = await Promise.race([download, reloaded]);
+    if (file) return file;
+    download.catch(() => {});
+    if (attempt >= 2) throw new Error('the page kept reloading during the export');
+    await openDoc(page, docId);
+  }
+}
 
 test.describe('export', () => {
   test('HTML export downloads a self-contained document', async ({ page }) => {
+    test.setTimeout(90_000);
     await openDoc(page, 'alpha');
-    const download = page.waitForEvent('download', { timeout: 60_000 });
-    await page.getByRole('button', { name: 'Download' }).click();
-    await page.getByRole('menuitem', { name: 'HTML' }).click();
-
-    const file = await download;
+    const file = await downloadHtml(page, 'alpha');
     expect(file.suggestedFilename()).toBe('alpha.html');
 
     const stream = await file.createReadStream();
@@ -23,12 +44,9 @@ test.describe('export', () => {
   });
 
   test('a flow document exports every packed page', async ({ page }) => {
+    test.setTimeout(90_000);
     await openDoc(page, 'flow-report');
-    const download = page.waitForEvent('download', { timeout: 60_000 });
-    await page.getByRole('button', { name: 'Download' }).click();
-    await page.getByRole('menuitem', { name: 'HTML' }).click();
-
-    const stream = await (await download).createReadStream();
+    const stream = await (await downloadHtml(page, 'flow-report')).createReadStream();
     const chunks: Buffer[] = [];
     for await (const chunk of stream) chunks.push(chunk as Buffer);
     const html = Buffer.concat(chunks).toString('utf8');
