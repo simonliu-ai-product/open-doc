@@ -4,6 +4,7 @@ import {
   findJsxAt,
   findJsxOnLine,
   parseSource,
+  parseStrict,
   walkAst,
   walkJsx,
 } from './babel-walk.ts';
@@ -949,9 +950,13 @@ export function replaceTextsAt(
   source: string,
   edits: TextEdit[],
 ): { source: string; results: TextEditOutcome[] } {
-  const ast = parseSource(source);
+  const ast = parseStrict(source);
   if (!ast) {
-    const error = { ok: false as const, status: 422, error: 'could not parse document source' };
+    const error = {
+      ok: false as const,
+      status: 422,
+      error: 'the document has a syntax error — fix it in source before editing here',
+    };
     return { source, results: edits.map(() => error) };
   }
 

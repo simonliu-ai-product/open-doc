@@ -595,6 +595,13 @@ describe('replaceTextsAt', () => {
     expect(source).toBe(VIA_PROPS);
   });
 
+  it('refuses to write into a document with a syntax error', () => {
+    const broken = `${SOURCE}\nconst Oops = () => (<div>;\n`;
+    const { source, results } = replaceTextsAt(broken, [{ ...H1, text: 'x' }]);
+    expect(results[0]).toMatchObject({ ok: false, status: 422 });
+    expect(source).toBe(broken);
+  });
+
   it('refuses two edits that disagree about the same span', () => {
     const { source, results } = replaceTextsAt(SOURCE, [
       { ...H1, text: 'First' },
