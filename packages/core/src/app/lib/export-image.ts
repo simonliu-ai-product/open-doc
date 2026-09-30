@@ -146,7 +146,9 @@ function blobToDataUrl(blob: Blob): Promise<string> {
  * The design variables live on the page host, and renderPagesToHtml returns the
  * host's innerHTML, so they are not in the markup and have to be put back.
  */
-function buildSvg(pageHtml: string, css: string, geometry: PageGeometry, doc: DocModule): string {
+type Box = Pick<PageGeometry, 'width' | 'height'>;
+
+function buildSvg(pageHtml: string, css: string, geometry: Box, doc: DocModule): string {
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const XHTML_NS = 'http://www.w3.org/1999/xhtml';
 
@@ -177,7 +179,11 @@ function buildSvg(pageHtml: string, css: string, geometry: PageGeometry, doc: Do
   style.appendChild(document.createTextNode(css));
   wrapper.appendChild(style);
 
+  // A page sized by `height: 100%` measures against this box; without a height
+  // of its own the page collapses to its content, and whatever it placed
+  // against its foot — a footer, a centred closing, a cover's title — moves up.
   const content = document.createElementNS(XHTML_NS, 'div');
+  content.setAttribute('style', 'width:100%;height:100%');
   content.innerHTML = pageHtml;
   wrapper.appendChild(content);
 
@@ -195,7 +201,7 @@ function buildSvg(pageHtml: string, css: string, geometry: PageGeometry, doc: Do
  * Verified against Chrome 151 — a plain SVG is clean either way, so the taint
  * follows the foreignObject and the URL scheme together, not either alone.
  */
-async function rasterise(svg: string, geometry: PageGeometry): Promise<Blob> {
+async function rasterise(svg: string, geometry: Box): Promise<Blob> {
   const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
   const image = new Image();
@@ -223,4 +229,41 @@ async function rasterise(svg: string, geometry: PageGeometry): Promise<Blob> {
       'image/png',
     );
   });
+}
+
+/**
+ * One element as a PNG, through the same `foreignObject` path as a page — for
+ * what a DOCX cannot hold as structure: a chart built from boxes, a compiled
+ * diagram whose colours are the document's CSS variables. Pulled out of its
+ * page, the element would lose the type it inherits, so that goes round it.
+ */
+export async function elementToPng(
+  el: Element,
+  doc: DocModule,
+): Promise<{ bytes: Uint8Array; width: number; height: number }> {
+  const rect = el.getBoundingClientRect();
+  const width = Math.max(1, Math.ceil(rect.width));
+  const height = Math.max(1, Math.ceil(rect.height));
+  const inherited = getComputedStyle(el);
+  // Drawn on its own canvas, the element must start at the canvas's corner.
+  // Whatever placed it on the page — absolute offsets, a transform, margins —
+  // would otherwise put it off the edge, and the picture comes out blank.
+  const clone = el.cloneNode(true) as HTMLElement | SVGElement;
+  for (const [name, value] of [
+    ['position', 'static'],
+    ['inset', 'auto'],
+    ['margin', '0'],
+    ['transform', 'none'],
+    ['width', `${width}px`],
+    ['height', `${height}px`],
+  ]) {
+    clone.style.setProperty(name as string, value as string);
+  }
+  const wrapped =
+    `<div style="font-family:${inherited.fontFamily.replace(/"/g, "'")};color:${inherited.color};` +
+    `font-size:${inherited.fontSize};line-height:${inherited.lineHeight};width:${width}px">${clone.outerHTML}</div>`;
+  const { css, html } = await embedAssets([wrapped], doc);
+  const svg = buildSvg(html[0] ?? '', css, { width, height }, doc);
+  const blob = await rasterise(svg, { width, height });
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), width, height };
 }

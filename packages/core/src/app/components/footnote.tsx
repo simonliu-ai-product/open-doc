@@ -154,6 +154,8 @@ export type FootnotesProps = {
 export const FOOTNOTE_AREA_MARGIN_TOP = 12;
 
 export const FOOTNOTE_ROW_ATTR = 'data-od-footnote-row';
+/** The note's id on its row, so an exporter can pair a marker with its text. */
+export const FOOTNOTE_ID_ATTR = 'data-od-footnote-id';
 
 export function footnoteAreaStyle(): CSSProperties {
   return {
@@ -170,7 +172,10 @@ export function footnoteAreaStyle(): CSSProperties {
 export function FootnoteRow({ id, content, loc }: CollectedNote) {
   const entry = useDocLabel(id);
   return (
-    <div {...{ [FOOTNOTE_ROW_ATTR]: '' }} style={{ display: 'flex', gap: 5, marginBottom: 3 }}>
+    <div
+      {...{ [FOOTNOTE_ROW_ATTR]: '', [FOOTNOTE_ID_ATTR]: id }}
+      style={{ display: 'flex', gap: 5, marginBottom: 3 }}
+    >
       <span
         style={{
           flex: 'none',

@@ -3,7 +3,7 @@ import * as readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { Command, Option } from 'commander';
-import { ORIENTATIONS, PAGE_SIZE_NAMES } from '../app/lib/sdk.ts';
+import { EXPORT_FORMATS, ORIENTATIONS, PAGE_SIZE_NAMES } from '../app/lib/sdk.ts';
 import { readCoreVersion } from './package-version.ts';
 import { detectSkillsDrift, syncSkills } from './sync.ts';
 
@@ -151,8 +151,8 @@ export async function run(argv: string[]): Promise<void> {
 
   program
     .command('export [docIds...]')
-    .description('Render documents headlessly to PDF, HTML, or PNG')
-    .addOption(new Option('-f, --format <format>', 'output format').choices(['pdf', 'html', 'png']))
+    .description('Render documents headlessly to PDF, HTML, PNG, or DOCX')
+    .addOption(new Option('-f, --format <format>', 'output format').choices([...EXPORT_FORMATS]))
     .option('-o, --out-dir <dir>', 'directory to write into (defaults to `out`)')
     .option('--all', 'export every document under docs/')
     .action(async (docIds: string[], flags: ExportFlags) => {

@@ -9,6 +9,7 @@ import {
   deleteAsset,
   deleteDocument,
   duplicateDocument,
+  EXPORT_FORMATS,
   exportDocument,
   fileDocument,
   findAssetUsages,
@@ -375,10 +376,10 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
     {
       title: 'Export a document',
       description:
-        'Writes the document to disk headlessly — pdf, html, or one png per page. The output directory must stay inside the workspace.',
+        'Writes the document to disk headlessly — pdf, html, one png per page, or docx (structure Word flows itself, for review in Word). The output directory must stay inside the workspace.',
       inputSchema: z.object({
         docId: z.string(),
-        format: z.enum(['pdf', 'html', 'png']).default('pdf'),
+        format: z.enum(EXPORT_FORMATS).default('pdf'),
         outDir: z.string().optional().describe('relative to the workspace root; defaults to `out`'),
       }),
     },

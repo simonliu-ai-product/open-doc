@@ -54,7 +54,7 @@ The toolbar in the document view has **PDF** (prints at the true page size — p
 Without a browser:
 
 ```bash
-open-doc export my-report --format pdf   # or html, or one png per page
+open-doc export my-report --format pdf   # or html, docx, or one png per page
 open-doc export --all --out-dir out
 ```
 
