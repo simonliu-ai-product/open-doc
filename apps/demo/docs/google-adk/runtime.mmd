@@ -1,7 +1,0 @@
-flowchart LR
-  User[使用者訊息] --> Runner[Runner]
-  Runner --> Agent{Agent}
-  Agent -->|提示詞| Model[Gemini 模型]
-  Agent -->|工具呼叫| Tools[Tools]
-  Agent -.->|Event| Session[Session]
-  Agent ==> Reply([回應])

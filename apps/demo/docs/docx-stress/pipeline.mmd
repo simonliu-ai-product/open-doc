@@ -1,5 +1,0 @@
-flowchart LR
-  Src[原始日誌] -->|每 5 分鐘| Ingest{驗證}
-  Ingest -->|通過| Store[(資料湖)]
-  Ingest -.->|拒絕| DLQ([死信佇列])
-  Store ==> Report[季報 & 儀表板]

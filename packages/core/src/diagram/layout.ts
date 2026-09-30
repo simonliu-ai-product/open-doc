@@ -105,6 +105,8 @@ function sizeOf(node: DiagramNode, lines: string[], fontSize: number) {
   let width = Math.max(MIN_WIDTH, textWidth + PAD_X * 2);
   let height = textHeight + PAD_Y * 2;
 
+  // The lids take height the label cannot use.
+  if (node.shape === 'cylinder') height += 12;
   // A rhombus only offers an inscribed rectangle to its label: with half-extents
   // a and b, the text fits when a/(W/2) + b/(H/2) <= 1. Doubling each extent and
   // adding the padding satisfies it with room to spare.
@@ -272,6 +274,40 @@ function placeLabels(edges: LaidOutEdge[], fontSize: number): void {
   }
 }
 
+const CHANNEL_GAP = 18;
+
+/**
+ * A link that runs against the flow — a feedback arrow back to an earlier
+ * step. Drawn straight, it would cut through every box between the two ends
+ * and park its label on one of them; it goes round the side instead (the
+ * right in a column, underneath in a row), clear of everything it passes, and
+ * each such link a step further out than the last.
+ */
+function routeBack(
+  from: LaidOutNode,
+  to: LaidOutNode,
+  nodes: LaidOutNode[],
+  horizontal: boolean,
+  lane: number,
+) {
+  if (horizontal) {
+    const left = Math.min(from.x, to.x);
+    const right = Math.max(from.x + from.width, to.x + to.width);
+    const passed = nodes.filter((n) => n.x < right && n.x + n.width > left);
+    const channel = Math.max(...passed.map((n) => n.y + n.height)) + CHANNEL_GAP * (lane + 1);
+    const start = { x: from.x + from.width / 2, y: from.y + from.height };
+    const end = { x: to.x + to.width / 2, y: to.y + to.height };
+    return [start, { x: start.x, y: channel }, { x: end.x, y: channel }, end];
+  }
+  const top = Math.min(from.y, to.y);
+  const bottom = Math.max(from.y + from.height, to.y + to.height);
+  const passed = nodes.filter((n) => n.y < bottom && n.y + n.height > top);
+  const channel = Math.max(...passed.map((n) => n.x + n.width)) + CHANNEL_GAP * (lane + 1);
+  const start = { x: from.x + from.width, y: from.y + from.height / 2 };
+  const end = { x: to.x + to.width, y: to.y + to.height / 2 };
+  return [start, { x: channel, y: start.y }, { x: channel, y: end.y }, end];
+}
+
 /** Straight where the two boxes line up, a single elbow where they do not. */
 function route(from: LaidOutNode, to: LaidOutNode, horizontal: boolean) {
   const fromCentre = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
@@ -365,16 +401,35 @@ export function layoutDiagram(diagram: Diagram, options: LayoutOptions = {}): La
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const edges: LaidOutEdge[] = [];
+  let lanes = 0;
   for (const edge of diagram.edges) {
     const from = byId.get(edge.from);
     const to = byId.get(edge.to);
     if (!from || !to) continue;
-    const points = route(from, to, horizontal);
+    const backward = (rankOf.get(edge.to) ?? 0) < (rankOf.get(edge.from) ?? 0);
+    const points = backward
+      ? routeBack(from, to, nodes, horizontal, lanes++)
+      : route(from, to, horizontal);
     edges.push({ ...edge, points, labelAt: null });
   }
   placeLabels(edges, opts.fontSize);
 
-  const width = Math.max(...nodes.map((n) => n.x + n.width)) + opts.padding;
-  const height = Math.max(...nodes.map((n) => n.y + n.height)) + opts.padding;
+  // A link routed round the side, and its label, reach past the boxes.
+  const labelSize = opts.fontSize * 0.85;
+  const reach = edges.flatMap((edge) => [
+    ...edge.points,
+    ...(edge.labelAt && edge.label
+      ? [
+          {
+            x: edge.labelAt.x + (measureText(edge.label, labelSize) + 10) / 2,
+            y: edge.labelAt.y + labelSize * 0.8,
+          },
+        ]
+      : []),
+  ]);
+  const width =
+    Math.max(...nodes.map((n) => n.x + n.width), ...reach.map((p) => p.x)) + opts.padding;
+  const height =
+    Math.max(...nodes.map((n) => n.y + n.height), ...reach.map((p) => p.y)) + opts.padding;
   return { direction: diagram.direction, nodes, edges, width, height };
 }

@@ -77,4 +77,9 @@ describe('parseDiagram', () => {
     expect(() => parseDiagram('flowchart TD')).toThrow(DiagramSyntaxError);
     expect(() => parseDiagram('flowchart TD\n  A[unclosed --> B')).toThrow(/line 2/);
   });
+
+  it('reads a database as a cylinder, without the brackets in its label', () => {
+    const [node] = parseDiagram('flowchart LR\n  Store[(資料湖)]').nodes;
+    expect(node).toEqual({ id: 'Store', label: '資料湖', shape: 'cylinder' });
+  });
 });

@@ -12,6 +12,7 @@ import { DocPageProvider } from './page-context';
 import { nextFrame, waitForFonts, waitForImages } from './print-ready';
 import { captureScan, restoreScan, scanDocument } from './scan';
 import type { DocModule, PageGeometry } from './sdk';
+import { scopeSvgIds } from './svg-ids';
 import type { ExpandedPage } from './use-doc-pages';
 
 export const ASSET_EXT_RE =
@@ -69,6 +70,9 @@ export async function withRenderedPages<T>(
     scanDocument(container, doc.meta);
     await nextFrame();
     await nextFrame();
+    hosts.forEach((host, i) => {
+      scopeSvgIds(host, `export-${i}`);
+    });
 
     return await visit(hosts, container);
   } finally {

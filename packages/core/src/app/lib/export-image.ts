@@ -19,6 +19,7 @@ import {
   renderPagesToHtml,
   toAbsolute,
 } from './export-dom';
+import { PAGE_ATTR } from './outline';
 import { type DocModule, type PageGeometry, resolvePageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
@@ -184,6 +185,7 @@ function buildSvg(pageHtml: string, css: string, geometry: Box, doc: DocModule):
   // against its foot — a footer, a centred closing, a cover's title — moves up.
   const content = document.createElementNS(XHTML_NS, 'div');
   content.setAttribute('style', 'width:100%;height:100%');
+  content.setAttribute(PAGE_ATTR, '');
   content.innerHTML = pageHtml;
   wrapper.appendChild(content);
 

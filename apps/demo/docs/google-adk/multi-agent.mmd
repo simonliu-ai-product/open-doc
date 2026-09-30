@@ -1,6 +1,0 @@
-flowchart TD
-  Root[協調者 root_agent] -->|轉派| Support[客服 Agent]
-  Root -->|轉派| Pipeline[SequentialAgent]
-  Pipeline --> Writer[撰寫 Agent]
-  Pipeline --> Reviewer[審閱 Agent]
-  Root -->|AgentTool| Search[搜尋 Agent]

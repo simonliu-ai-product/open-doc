@@ -183,8 +183,10 @@ variables, so it prints with the same ink and faces as the prose around it.
 Never reach for an image of a diagram when the diagram can be written.
 
 Supported: `flowchart`/`graph` with `TD` or `LR`; nodes as `A[box]`, `A(round)`,
-`A([stadium])`, `A{decision}`, `A((circle))`; links `-->`, `---`, `-.->`, `==>`
-with optional `|labels|`; chains `A --> B --> C`; `%%` comments. Anything else
+`A([stadium])`, `A[(database)]`, `A{decision}`, `A((circle))`; links `-->`,
+`---`, `-.->`, `==>` with optional `|labels|`; chains `A --> B --> C`; `%%`
+comments. A link back to an earlier step is drawn round the side, clear of the
+steps in between. Anything else
 in Mermaid's syntax — subgraphs, class diagrams, sequence diagrams — is not
 supported, and a bad diagram fails the build with the line to fix.
 
