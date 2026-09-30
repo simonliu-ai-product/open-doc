@@ -9,3 +9,5 @@ packages/cli/template/.agents/skills
 packages/core/e2e/.scratch
 playwright-report
 test-results
+# `open-doc export` writes here by default
+apps/demo/out
