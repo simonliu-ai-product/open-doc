@@ -562,7 +562,11 @@ export function Doc() {
           </div>
         </div>
         {editing && docId && (
+          // Keyed by document: a selection, or an editor carried across a
+          // reload by source location, must never follow into another
+          // document where the same line:column is something else entirely.
           <Inspector
+            key={docId}
             docId={docId}
             containerRef={scrollRef}
             panelHidden={designOpen}
