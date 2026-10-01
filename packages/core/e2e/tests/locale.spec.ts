@@ -8,7 +8,12 @@ test.describe('language', () => {
     const nav = page.locator('aside').first();
     await expect(nav.getByText('Documents')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Language' }).first().click();
+    const toggle = page.getByRole('button', { name: 'Language' }).first();
+    await toggle.click();
+    // The toggle sits at the foot of the sidebar: its menu opens above it, never over it.
+    const menu = await page.getByRole('menu').boundingBox();
+    const button = await toggle.boundingBox();
+    expect(menu && button && menu.y + menu.height <= button.y).toBe(true);
     await page.getByRole('menuitem', { name: '繁體中文' }).click();
     await expect(nav.getByText('文件', { exact: true })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-TW');
