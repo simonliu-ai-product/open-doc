@@ -13,7 +13,10 @@ test.describe('document browser', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Alpha Report', exact: true }).click();
     await expect(page).toHaveURL(/\/d\/alpha$/);
-    await expect(page.getByText('Alpha page one')).toBeVisible({ timeout: 30_000 });
+    // The thumbnail rail draws page one too, a moment later; the sheet is the viewer's.
+    await expect(page.locator('[data-od-viewer]').getByText('Alpha page one')).toBeVisible({
+      timeout: 30_000,
+    });
   });
 
   test('the theme badge links to the theme page', async ({ page }) => {
