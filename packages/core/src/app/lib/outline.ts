@@ -58,6 +58,29 @@ export function collectOutline(root: ParentNode): OutlineEntry[] {
   return entries;
 }
 
+/**
+ * A PDF's bookmarks and heading tags are built from the accessibility tree,
+ * which knows nothing of the outline's rules: it would list the cover title,
+ * "Contents", every h4, and the long text of a heading the author shortened.
+ * This marks the copy so the tree says what the outline says — every listed
+ * heading as a heading at its outline level and with its outline text, every
+ * other heading as plain text.
+ */
+export function exposeOutline(root: ParentNode): void {
+  const listed = new Set(collectOutline(root).map((entry) => entry.id));
+  for (const el of Array.from(
+    root.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6, [data-od-heading]'),
+  )) {
+    if (el.id && listed.has(el.id)) {
+      el.setAttribute('role', 'heading');
+      el.setAttribute('aria-level', String(levelOf(el)));
+      el.setAttribute('aria-label', textOf(el));
+    } else {
+      el.setAttribute('role', 'none');
+    }
+  }
+}
+
 // Shared through globalThis for the same reason as the page context: the
 // viewer writes the outline from the source copy of this module, while a
 // document's `<TableOfContents>` reads it from the published bundle.

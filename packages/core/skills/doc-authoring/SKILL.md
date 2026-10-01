@@ -155,6 +155,8 @@ contents list does. Read `references/long-form.md` before using any of them.
 - **`<DataTable rows={…}>`** — a print-shaped table from an imported `.csv`.
 - **`<Diagram chart={…} caption>`** — an architecture or flow drawing from an
   imported `.mmd`. Given a caption it numbers as a figure, like `<Figure>`.
+- **`<Chart data x y caption>`** — a bar, line or pie chart from rows, in the
+  document's colours; numbers as a figure. See `references/tables-and-charts.md`.
 
 `meta.labels` sets what they are called (`圖`, `表`) — the numbering itself is
 structural.
@@ -362,7 +364,7 @@ A document is not a slide deck. Long-form copy is the point — but it still has
 - **Assets panel** (`/assets` in the dev UI): upload, rename, and delete files in the global `assets/` folder or any document's `assets/` folder, with an "unused" badge and a copy-ready import line. Files you reference in source are what it scans, so an import you write by hand shows up there immediately.
 - **Inspect mode** (the "Inspect" button, dev only): click any element on a page to edit its text in place — the change is written straight back into `docs/<id>/index.tsx` — or leave a note for the agent, which is stored as a `@doc-comment` marker and processed by the `apply-comments` skill.
 - **Download menu** — PDF (true page size) and self-contained HTML.
-- **Headless render** — `open-doc export <id> --format pdf|html|png|docx` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
+- **Headless render** — `open-doc export <id> --format pdf|html|png|docx` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces. A PDF exported this way also carries the outline as bookmarks and is tagged for screen readers — the same headings the sidebar and `<TableOfContents />` list, so a heading marked `data-od-outline="skip"` stays out and `data-od-heading` sets the bookmark's text. (The Download menu prints through the browser's dialog, which writes no bookmarks.)
 - **Word (DOCX)** — for review that runs in Word. It carries structure, not page breaks: headings become Word heading styles, `<TableOfContents />` a TOC field, `<Footnote>` real footnotes, a `flow()` header and footer a Word header and footer with page-number fields, and the theme's CJK font the East Asian font. Write headings as real `h1`–`h3` and tables as `<table>`/`<DataTable>` so they arrive as structure; anything drawn with boxes (a chart made of `div`s) arrives as a picture, and absolutely positioned layouts on fixed pages flow as plain paragraphs.
 - **Design panel** (the "Design" button in the document view, dev only): live-tweaks the `design` const — palette, fonts, type scale, margin, leading, radius — previewing on the real pages and writing the values back into `docs/<id>/index.tsx` on save.
 

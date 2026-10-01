@@ -47,6 +47,20 @@ test.describe('open-doc CLI', () => {
     expect(source).toContain('satisfies DocEntry[]');
   });
 
+  test('an exported PDF carries the outline as bookmarks, and nothing the outline skips', async () => {
+    const dir = prepareScratchProject('cli-bookmarks');
+    const exported = await runCli(['export', 'long-form', '--out-dir', 'out'], dir);
+    expect(exported.code, exported.stderr).toBe(0);
+    const pdf = (await fs.readFile(path.join(dir, 'out', 'long-form.pdf'))).toString('latin1');
+
+    // Bookmark entries are the dictionaries that hang off a parent outline.
+    const bookmarks = [...pdf.matchAll(/<<[^>]*?\/Title \(([^)]*)\)[^>]*?\/Parent/g)].map(
+      (match) => match[1],
+    );
+    expect(bookmarks).toEqual(['Findings']);
+    expect(pdf).toContain('/StructTreeRoot');
+  });
+
   test('export writes a PDF, and check passes the fixture documents', async () => {
     const dir = prepareScratchProject('cli-render');
 
