@@ -834,6 +834,7 @@ import photo from './assets/team.jpg';
       <Table
         columns={['按鍵', '位置', '動作']}
         rows={[
+          [<Kbd key="k">⌘K</Kbd>, '任何地方', '搜尋文件、章節、頁面與動作'],
           [<Kbd key="k">F</Kbd>, '檢視器', '開關全螢幕'],
           [<Kbd key="k">D</Kbd>, '檢視器（開發模式）', '設計面板'],
           [<Kbd key="k">Enter</Kbd>, '頁碼或縮放欄位', '套用輸入的數字'],

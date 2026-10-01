@@ -1,5 +1,6 @@
 import appConfig from 'virtual:open-doc/config';
 import {
+  ArrowDownToLine,
   ArrowLeft,
   BookOpen,
   Check,
@@ -10,8 +11,10 @@ import {
   FileImage,
   FileText,
   FileType2,
+  Hash,
   Image,
   LayoutGrid,
+  Link2,
   Loader2,
   Maximize,
   Minimize,
@@ -23,8 +26,10 @@ import {
   Plus,
   Rows3,
 } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { CommandPaletteProvider, type PaletteItem } from '../components/command-palette';
 import { DesignPanel } from '../components/design-panel/design-panel';
 import { DesignProvider } from '../components/design-panel/design-provider';
 import { DocSearch } from '../components/doc-search';
@@ -32,6 +37,7 @@ import { DocSidebar } from '../components/doc-sidebar';
 import { HistoryProvider } from '../components/history-provider';
 import { Inspector, type InspectorControls } from '../components/inspector/inspector';
 import { PageFrame } from '../components/page-frame';
+import { browserItems } from '../components/palette-items';
 import { EditSaveCard } from '../components/panel/edit-save-card';
 import { ThemeToggle } from '../components/theme-toggle';
 import { Menu, MenuItem } from '../components/ui/menu';
@@ -429,6 +435,111 @@ export function Doc() {
     void rootRef.current?.requestFullscreen?.().catch(() => {});
   }, []);
 
+  const navigate = useNavigate();
+  const { setTheme } = useTheme();
+  const paletteItems = (query: string): PaletteItem[] => {
+    const items: PaletteItem[] = [];
+    const wanted = Number(query.replace(/^(p|page)\.?\s*/i, ''));
+    if (Number.isInteger(wanted) && wanted >= 1 && wanted <= pages.length) {
+      items.push({
+        id: 'page',
+        group: 'This document',
+        label: `Go to page ${wanted}`,
+        keywords: query,
+        pinned: true,
+        icon: ArrowDownToLine,
+        run: () => scrollToPage(wanted),
+      });
+    }
+    for (const entry of outline) {
+      items.push({
+        id: `section:${entry.id}`,
+        group: 'Sections',
+        label: entry.text,
+        hint: `p. ${entry.page}`,
+        icon: Hash,
+        run: () => scrollToEntry(entry),
+      });
+    }
+    for (const group of DOWNLOAD_GROUPS) {
+      for (const { format, label, icon } of group.formats) {
+        items.push({
+          id: `download:${format}`,
+          group: 'Actions',
+          label: `Download as ${label}`,
+          keywords: `export ${format}`,
+          icon,
+          run: () => void runDownload(format),
+        });
+      }
+    }
+    items.push(
+      {
+        id: 'layout:continuous',
+        group: 'Actions',
+        label: 'Continuous layout',
+        keywords: 'view pages',
+        icon: Rows3,
+        run: () => setViewMode('continuous'),
+      },
+      {
+        id: 'layout:spread',
+        group: 'Actions',
+        label: 'Two-up layout',
+        keywords: 'view spread pages',
+        icon: BookOpen,
+        run: () => setViewMode('spread'),
+      },
+      {
+        id: 'layout:grid',
+        group: 'Actions',
+        label: 'Grid layout',
+        keywords: 'view overview pages',
+        icon: LayoutGrid,
+        run: () => setViewMode('grid'),
+      },
+      {
+        id: 'fullscreen',
+        group: 'Actions',
+        label: 'Fullscreen',
+        hint: 'F',
+        icon: Maximize,
+        run: toggleFullscreen,
+      },
+    );
+    if (import.meta.env.DEV) {
+      items.push(
+        editing
+          ? {
+              id: 'mode:preview',
+              group: 'Actions',
+              label: 'Leave edit mode',
+              keywords: 'preview read',
+              icon: Eye,
+              run: () => (leaveEditRef.current ? leaveEditRef.current() : setEditing(false)),
+            }
+          : {
+              id: 'mode:edit',
+              group: 'Actions',
+              label: 'Edit on the page',
+              keywords: 'edit mode text',
+              icon: Pencil,
+              run: () => setEditing(true),
+            },
+        {
+          id: 'design',
+          group: 'Actions',
+          label: designOpen ? 'Close the design panel' : 'Open the design panel',
+          hint: 'D',
+          keywords: 'design colours fonts',
+          icon: Palette,
+          run: () => setDesignOpen((open) => !open),
+        },
+      );
+    }
+    return [...items, ...browserItems({ navigate, manifest: null, setTheme, exclude: docId })];
+  };
+
   useEffect(() => {
     const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', onChange);
@@ -484,264 +595,273 @@ export function Doc() {
   }
 
   const view = (
-    <div ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
-      {/* Equal `1fr` rails put the title at the true centre of the bar rather
+    <CommandPaletteProvider
+      items={paletteItems}
+      placeholder="Search sections, pages, actions and documents"
+    >
+      <div ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
+        {/* Equal `1fr` rails put the title at the true centre of the bar rather
           than the centre of what is left over, which is where a flex row would
           drop it — the control cluster is many times wider than the back link.
           The control rail keeps its automatic minimum — no `min-w-0` — so when
           it outgrows its share the title truncates and slides instead of being
           overlapped by it. */}
-      {/* Three rails by job: where you are (back, title), how you are looking
+        {/* Three rails by job: where you are (back, title), how you are looking
           (page, zoom, layout, fullscreen), and what you do to the document
           (search, edit, design, download). The middle rail is `auto` between
           two equal `1fr` rails, so it sits at the true centre of the bar while
           the title truncates before anything is overlapped. */}
-      <header className="grid h-12 flex-none grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-border px-3">
-        <div className="flex min-w-0 items-center gap-1">
-          <HeaderBackLink />
-          <h1 className="truncate font-medium text-sm">{doc.meta?.title ?? docId}</h1>
-        </div>
+        <header className="grid h-12 flex-none grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-border px-3">
+          <div className="flex min-w-0 items-center gap-1">
+            <HeaderBackLink />
+            <h1 className="truncate font-medium text-sm">{doc.meta?.title ?? docId}</h1>
+          </div>
 
-        <div className="hidden items-center gap-2 sm:flex">
-          <PageJump page={currentPage} total={pages.length} onJump={scrollToPage} />
-          <Divider />
-          <ZoomControl
-            scale={scale}
-            fit={manualScale === null ? zoomMode : null}
-            onStep={zoom}
-            onSet={setZoom}
-            onFit={fitTo}
-          />
-          <Divider />
-          <fieldset className="flex items-center gap-0.5">
-            <legend className="sr-only">Page layout</legend>
-            <IconButton
-              label="Continuous"
-              active={viewMode === 'continuous'}
-              onClick={() => setViewMode('continuous')}
-            >
-              <Rows3 className="size-3.5" />
-            </IconButton>
-            <IconButton
-              label="Two-up"
-              active={viewMode === 'spread'}
-              onClick={() => setViewMode('spread')}
-            >
-              <BookOpen className="size-3.5" />
-            </IconButton>
-            <IconButton
-              label="Grid"
-              active={viewMode === 'grid'}
-              onClick={() => setViewMode('grid')}
-            >
-              <LayoutGrid className="size-3.5" />
-            </IconButton>
-          </fieldset>
-          <IconButton
-            label={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
-            onClick={toggleFullscreen}
-          >
-            {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
-          </IconButton>
-        </div>
-
-        <div className="flex items-center justify-end gap-2">
-          <DocSearch scrollRef={scrollRef} pagesRef={pagesRef} onFoundPage={setCurrentPage} />
-
-          {import.meta.env.DEV && (
-            // Same two modes as open-slide: reading the document, or editing it
-            // where it is printed. Leaving edit mode saves unsaved text first.
-            <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
-              <legend className="sr-only">Mode</legend>
+          <div className="hidden items-center gap-2 sm:flex">
+            <PageJump page={currentPage} total={pages.length} onJump={scrollToPage} />
+            <Divider />
+            <ZoomControl
+              scale={scale}
+              fit={manualScale === null ? zoomMode : null}
+              onStep={zoom}
+              onSet={setZoom}
+              onFit={fitTo}
+            />
+            <Divider />
+            <fieldset className="flex items-center gap-0.5">
+              <legend className="sr-only">Page layout</legend>
               <IconButton
-                label="Preview"
-                active={!editing}
-                onClick={() => (leaveEditRef.current ? leaveEditRef.current() : setEditing(false))}
+                label="Continuous"
+                active={viewMode === 'continuous'}
+                onClick={() => setViewMode('continuous')}
               >
-                <Eye className="size-3.5" />
+                <Rows3 className="size-3.5" />
               </IconButton>
-              <IconButton label="Edit" active={editing} onClick={() => setEditing(true)}>
-                <Pencil className="size-3.5" />
+              <IconButton
+                label="Two-up"
+                active={viewMode === 'spread'}
+                onClick={() => setViewMode('spread')}
+              >
+                <BookOpen className="size-3.5" />
+              </IconButton>
+              <IconButton
+                label="Grid"
+                active={viewMode === 'grid'}
+                onClick={() => setViewMode('grid')}
+              >
+                <LayoutGrid className="size-3.5" />
               </IconButton>
             </fieldset>
-          )}
-          {import.meta.env.DEV && (
-            <button
-              type="button"
-              aria-pressed={designOpen}
-              aria-label="Design"
-              aria-keyshortcuts="D"
-              title="Design tokens (D)"
-              onClick={() => setDesignOpen((open) => !open)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
-                designOpen && 'bg-accent',
-              )}
+            <IconButton
+              label={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+              onClick={toggleFullscreen}
             >
-              <Palette className="size-3.5" />
-              Design
-              <kbd
-                aria-hidden
-                className="hidden rounded-sm bg-foreground/10 px-1 font-mono text-[9.5px] text-muted-foreground md:inline"
-              >
-                D
-              </kbd>
-            </button>
-          )}
+              {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
+            </IconButton>
+          </div>
 
-          {/* The document browser normally carries this. A viewer mounted with
-            `showDocBrowser: false` never shows that shell, and without it a
-            reader has no way to change the theme at all. */}
-          {!appConfig.build.showDocBrowser && <ThemeToggle />}
+          <div className="flex items-center justify-end gap-2">
+            <DocSearch scrollRef={scrollRef} pagesRef={pagesRef} onFoundPage={setCurrentPage} />
 
-          <Menu
-            className="w-[300px] p-1.5"
-            trigger={(props) => (
+            {import.meta.env.DEV && (
+              // Same two modes as open-slide: reading the document, or editing it
+              // where it is printed. Leaving edit mode saves unsaved text first.
+              <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+                <legend className="sr-only">Mode</legend>
+                <IconButton
+                  label="Preview"
+                  active={!editing}
+                  onClick={() =>
+                    leaveEditRef.current ? leaveEditRef.current() : setEditing(false)
+                  }
+                >
+                  <Eye className="size-3.5" />
+                </IconButton>
+                <IconButton label="Edit" active={editing} onClick={() => setEditing(true)}>
+                  <Pencil className="size-3.5" />
+                </IconButton>
+              </fieldset>
+            )}
+            {import.meta.env.DEV && (
               <button
                 type="button"
-                disabled={download !== null}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-70 aria-expanded:opacity-90"
-                {...props}
-              >
-                {download ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : downloaded ? (
-                  <Check className="size-3.5" />
-                ) : (
-                  <Download className="size-3.5" />
+                aria-pressed={designOpen}
+                aria-label="Design"
+                aria-keyshortcuts="D"
+                title="Design tokens (D)"
+                onClick={() => setDesignOpen((open) => !open)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                  designOpen && 'bg-accent',
                 )}
-                {download
-                  ? `${DOWNLOAD_LABEL[download.format]} ${Math.round(download.percent)}%`
-                  : 'Download'}
+              >
+                <Palette className="size-3.5" />
+                Design
+                <kbd
+                  aria-hidden
+                  className="hidden rounded-sm bg-foreground/10 px-1 font-mono text-[9.5px] text-muted-foreground md:inline"
+                >
+                  D
+                </kbd>
               </button>
             )}
-          >
-            {(close) => (
-              <>
-                {/* Which pages, before which format. A reader who picks PDF and
+
+            <CopyLink />
+
+            {/* The document browser normally carries this. A viewer mounted with
+            `showDocBrowser: false` never shows that shell, and without it a
+            reader has no way to change the theme at all. */}
+            {!appConfig.build.showDocBrowser && <ThemeToggle />}
+
+            <Menu
+              className="w-[300px] p-1.5"
+              trigger={(props) => (
+                <button
+                  type="button"
+                  disabled={download !== null}
+                  className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-70 aria-expanded:opacity-90"
+                  {...props}
+                >
+                  {download ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : downloaded ? (
+                    <Check className="size-3.5" />
+                  ) : (
+                    <Download className="size-3.5" />
+                  )}
+                  {download
+                    ? `${DOWNLOAD_LABEL[download.format]} ${Math.round(download.percent)}%`
+                    : 'Download'}
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  {/* Which pages, before which format. A reader who picks PDF and
                     then discovers they exported forty pages has already waited
                     for all forty. */}
-                <PageChoice
-                  selection={selection}
-                  custom={customRange}
-                  currentPage={currentPage}
-                  total={pages.length}
-                  onSelection={setSelection}
-                  onCustom={setCustomRange}
-                />
-                {DOWNLOAD_GROUPS.map((group) => (
-                  <fieldset key={group.label}>
-                    <legend className={MENU_LABEL}>{group.label}</legend>
-                    {group.formats.map(({ format, label, hint, ext, icon: Icon }) => (
-                      <MenuItem
-                        key={format}
-                        disabled={!chosenPages.valid}
-                        onClick={() => {
-                          close();
-                          void runDownload(format);
-                        }}
-                      >
-                        <Icon className="size-4 flex-none text-muted-foreground" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block font-medium">{label}</span>
-                          <span className="block truncate text-[10.5px] text-muted-foreground">
-                            {hint}
+                  <PageChoice
+                    selection={selection}
+                    custom={customRange}
+                    currentPage={currentPage}
+                    total={pages.length}
+                    onSelection={setSelection}
+                    onCustom={setCustomRange}
+                  />
+                  {DOWNLOAD_GROUPS.map((group) => (
+                    <fieldset key={group.label}>
+                      <legend className={MENU_LABEL}>{group.label}</legend>
+                      {group.formats.map(({ format, label, hint, ext, icon: Icon }) => (
+                        <MenuItem
+                          key={format}
+                          disabled={!chosenPages.valid}
+                          onClick={() => {
+                            close();
+                            void runDownload(format);
+                          }}
+                        >
+                          <Icon className="size-4 flex-none text-muted-foreground" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium">{label}</span>
+                            <span className="block truncate text-[10.5px] text-muted-foreground">
+                              {hint}
+                            </span>
                           </span>
-                        </span>
-                        <span className="flex-none font-mono text-[10px] text-muted-foreground">
-                          {ext}
-                        </span>
-                      </MenuItem>
-                    ))}
-                  </fieldset>
-                ))}
-              </>
-            )}
-          </Menu>
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-        <DocSidebar
-          docId={docId ?? ''}
-          pages={pages}
-          geometry={geometry}
-          design={doc.design}
-          currentPage={currentPage}
-          entries={outline}
-          activeId={activeOutlineId}
-          onSelectPage={scrollToPage}
-          onSelectEntry={scrollToEntry}
-        />
-        <div className="relative flex min-w-0 flex-1">
-          <div
-            ref={scrollRef}
-            data-od-viewer
-            className="relative min-w-0 flex-1 overflow-auto bg-canvas"
-          >
-            <div
-              ref={pagesRef}
-              data-od-view={viewMode}
-              className={cn(
-                viewMode === 'continuous' && 'flex flex-col items-center',
-                // Facing pages as a bound document is read: page 1 alone on
-                // the right, then 2–3, 4–5.
-                viewMode === 'spread' && 'grid justify-center [&>:first-child]:col-start-2',
-                // A contact sheet: columns that line up, the last row starting
-                // under the first sheet rather than centred in the gap.
-                viewMode === 'grid' && 'grid content-start justify-center',
+                          <span className="flex-none font-mono text-[10px] text-muted-foreground">
+                            {ext}
+                          </span>
+                        </MenuItem>
+                      ))}
+                    </fieldset>
+                  ))}
+                </>
               )}
-              style={{
-                gap: PAGE_GAP,
-                padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px`,
-                ...(viewMode === 'spread'
-                  ? { gridTemplateColumns: `repeat(2, ${geometry.width * scale}px)` }
-                  : viewMode === 'grid'
-                    ? { gridTemplateColumns: `repeat(auto-fill, ${geometry.width * scale}px)` }
-                    : {}),
-              }}
-            >
-              {pages.map((page, index) => (
-                <PageFrame
-                  key={page.key}
-                  index={index}
-                  total={pages.length}
-                  geometry={geometry}
-                  scale={scale}
-                  design={doc.design}
-                >
-                  {page.content}
-                </PageFrame>
-              ))}
-            </div>
+            </Menu>
           </div>
-          {import.meta.env.DEV && docId && (
-            <EditSaveCard
-              textCount={textPending}
+        </header>
+
+        <div className="flex min-h-0 flex-1">
+          <DocSidebar
+            docId={docId ?? ''}
+            pages={pages}
+            geometry={geometry}
+            design={doc.design}
+            currentPage={currentPage}
+            entries={outline}
+            activeId={activeOutlineId}
+            onSelectPage={scrollToPage}
+            onSelectEntry={scrollToEntry}
+          />
+          <div className="relative flex min-w-0 flex-1">
+            <div
+              ref={scrollRef}
+              data-od-viewer
+              className="relative min-w-0 flex-1 overflow-auto bg-canvas md:my-2 md:mr-2 md:rounded-xl md:border md:border-border"
+            >
+              <div
+                ref={pagesRef}
+                data-od-view={viewMode}
+                className={cn(
+                  viewMode === 'continuous' && 'flex flex-col items-center',
+                  // Facing pages as a bound document is read: page 1 alone on
+                  // the right, then 2–3, 4–5.
+                  viewMode === 'spread' && 'grid justify-center [&>:first-child]:col-start-2',
+                  // A contact sheet: columns that line up, the last row starting
+                  // under the first sheet rather than centred in the gap.
+                  viewMode === 'grid' && 'grid content-start justify-center',
+                )}
+                style={{
+                  gap: PAGE_GAP,
+                  padding: `${GUTTER}px ${GUTTER}px ${GUTTER * 1.5}px`,
+                  ...(viewMode === 'spread'
+                    ? { gridTemplateColumns: `repeat(2, ${geometry.width * scale}px)` }
+                    : viewMode === 'grid'
+                      ? { gridTemplateColumns: `repeat(auto-fill, ${geometry.width * scale}px)` }
+                      : {}),
+                }}
+              >
+                {pages.map((page, index) => (
+                  <PageFrame
+                    key={page.key}
+                    index={index}
+                    total={pages.length}
+                    geometry={geometry}
+                    scale={scale}
+                    design={doc.design}
+                  >
+                    {page.content}
+                  </PageFrame>
+                ))}
+              </div>
+            </div>
+            {import.meta.env.DEV && docId && (
+              <EditSaveCard
+                textCount={textPending}
+                controlsRef={editControlsRef}
+                onShownChange={setCardShown}
+              />
+            )}
+          </div>
+          {editing && docId && (
+            // Keyed by document: a selection, or an editor carried across a
+            // reload by source location, must never follow into another
+            // document where the same line:column is something else entirely.
+            <Inspector
+              key={docId}
+              docId={docId}
+              containerRef={scrollRef}
+              panelHidden={designOpen}
+              quiet={cardShown}
+              onExit={() => setEditing(false)}
+              exitRef={leaveEditRef}
               controlsRef={editControlsRef}
-              onShownChange={setCardShown}
+              onPendingChange={setTextPending}
             />
           )}
+          {designOpen && <DesignPanel onClose={() => setDesignOpen(false)} />}
         </div>
-        {editing && docId && (
-          // Keyed by document: a selection, or an editor carried across a
-          // reload by source location, must never follow into another
-          // document where the same line:column is something else entirely.
-          <Inspector
-            key={docId}
-            docId={docId}
-            containerRef={scrollRef}
-            panelHidden={designOpen}
-            quiet={cardShown}
-            onExit={() => setEditing(false)}
-            exitRef={leaveEditRef}
-            controlsRef={editControlsRef}
-            onPendingChange={setTextPending}
-          />
-        )}
-        {designOpen && <DesignPanel onClose={() => setDesignOpen(false)} />}
       </div>
-    </div>
+    </CommandPaletteProvider>
   );
 
   // The design panel writes back to source through the dev server, so it only
@@ -1049,6 +1169,28 @@ function ZoomControl({
         )}
       </Menu>
     </div>
+  );
+}
+
+/** The page as it is — document, and the reader's place in it — on the clipboard. */
+function CopyLink() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={copied ? 'Link copied' : 'Copy link'}
+      title="Copy link"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {}
+      }}
+      className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      {copied ? <Check className="size-4" /> : <Link2 className="size-4" />}
+    </button>
   );
 }
 

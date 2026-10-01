@@ -63,8 +63,7 @@ export function DocAssets({ docId }: { docId: string }) {
     <div className="flex-1 overflow-y-auto px-3 pb-6">
       {empty && (
         <p className="px-1 py-2 text-muted-foreground text-xs leading-relaxed">
-          No assets yet. Drop files into <code className="font-mono">docs/{docId}/assets/</code> or
-          upload them from the Assets page.
+          No assets yet. Add images from the Assets page.
         </p>
       )}
 

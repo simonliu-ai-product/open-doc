@@ -4,6 +4,7 @@ declare module 'virtual:open-doc/docs' {
   export const docIds: string[];
   export const docCreatedAt: Record<string, number>;
   export const docThemes: Record<string, string>;
+  export const docTitles: Record<string, string>;
   export function loadDoc(id: string): Promise<DocModule>;
 }
 

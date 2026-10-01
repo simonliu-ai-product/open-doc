@@ -1,8 +1,9 @@
 import config from 'virtual:open-doc/config';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Folder, FolderIcon } from '../../lib/sdk';
 import { cn } from '../../lib/utils';
+import { PALETTE_SHORTCUT, useCommandPalette } from '../command-palette';
 import { ThemeToggle } from '../theme-toggle';
 import { FolderIconChip, FolderItem } from './folder-item';
 import { IconPicker, PRESET_COLORS } from './icon-picker';
@@ -86,12 +87,13 @@ export function Sidebar({
   };
 
   return (
-    <aside className="flex h-full w-[16.5rem] shrink-0 flex-col border-border border-r bg-background">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+    <aside className="flex h-full w-[16.5rem] shrink-0 flex-col bg-background">
+      <div className="px-4 pt-4 pb-3">
         <h1 className="font-semibold text-base tracking-tight">open-doc</h1>
-        <div className="-mr-1 flex items-center gap-0.5">
-          <ThemeToggle />
-        </div>
+      </div>
+
+      <div className="px-2 pb-2">
+        <SearchField />
       </div>
 
       <div className="px-2">
@@ -241,12 +243,34 @@ export function Sidebar({
         )}
       </div>
 
-      <div className="border-border border-t px-4 py-3 text-[11px] text-muted-foreground">
-        <div className="flex items-center justify-between">
-          <span>v{config.version}</span>
-          <span className="font-mono">{import.meta.env.DEV ? 'dev' : 'static'}</span>
+      <div className="flex items-center justify-between gap-2 px-4 py-3 text-[11px] text-muted-foreground">
+        <span>
+          v{config.version}
+          <span className="ml-2 font-mono">{import.meta.env.DEV ? 'dev' : 'static'}</span>
+        </span>
+        <div className="-mr-1.5">
+          <ThemeToggle />
         </div>
       </div>
     </aside>
+  );
+}
+
+/** Looks like a field, opens the palette — the same thing ⌘K does, for a pointer. */
+function SearchField() {
+  const palette = useCommandPalette();
+  return (
+    <button
+      type="button"
+      onClick={palette.open}
+      aria-keyshortcuts="Meta+K Control+K"
+      className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-background px-2.5 text-muted-foreground text-xs transition-colors hover:bg-accent hover:text-foreground"
+    >
+      <Search className="size-3.5" />
+      <span className="flex-1 text-left">Search</span>
+      <kbd className="rounded border border-border px-1 font-mono text-[10px]">
+        {PALETTE_SHORTCUT}
+      </kbd>
+    </button>
   );
 }
