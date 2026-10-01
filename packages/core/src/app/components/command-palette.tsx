@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useT } from '../lib/i18n';
 import { cn } from '../lib/utils';
 
 export type PaletteItem = {
@@ -57,13 +58,14 @@ function matches(item: PaletteItem, words: string[]): number {
  */
 export function CommandPaletteProvider({
   items,
-  placeholder = 'Search documents, sections and actions',
+  placeholder,
   children,
 }: {
   items: (query: string) => PaletteItem[];
   placeholder?: string;
   children: ReactNode;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -147,7 +149,7 @@ export function CommandPaletteProvider({
         <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[14vh]">
           <button
             type="button"
-            aria-label="Close"
+            aria-label={t('Close')}
             tabIndex={-1}
             onClick={hide}
             className="od-fade-in absolute inset-0 bg-foreground/25 backdrop-blur-[2px]"
@@ -155,7 +157,7 @@ export function CommandPaletteProvider({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Command menu"
+            aria-label={t('Command menu')}
             className="od-fade-in relative flex max-h-[min(70vh,520px)] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-2xl"
           >
             <div className="flex items-center gap-2 border-border border-b px-3">
@@ -192,15 +194,20 @@ export function CommandPaletteProvider({
                 aria-controls={listId}
                 aria-activedescendant={results.length ? `${listId}-${active}` : undefined}
                 aria-autocomplete="list"
-                placeholder={placeholder}
+                placeholder={placeholder ?? t('Search documents, sections and actions')}
                 className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </div>
 
-            <div id={listId} role="listbox" aria-label="Results" className="overflow-y-auto p-1.5">
+            <div
+              id={listId}
+              role="listbox"
+              aria-label={t('Results')}
+              className="overflow-y-auto p-1.5"
+            >
               {results.length === 0 && (
                 <p className="px-3 py-8 text-center text-muted-foreground text-sm">
-                  Nothing matches “{query.trim()}”.
+                  {t('Nothing matches “{query}”.', { query: query.trim() })}
                 </p>
               )}
               {groups.map((group) => (
@@ -250,14 +257,14 @@ export function CommandPaletteProvider({
 
             <div className="flex items-center justify-between border-border border-t px-3 py-2 text-[11px] text-muted-foreground">
               <span>
-                <Kbd>esc</Kbd> Close
+                <Kbd>esc</Kbd> {t('Close')}
               </span>
               <span className="flex items-center gap-3">
                 <span>
-                  <Kbd>↑</Kbd> <Kbd>↓</Kbd> Navigate
+                  <Kbd>↑</Kbd> <Kbd>↓</Kbd> {t('Navigate')}
                 </span>
                 <span>
-                  <Kbd>↵</Kbd> Open
+                  <Kbd>↵</Kbd> {t('Open')}
                 </span>
               </span>
             </div>

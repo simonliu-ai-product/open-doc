@@ -46,6 +46,7 @@ import { exportDocAsDocx } from '../lib/export-docx';
 import { exportDocAsHtml } from '../lib/export-html';
 import { exportDocAsImages } from '../lib/export-image';
 import { exportDocAsPdf } from '../lib/export-pdf';
+import { useLocale, useT } from '../lib/i18n';
 import { type OutlineEntry, useDocOutline } from '../lib/outline';
 import {
   describeSelection,
@@ -155,16 +156,17 @@ const BACK_CLASS =
  * host that mounts the viewer this way is providing its own way back.
  */
 const HeaderBackLink = () => {
+  const t = useT();
   if (appConfig.home !== undefined) {
     return (
-      <a href={appConfig.home} className={BACK_CLASS} aria-label="Back to workspace">
+      <a href={appConfig.home} className={BACK_CLASS} aria-label={t('Back to workspace')}>
         <ArrowLeft className="size-4" />
       </a>
     );
   }
   if (!appConfig.build.showDocBrowser) return null;
   return (
-    <Link to="/" className={BACK_CLASS} aria-label="Back to documents">
+    <Link to="/" className={BACK_CLASS} aria-label={t('Back to documents')}>
       <ArrowLeft className="size-4" />
     </Link>
   );
@@ -185,6 +187,8 @@ export function Doc() {
   const { docId } = useParams<{ docId: string }>();
   const state = useDocModule(docId);
   const doc = state.doc;
+  const t = useT();
+  const { setLocale } = useLocale();
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -443,8 +447,8 @@ export function Doc() {
     if (Number.isInteger(wanted) && wanted >= 1 && wanted <= pages.length) {
       items.push({
         id: 'page',
-        group: 'This document',
-        label: `Go to page ${wanted}`,
+        group: t('This document'),
+        label: t('Go to page {page}', { page: wanted }),
         keywords: query,
         pinned: true,
         icon: ArrowDownToLine,
@@ -454,9 +458,9 @@ export function Doc() {
     for (const entry of outline) {
       items.push({
         id: `section:${entry.id}`,
-        group: 'Sections',
+        group: t('Sections'),
         label: entry.text,
-        hint: `p. ${entry.page}`,
+        hint: t('p. {page}', { page: entry.page }),
         icon: Hash,
         run: () => scrollToEntry(entry),
       });
@@ -465,8 +469,8 @@ export function Doc() {
       for (const { format, label, icon } of group.formats) {
         items.push({
           id: `download:${format}`,
-          group: 'Actions',
-          label: `Download as ${label}`,
+          group: t('Actions'),
+          label: t('Download as {format}', { format: t(label) }),
           keywords: `export ${format}`,
           icon,
           run: () => void runDownload(format),
@@ -476,32 +480,32 @@ export function Doc() {
     items.push(
       {
         id: 'layout:continuous',
-        group: 'Actions',
-        label: 'Continuous layout',
+        group: t('Actions'),
+        label: t('Continuous layout'),
         keywords: 'view pages',
         icon: Rows3,
         run: () => setViewMode('continuous'),
       },
       {
         id: 'layout:spread',
-        group: 'Actions',
-        label: 'Two-up layout',
+        group: t('Actions'),
+        label: t('Two-up layout'),
         keywords: 'view spread pages',
         icon: BookOpen,
         run: () => setViewMode('spread'),
       },
       {
         id: 'layout:grid',
-        group: 'Actions',
-        label: 'Grid layout',
+        group: t('Actions'),
+        label: t('Grid layout'),
         keywords: 'view overview pages',
         icon: LayoutGrid,
         run: () => setViewMode('grid'),
       },
       {
         id: 'fullscreen',
-        group: 'Actions',
-        label: 'Fullscreen',
+        group: t('Actions'),
+        label: t('Fullscreen'),
         hint: 'F',
         icon: Maximize,
         run: toggleFullscreen,
@@ -512,24 +516,24 @@ export function Doc() {
         editing
           ? {
               id: 'mode:preview',
-              group: 'Actions',
-              label: 'Leave edit mode',
+              group: t('Actions'),
+              label: t('Leave edit mode'),
               keywords: 'preview read',
               icon: Eye,
               run: () => (leaveEditRef.current ? leaveEditRef.current() : setEditing(false)),
             }
           : {
               id: 'mode:edit',
-              group: 'Actions',
-              label: 'Edit on the page',
+              group: t('Actions'),
+              label: t('Edit on the page'),
               keywords: 'edit mode text',
               icon: Pencil,
               run: () => setEditing(true),
             },
         {
           id: 'design',
-          group: 'Actions',
-          label: designOpen ? 'Close the design panel' : 'Open the design panel',
+          group: t('Actions'),
+          label: designOpen ? t('Close the design panel') : t('Open the design panel'),
           hint: 'D',
           keywords: 'design colours fonts',
           icon: Palette,
@@ -537,7 +541,10 @@ export function Doc() {
         },
       );
     }
-    return [...items, ...browserItems({ navigate, manifest: null, setTheme, exclude: docId })];
+    return [
+      ...items,
+      ...browserItems({ navigate, manifest: null, setTheme, setLocale, exclude: docId, t }),
+    ];
   };
 
   useEffect(() => {
@@ -579,7 +586,7 @@ export function Doc() {
   if (state.status === 'error') {
     return (
       <Centered>
-        <p className="font-medium text-sm">Could not load “{docId}”.</p>
+        <p className="font-medium text-sm">{t('Could not load “{id}”.', { id: docId ?? '' })}</p>
         <p className="mt-1 text-muted-foreground text-xs">{state.error.message}</p>
         <BackLink />
       </Centered>
@@ -597,7 +604,7 @@ export function Doc() {
   const view = (
     <CommandPaletteProvider
       items={paletteItems}
-      placeholder="Search sections, pages, actions and documents"
+      placeholder={t('Search sections, pages, actions and documents')}
     >
       <div ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
         {/* Equal `1fr` rails put the title at the true centre of the bar rather
@@ -629,23 +636,23 @@ export function Doc() {
             />
             <Divider />
             <fieldset className="flex items-center gap-0.5">
-              <legend className="sr-only">Page layout</legend>
+              <legend className="sr-only">{t('Page layout')}</legend>
               <IconButton
-                label="Continuous"
+                label={t('Continuous')}
                 active={viewMode === 'continuous'}
                 onClick={() => setViewMode('continuous')}
               >
                 <Rows3 className="size-3.5" />
               </IconButton>
               <IconButton
-                label="Two-up"
+                label={t('Two-up')}
                 active={viewMode === 'spread'}
                 onClick={() => setViewMode('spread')}
               >
                 <BookOpen className="size-3.5" />
               </IconButton>
               <IconButton
-                label="Grid"
+                label={t('Grid')}
                 active={viewMode === 'grid'}
                 onClick={() => setViewMode('grid')}
               >
@@ -653,7 +660,7 @@ export function Doc() {
               </IconButton>
             </fieldset>
             <IconButton
-              label={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+              label={isFullscreen ? t('Exit fullscreen (F)') : t('Fullscreen (F)')}
               onClick={toggleFullscreen}
             >
               {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
@@ -667,9 +674,9 @@ export function Doc() {
               // Same two modes as open-slide: reading the document, or editing it
               // where it is printed. Leaving edit mode saves unsaved text first.
               <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
-                <legend className="sr-only">Mode</legend>
+                <legend className="sr-only">{t('Mode')}</legend>
                 <IconButton
-                  label="Preview"
+                  label={t('Preview')}
                   active={!editing}
                   onClick={() =>
                     leaveEditRef.current ? leaveEditRef.current() : setEditing(false)
@@ -677,7 +684,7 @@ export function Doc() {
                 >
                   <Eye className="size-3.5" />
                 </IconButton>
-                <IconButton label="Edit" active={editing} onClick={() => setEditing(true)}>
+                <IconButton label={t('Edit')} active={editing} onClick={() => setEditing(true)}>
                   <Pencil className="size-3.5" />
                 </IconButton>
               </fieldset>
@@ -686,9 +693,9 @@ export function Doc() {
               <button
                 type="button"
                 aria-pressed={designOpen}
-                aria-label="Design"
+                aria-label={t('Design')}
                 aria-keyshortcuts="D"
-                title="Design tokens (D)"
+                title={t('Design tokens (D)')}
                 onClick={() => setDesignOpen((open) => !open)}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
@@ -696,7 +703,7 @@ export function Doc() {
                 )}
               >
                 <Palette className="size-3.5" />
-                Design
+                {t('Design')}
                 <kbd
                   aria-hidden
                   className="hidden rounded-sm bg-foreground/10 px-1 font-mono text-[9.5px] text-muted-foreground md:inline"
@@ -730,8 +737,8 @@ export function Doc() {
                     <Download className="size-3.5" />
                   )}
                   {download
-                    ? `${DOWNLOAD_LABEL[download.format]} ${Math.round(download.percent)}%`
-                    : 'Download'}
+                    ? `${t(DOWNLOAD_LABEL[download.format])} ${Math.round(download.percent)}%`
+                    : t('Download')}
                 </button>
               )}
             >
@@ -750,7 +757,7 @@ export function Doc() {
                   />
                   {DOWNLOAD_GROUPS.map((group) => (
                     <fieldset key={group.label}>
-                      <legend className={MENU_LABEL}>{group.label}</legend>
+                      <legend className={MENU_LABEL}>{t(group.label)}</legend>
                       {group.formats.map(({ format, label, hint, ext, icon: Icon }) => (
                         <MenuItem
                           key={format}
@@ -762,9 +769,9 @@ export function Doc() {
                         >
                           <Icon className="size-4 flex-none text-muted-foreground" />
                           <span className="min-w-0 flex-1">
-                            <span className="block font-medium">{label}</span>
+                            <span className="block font-medium">{t(label)}</span>
                             <span className="block truncate text-[10.5px] text-muted-foreground">
-                              {hint}
+                              {t(hint)}
                             </span>
                           </span>
                           <span className="flex-none font-mono text-[10px] text-muted-foreground">
@@ -898,11 +905,12 @@ function PageChoice({
   onSelection: (selection: PageSelection) => void;
   onCustom: (text: string) => void;
 }) {
+  const t = useT();
   const rangeRef = useRef<HTMLInputElement>(null);
   const options = [
-    { kind: 'all' as const, label: 'All', count: total },
-    { kind: 'current' as const, label: 'This page', count: currentPage },
-    { kind: 'custom' as const, label: 'Range', count: null },
+    { kind: 'all' as const, label: t('All'), count: total },
+    { kind: 'current' as const, label: t('This page'), count: currentPage },
+    { kind: 'custom' as const, label: t('Range'), count: null },
   ];
   const current =
     selection.kind === 'custom' ? { kind: 'custom' as const, text: custom } : selection;
@@ -916,20 +924,27 @@ function PageChoice({
   const summary =
     pages === null
       ? selection.kind === 'custom' && custom.trim() !== ''
-        ? `No such pages — this document has ${total}`
-        : `Type pages, like 1-3, 6`
+        ? t('No such pages — this document has {total}', { total })
+        : t('Type pages, like 1-3, 6')
       : selection.kind === 'all'
-        ? `All ${total} page${total === 1 ? '' : 's'}`
-        : `Page${pages.length === 1 ? '' : 's'} ${formatPages(pages)} · ${pages.length} page${pages.length === 1 ? '' : 's'}`;
+        ? total === 1
+          ? t('All 1 page')
+          : t('All {count} pages', { count: total })
+        : pages.length === 1
+          ? t('Page {pages} · 1 page', { pages: formatPages(pages) })
+          : t('Pages {pages} · {count} pages', {
+              pages: formatPages(pages),
+              count: pages.length,
+            });
 
   return (
     <fieldset className="border-border border-b pb-2">
-      <legend className={MENU_LABEL}>Pages</legend>
+      <legend className={MENU_LABEL}>{t('Pages')}</legend>
       {/* One row of equal segments; labels never wrap, so a two-word option
           doesn't stand taller than its neighbours. */}
       <div
         role="radiogroup"
-        aria-label="Pages to download"
+        aria-label={t('Pages to download')}
         className="mx-1 grid grid-cols-3 gap-0.5 rounded-md bg-muted p-0.5"
       >
         {options.map((option) => {
@@ -970,7 +985,7 @@ function PageChoice({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
           placeholder="1-3, 6"
-          aria-label="Page range"
+          aria-label={t('Page range')}
           aria-invalid={pages === null && custom.trim() !== ''}
           aria-describedby="od-download-pages"
           className="mx-1 mt-1.5 h-7 w-[calc(100%-0.5rem)] rounded border border-border bg-background px-2 font-mono text-[11px] outline-none placeholder:text-muted-foreground focus-visible:border-foreground focus-visible:ring-2 focus-visible:ring-primary/30 aria-invalid:border-foreground/60"
@@ -1002,6 +1017,7 @@ function PageJump({
   total: number;
   onJump: (page: number) => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
 
   const commit = (raw: string) => {
@@ -1033,8 +1049,8 @@ function PageJump({
             event.currentTarget.blur();
           }
         }}
-        aria-label={`Page number, ${total} pages`}
-        title="Go to page"
+        aria-label={t('Page number, {total} pages', { total })}
+        title={t('Go to page')}
         inputMode="numeric"
         className={FIELD_CLASS}
         style={{ width: `${Math.max(2, String(total).length) + 2}ch` }}
@@ -1074,6 +1090,7 @@ function ZoomControl({
   onSet: (scale: number) => void;
   onFit: (mode: 'fit-width' | 'fit-page') => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
   const percent = Math.round(scale * 100);
 
@@ -1086,7 +1103,7 @@ function ZoomControl({
 
   return (
     <div className="flex items-center gap-0.5">
-      <IconButton label="Zoom out" onClick={() => onStep(-0.1)}>
+      <IconButton label={t('Zoom out')} onClick={() => onStep(-0.1)}>
         <Minus className="size-3.5" />
       </IconButton>
       <input
@@ -1107,12 +1124,12 @@ function ZoomControl({
             event.currentTarget.blur();
           }
         }}
-        aria-label="Zoom level, percent"
-        title="Type a zoom level"
+        aria-label={t('Zoom level, percent')}
+        title={t('Type a zoom level')}
         inputMode="decimal"
         className={cn(FIELD_CLASS, 'w-[6ch] font-mono text-xs tabular-nums')}
       />
-      <IconButton label="Zoom in" onClick={() => onStep(0.1)}>
+      <IconButton label={t('Zoom in')} onClick={() => onStep(0.1)}>
         <Plus className="size-3.5" />
       </IconButton>
       <Menu
@@ -1120,8 +1137,8 @@ function ZoomControl({
         trigger={(props) => (
           <button
             type="button"
-            aria-label="Zoom options"
-            title="Zoom options"
+            aria-label={t('Zoom options')}
+            title={t('Zoom options')}
             className="flex h-6 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground"
             {...props}
           >
@@ -1139,7 +1156,7 @@ function ZoomControl({
               }}
             >
               <MoveHorizontal className="size-3.5" />
-              Fit width
+              {t('Fit width')}
             </MenuItem>
             <MenuItem
               active={fit === 'fit-page'}
@@ -1149,7 +1166,7 @@ function ZoomControl({
               }}
             >
               <MoveVertical className="size-3.5" />
-              Fit page
+              {t('Fit page')}
             </MenuItem>
             <div aria-hidden className="my-1 h-px bg-border" />
             {ZOOM_PRESETS.map((value) => (
@@ -1162,7 +1179,7 @@ function ZoomControl({
                 }}
               >
                 <span className="w-3.5" />
-                {value === 100 ? 'Actual size (100%)' : `${value}%`}
+                {value === 100 ? t('Actual size (100%)') : `${value}%`}
               </MenuItem>
             ))}
           </>
@@ -1174,12 +1191,13 @@ function ZoomControl({
 
 /** The page as it is — document, and the reader's place in it — on the clipboard. */
 function CopyLink() {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
-      aria-label={copied ? 'Link copied' : 'Copy link'}
-      title="Copy link"
+      aria-label={copied ? t('Link copied') : t('Copy link')}
+      title={t('Copy link')}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(window.location.href);
@@ -1231,14 +1249,15 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 function BackLink() {
+  const t = useT();
   const className = 'mt-4 inline-block text-muted-foreground text-xs underline';
   return appConfig.home === undefined ? (
     <Link to="/" className={className}>
-      Back to documents
+      {t('Back to documents')}
     </Link>
   ) : (
     <a href={appConfig.home} className={className}>
-      Back to workspace
+      {t('Back to workspace')}
     </a>
   );
 }

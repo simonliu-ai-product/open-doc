@@ -21,6 +21,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { isSafeHref } from '../../lib/href';
+import { useT } from '../../lib/i18n';
 import { candidateLocs, formatLocs } from '../../lib/inspector/fiber';
 import {
   cleanRun,
@@ -267,6 +268,7 @@ function TextToolbar({
   onLinkCancel: () => void;
   toolbarRef: React.RefObject<HTMLDivElement>;
 }) {
+  const t = useT();
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
   // Same measuring contract as Frame: after every render, compared by value.
@@ -290,14 +292,14 @@ function TextToolbar({
   });
 
   const title = (label: string, keys: string) =>
-    emphasis.canFormat ? `${label} (${keys})` : (emphasis.reason ?? label);
+    emphasis.canFormat ? `${label} (${keys})` : emphasis.reason ? t(emphasis.reason) : label;
   const invalid = link !== null && link.value.trim() !== '' && !isSafeHref(link.value.trim());
 
   return (
     <div
       ref={toolbarRef}
       role="toolbar"
-      aria-label="Text formatting"
+      aria-label={t('Text formatting')}
       className="pointer-events-auto absolute z-40 flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-md"
       style={position ?? { visibility: 'hidden' }}
       // Keep focus, and the selection, in the text being edited — except for
@@ -312,9 +314,9 @@ function TextToolbar({
             // biome-ignore lint/a11y/noAutofocus: the field opens on an explicit request and is the only thing to do next
             autoFocus
             type="url"
-            aria-label="Link address"
+            aria-label={t('Link address')}
             aria-invalid={invalid}
-            placeholder="https://… or #section"
+            placeholder={t('https://… or #section')}
             value={link.value}
             onChange={(e) => onLinkChange(e.target.value)}
             onKeyDown={(e) => {
@@ -326,13 +328,13 @@ function TextToolbar({
                 onLinkCancel();
               }
             }}
-            title={invalid ? 'Only web, mail, phone, or in-document addresses' : undefined}
+            title={invalid ? t('Only web, mail, phone, or in-document addresses') : undefined}
             className="h-8 w-64 rounded border border-border bg-transparent px-2 text-xs outline-none focus:border-foreground/40 aria-invalid:border-destructive"
           />
           <button
             type="button"
-            aria-label="Apply link"
-            title="Apply (Enter)"
+            aria-label={t('Apply link')}
+            title={`${t('Apply')} (Enter)`}
             disabled={invalid}
             onClick={onLinkApply}
             className={TOOL_CLASS}
@@ -342,8 +344,8 @@ function TextToolbar({
           {link.existing && (
             <button
               type="button"
-              aria-label="Remove link"
-              title="Remove link"
+              aria-label={t('Remove link')}
+              title={t('Remove link')}
               onClick={() => {
                 onLinkChange('');
                 onLinkApply();
@@ -368,10 +370,12 @@ function TextToolbar({
               <button
                 key={mark}
                 type="button"
-                aria-label={label}
+                aria-label={t(label)}
                 aria-pressed={emphasis[mark]}
                 title={
-                  styled ? 'Already bold — this element’s own style sets it' : title(label, keys)
+                  styled
+                    ? t('Already bold — this element’s own style sets it')
+                    : title(t(label), keys)
                 }
                 disabled={!emphasis.canFormat || styled}
                 onClick={() => onFormat(mark)}
@@ -384,9 +388,15 @@ function TextToolbar({
           <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
           <button
             type="button"
-            aria-label="Link"
+            aria-label={t('Link')}
             aria-pressed={emphasis.href !== null}
-            title={emphasis.linkable ? 'Link (⌘K)' : (emphasis.reason ?? 'Link')}
+            title={
+              emphasis.linkable
+                ? `${t('Link')} (⌘K)`
+                : emphasis.reason
+                  ? t(emphasis.reason)
+                  : t('Link')
+            }
             disabled={!emphasis.linkable}
             onClick={onOpenLink}
             className={TOOL_CLASS}
@@ -395,8 +405,8 @@ function TextToolbar({
           </button>
           <button
             type="button"
-            aria-label="Clear formatting"
-            title={title('Clear formatting', '⌘\\')}
+            aria-label={t('Clear formatting')}
+            title={title(t('Clear formatting'), '⌘\\')}
             disabled={!emphasis.canFormat}
             onClick={onClear}
             className={TOOL_CLASS}
@@ -544,6 +554,7 @@ export function Inspector({
   onPendingChange,
 }: Props) {
   const history = useHistory();
+  const t = useT();
   const nextIdRef = useRef(1);
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [hover, setHover] = useState<HTMLElement | null>(null);
@@ -612,7 +623,9 @@ export function Inspector({
         const editor = mountEditor(anchor, runs);
         if (!editor) {
           setStatus(
-            'The text on the page does not line up with its source, so it cannot be edited here.',
+            t(
+              'The text on the page does not line up with its source, so it cannot be edited here.',
+            ),
           );
           return;
         }
@@ -639,7 +652,7 @@ export function Inspector({
       setActive(entry);
       focusAt(entry.editor.clone, pointIn(entry.editor.clone, at), selectWord);
     },
-    [],
+    [t],
   );
 
   /** Puts an editor's runs back to a snapshot, wherever a reload has since moved it. */
@@ -687,8 +700,8 @@ export function Inspector({
     for (const entry of [...entriesRef.current.values()]) drop(entry);
     setActive(null);
     refresh();
-    setStatus('Discarded unsaved edits');
-  }, [drop, refresh]);
+    setStatus(t('Discarded unsaved edits'));
+  }, [drop, refresh, t]);
 
   /**
    * Leaves the clone in place until hot reload has replaced what it covers —
@@ -843,7 +856,7 @@ export function Inspector({
       });
       const body = (await res.json()) as { results?: Outcome[]; error?: string };
       if (!res.ok || !body.results) {
-        const error = body.error ?? 'Save failed';
+        const error = body.error ?? t('Save failed');
         setStatus(error);
         return { ok: false, error };
       }
@@ -859,19 +872,23 @@ export function Inspector({
       refresh();
       setSelected(null);
       if (failures.length === 0) {
-        setStatus('Saved to source');
+        setStatus(t('Saved to source'));
         return { ok: true };
       }
-      const error = `${failures.length} of ${edits.length} not saved — ${failures[0]?.error ?? 'refused'}`;
+      const error = t('{failed} of {total} not saved — {reason}', {
+        failed: failures.length,
+        total: edits.length,
+        reason: failures[0]?.error ?? t('refused'),
+      });
       setStatus(error);
       return { ok: false, error };
     } catch {
-      setStatus('Save failed');
-      return { ok: false, error: 'Save failed' };
+      setStatus(t('Save failed'));
+      return { ok: false, error: t('Save failed') };
     } finally {
       setBusy(false);
     }
-  }, [active, docId, drop, finish, refresh, settle]);
+  }, [active, docId, drop, finish, refresh, settle, t]);
 
   const leave = useCallback(async () => {
     if ((await save()).ok) onExit();
@@ -971,7 +988,13 @@ export function Inspector({
       if (replaced) refresh();
       if (lost > 0) {
         setStatus(
-          `The document reloaded with new text here — ${lost} unsaved edit${lost > 1 ? 's were' : ' was'} lost`,
+          lost > 1
+            ? t('The document reloaded with new text here — {count} unsaved edits were lost', {
+                count: lost,
+              })
+            : t('The document reloaded with new text here — {count} unsaved edit was lost', {
+                count: lost,
+              }),
         );
       }
 
@@ -996,7 +1019,7 @@ export function Inspector({
     });
     observer.observe(container, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [container, refresh]);
+  }, [container, refresh, t]);
 
   useEffect(() => {
     if (!container) return;
@@ -1215,7 +1238,7 @@ export function Inspector({
         const el = clone.querySelector<HTMLElement>(`[data-od-run="${run.index}"]`);
         if (el) run.el = el;
       }
-      setStatus('Type inside one run of text — the markup between runs stays as written.');
+      setStatus(t('Type inside one run of text — the markup between runs stays as written.'));
       refresh();
     };
 
@@ -1229,7 +1252,7 @@ export function Inspector({
       clone.removeEventListener('compositionstart', onCompositionStart);
       clone.removeEventListener('compositionend', onCompositionEnd);
     };
-  }, [active, finish, refresh, format, openLink, clear]);
+  }, [active, finish, refresh, format, openLink, clear, t]);
 
   // Report the pick to the dev server so `current.json` can answer "this
   // element" for an agent. Clearing the selection clears it there too.
@@ -1284,22 +1307,22 @@ export function Inspector({
         });
       })
       .catch(() => {
-        if (!cancelled) setStatus('could not read source');
+        if (!cancelled) setStatus(t('could not read source'));
       });
     return () => {
       cancelled = true;
     };
-  }, [selected, docId]);
+  }, [selected, docId, t]);
 
   useEffect(() => {
     if (!wantEdit || !target || selected?.anchor !== wantEdit.anchor) return;
     setWantEdit(null);
     if (!target.editable) {
-      setStatus(target.reason ?? 'This text cannot be edited here.');
+      setStatus(target.reason ? t(target.reason) : t('This text cannot be edited here.'));
       return;
     }
     begin(wantEdit.anchor, wantEdit.at, wantEdit.selectWord, target);
-  }, [wantEdit, target, selected, begin]);
+  }, [wantEdit, target, selected, begin, t]);
 
   const saveComment = async () => {
     if (!selected || note.trim() === '' || busy) return;
@@ -1319,9 +1342,9 @@ export function Inspector({
       const body = (await res.json()) as { ok?: boolean; error?: string };
       if (res.ok && body.ok) {
         setNote('');
-        setStatus('Marked in source — run /apply-comments');
+        setStatus(t('Marked in source — run /apply-comments'));
       } else {
-        setStatus(body.error ?? 'Could not add comment');
+        setStatus(body.error ?? t('Could not add comment'));
       }
     } finally {
       setBusy(false);
@@ -1332,10 +1355,10 @@ export function Inspector({
     anchor ? (entriesRef.current.get(anchor)?.editor.clone ?? anchor) : null;
   const selectedEl = visible(selected?.anchor);
   const hint = active
-    ? 'Enter to keep · Shift+Enter for a new line · Esc to revert'
+    ? t('Enter to keep · Shift+Enter for a new line · Esc to revert')
     : selected
-      ? 'Double-click or Enter to edit text · Esc to deselect'
-      : 'Click to select · double-click to edit · Esc to leave';
+      ? t('Double-click or Enter to edit text · Esc to deselect')
+      : t('Click to select · double-click to edit · Esc to leave');
 
   const overlay = container
     ? createPortal(
@@ -1390,7 +1413,7 @@ export function Inspector({
       {overlay}
       {selected && !panelHidden && (
         <PanelShell
-          label="Element"
+          label={t('Element')}
           panelRef={panelRef}
           header={
             <span className="truncate font-mono text-[11px] text-muted-foreground">
@@ -1399,14 +1422,14 @@ export function Inspector({
             </span>
           }
           actions={
-            <PanelIconButton label="Close" onClick={() => setSelected(null)}>
+            <PanelIconButton label={t('Close')} onClick={() => setSelected(null)}>
               <X className="size-3.5" />
             </PanelIconButton>
           }
         >
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             <span className="block text-[10px] text-muted-foreground uppercase tracking-wider">
-              Text
+              {t('Text')}
             </span>
             {target === null ? (
               <div className="grid h-16 place-items-center">
@@ -1415,19 +1438,23 @@ export function Inspector({
             ) : target.editable ? (
               <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
                 {active?.anchor === selected.anchor
-                  ? 'Editing on the page. Enter keeps the change, Shift+Enter starts a new line, Esc reverts it.'
-                  : 'Double-click the text on the page, or press Enter, to edit it where it is printed.'}
+                  ? t(
+                      'Editing on the page. Enter keeps the change, Shift+Enter starts a new line, Esc reverts it.',
+                    )
+                  : t(
+                      'Double-click the text on the page, or press Enter, to edit it where it is printed.',
+                    )}
                 {target.parts.some((part) => part.kind === 'markup') &&
-                  ' Inline markup stays as written.'}
+                  ` ${t('Inline markup stays as written.')}`}
               </p>
             ) : (
               <p className="mt-1 rounded border border-border bg-muted px-2 py-1.5 text-[11px] text-muted-foreground">
-                {target.reason ?? 'Not editable here.'}
+                {target.reason ? t(target.reason) : t('Not editable here.')}
               </p>
             )}
 
             <span className="mt-4 block text-[10px] text-muted-foreground uppercase tracking-wider">
-              Comment for the agent
+              {t('Comment for the agent')}
             </span>
             <textarea
               value={note}
@@ -1436,7 +1463,7 @@ export function Inspector({
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void saveComment();
               }}
               rows={3}
-              placeholder="make this bold, shorten to one line…"
+              placeholder={t('make this bold, shorten to one line…')}
               className="mt-1 w-full resize-y rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/60 focus:border-foreground/40"
             />
             <button
@@ -1446,7 +1473,7 @@ export function Inspector({
               className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded border border-border px-2 py-1.5 text-xs transition-colors hover:bg-accent disabled:opacity-50"
             >
               <MessageSquarePlus className="size-3" />
-              Mark comment
+              {t('Mark comment')}
             </button>
 
             {status && <p className="mt-2 text-[11px] text-muted-foreground">{status}</p>}

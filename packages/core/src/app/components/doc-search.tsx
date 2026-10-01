@@ -13,6 +13,7 @@
 
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useT } from '../lib/i18n';
 
 const ALL = 'od-search';
 const ACTIVE = 'od-search-active';
@@ -76,6 +77,7 @@ export function DocSearch({
   pagesRef: React.RefObject<HTMLElement | null>;
   onFoundPage?: (page: number) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<Hit[]>([]);
@@ -178,8 +180,8 @@ export function DocSearch({
     return (
       <button
         type="button"
-        aria-label="Find in document"
-        title="Find in document"
+        aria-label={t('Find in document')}
+        title={t('Find in document')}
         onClick={() => {
           setOpen(true);
           requestAnimationFrame(() => inputRef.current?.focus());
@@ -207,8 +209,8 @@ export function DocSearch({
             go(event.shiftKey ? -1 : 1);
           }
         }}
-        placeholder="Find"
-        aria-label="Find in document"
+        placeholder={t('Find')}
+        aria-label={t('Find in document')}
         className="w-28 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
       />
       <span className="flex-none font-mono text-[11px] text-muted-foreground tabular-nums">
@@ -216,8 +218,8 @@ export function DocSearch({
       </span>
       <button
         type="button"
-        aria-label="Previous match"
-        title="Previous match (⇧⏎)"
+        aria-label={t('Previous match')}
+        title={`${t('Previous match')} (⇧⏎)`}
         onClick={() => go(-1)}
         disabled={hits.length === 0}
         className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
@@ -226,8 +228,8 @@ export function DocSearch({
       </button>
       <button
         type="button"
-        aria-label="Next match"
-        title="Next match (⏎)"
+        aria-label={t('Next match')}
+        title={`${t('Next match')} (⏎)`}
         onClick={() => go(1)}
         disabled={hits.length === 0}
         className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
@@ -236,8 +238,8 @@ export function DocSearch({
       </button>
       <button
         type="button"
-        aria-label="Close search"
-        title="Close search (Esc)"
+        aria-label={t('Close search')}
+        title={`${t('Close search')} (Esc)`}
         onClick={close}
         className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >

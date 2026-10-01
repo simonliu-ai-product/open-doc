@@ -1,4 +1,5 @@
 import { type MutableRefObject, useCallback, useEffect, useState } from 'react';
+import { useT } from '../../lib/i18n';
 import { useDesignPanelState } from '../design-panel/design-provider';
 import { useHistory } from '../history-provider';
 import type { InspectorControls } from '../inspector/inspector';
@@ -32,6 +33,7 @@ export function EditSaveCard({
 }) {
   const design = useDesignPanelState();
   const history = useHistory();
+  const t = useT();
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const count = textCount + (design.dirty ? 1 : 0);
@@ -46,7 +48,7 @@ export function EditSaveCard({
       const tokens = design.dirty ? await design.commit() : { ok: true };
       const failure = text.ok ? tokens : text;
       if (!failure.ok) {
-        setError(failure.error ?? 'Not everything was saved');
+        setError(failure.error ?? t('Not everything was saved'));
         return false;
       }
       history.clear();
@@ -54,7 +56,7 @@ export function EditSaveCard({
     } finally {
       setCommitting(false);
     }
-  }, [committing, textCount, controlsRef, design, history]);
+  }, [committing, textCount, controlsRef, design, history, t]);
 
   const discard = useCallback(() => {
     controlsRef.current?.discard();

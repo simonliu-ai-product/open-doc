@@ -1,5 +1,6 @@
-import { FileText, Folder, Image, Monitor, Moon, Palette, Sun } from 'lucide-react';
+import { FileText, Folder, Image, Languages, Monitor, Moon, Palette, Sun } from 'lucide-react';
 import { docIds, docTitles } from '../lib/docs';
+import { LOCALES, type Locale, type Translate } from '../lib/i18n';
 import type { FoldersManifest } from '../lib/sdk';
 import { themes } from '../lib/themes';
 import type { PaletteItem } from './command-palette';
@@ -9,11 +10,16 @@ export function browserItems({
   navigate,
   manifest,
   setTheme,
+  t,
+  setLocale,
   exclude,
 }: {
   navigate: (to: string) => void;
   manifest: FoldersManifest | null;
   setTheme: (theme: string) => void;
+  t: Translate;
+  /** Offers the languages too; left out where switching would not be expected. */
+  setLocale?: (locale: Locale) => void;
   /** A document not to offer — the one already open. */
   exclude?: string;
 }): PaletteItem[] {
@@ -22,7 +28,7 @@ export function browserItems({
     .map(
       (id): PaletteItem => ({
         id: `doc:${id}`,
-        group: 'Documents',
+        group: t('Documents'),
         label: docTitles[id] ?? id,
         keywords: id,
         icon: FileText,
@@ -34,7 +40,7 @@ export function browserItems({
   const folders = (manifest?.folders ?? []).map(
     (folder): PaletteItem => ({
       id: `folder:${folder.id}`,
-      group: 'Folders',
+      group: t('Folders'),
       label: folder.name,
       icon: Folder,
       run: () => navigate(`/?f=${encodeURIComponent(folder.id)}`),
@@ -44,7 +50,7 @@ export function browserItems({
   const themeItems = themes.map(
     (theme): PaletteItem => ({
       id: `theme:${theme.id}`,
-      group: 'Themes',
+      group: t('Themes'),
       label: theme.name,
       keywords: `${theme.id} theme`,
       icon: Palette,
@@ -55,15 +61,15 @@ export function browserItems({
   const pages: PaletteItem[] = [
     {
       id: 'go:docs',
-      group: 'Go to',
-      label: 'All documents',
+      group: t('Go to'),
+      label: t('All documents'),
       icon: FileText,
       run: () => navigate('/'),
     },
     {
       id: 'go:themes',
-      group: 'Go to',
-      label: 'Themes',
+      group: t('Go to'),
+      label: t('Themes'),
       icon: Palette,
       run: () => navigate('/themes'),
     },
@@ -71,8 +77,8 @@ export function browserItems({
       ? [
           {
             id: 'go:assets',
-            group: 'Go to',
-            label: 'Assets',
+            group: t('Go to'),
+            label: t('Assets'),
             icon: Image,
             run: () => navigate('/assets'),
           },
@@ -83,29 +89,40 @@ export function browserItems({
   const appearance: PaletteItem[] = [
     {
       id: 'theme:light',
-      group: 'Appearance',
-      label: 'Light theme',
+      group: t('Appearance'),
+      label: t('Light theme'),
       keywords: 'appearance mode',
       icon: Sun,
       run: () => setTheme('light'),
     },
     {
       id: 'theme:dark',
-      group: 'Appearance',
-      label: 'Dark theme',
+      group: t('Appearance'),
+      label: t('Dark theme'),
       keywords: 'appearance mode',
       icon: Moon,
       run: () => setTheme('dark'),
     },
     {
       id: 'theme:system',
-      group: 'Appearance',
-      label: 'System theme',
+      group: t('Appearance'),
+      label: t('System theme'),
       keywords: 'appearance mode auto',
       icon: Monitor,
       run: () => setTheme('system'),
     },
   ];
 
-  return [...documents, ...folders, ...pages, ...themeItems, ...appearance];
+  const languages: PaletteItem[] = setLocale
+    ? LOCALES.map(({ value, label }) => ({
+        id: `locale:${value}`,
+        group: t('Language'),
+        label,
+        keywords: 'language 語言',
+        icon: Languages,
+        run: () => setLocale(value),
+      }))
+    : [];
+
+  return [...documents, ...folders, ...pages, ...themeItems, ...appearance, ...languages];
 }

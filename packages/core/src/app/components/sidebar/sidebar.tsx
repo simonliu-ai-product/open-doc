@@ -1,9 +1,11 @@
 import config from 'virtual:open-doc/config';
 import { Plus, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../../lib/i18n';
 import type { Folder, FolderIcon } from '../../lib/sdk';
 import { cn } from '../../lib/utils';
 import { PALETTE_SHORTCUT, useCommandPalette } from '../command-palette';
+import { LanguageToggle } from '../language-toggle';
 import { ThemeToggle } from '../theme-toggle';
 import { FolderIconChip, FolderItem } from './folder-item';
 import { IconPicker, PRESET_COLORS } from './icon-picker';
@@ -48,6 +50,7 @@ export function Sidebar({
   onDropToDraft,
   onReorder,
 }: Props) {
+  const t = useT();
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; before: boolean } | null>(null);
   const [creating, setCreating] = useState(false);
@@ -123,7 +126,9 @@ export function Sidebar({
       </div>
 
       <div className="mt-5 flex items-center gap-2 px-4 pb-1">
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Folders</span>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+          {t('Folders')}
+        </span>
         <span className="h-px flex-1 bg-border" aria-hidden />
       </div>
 
@@ -220,7 +225,7 @@ export function Sidebar({
                     setNewName('');
                   }
                 }}
-                placeholder="Folder name"
+                placeholder={t('Folder name')}
                 maxLength={40}
                 className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/60"
               />
@@ -232,7 +237,7 @@ export function Sidebar({
               className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <Plus className="size-3.5" />
-              New folder
+              {t('New folder')}
             </button>
           ))}
 
@@ -248,7 +253,8 @@ export function Sidebar({
           v{config.version}
           <span className="ml-2 font-mono">{import.meta.env.DEV ? 'dev' : 'static'}</span>
         </span>
-        <div className="-mr-1.5">
+        <div className="-mr-1.5 flex items-center gap-0.5">
+          <LanguageToggle />
           <ThemeToggle />
         </div>
       </div>
@@ -258,6 +264,7 @@ export function Sidebar({
 
 /** Looks like a field, opens the palette — the same thing ⌘K does, for a pointer. */
 function SearchField() {
+  const t = useT();
   const palette = useCommandPalette();
   return (
     <button
@@ -267,7 +274,7 @@ function SearchField() {
       className="flex h-8 w-full items-center gap-2 rounded-md border border-border bg-background px-2.5 text-muted-foreground text-xs transition-colors hover:bg-accent hover:text-foreground"
     >
       <Search className="size-3.5" />
-      <span className="flex-1 text-left">Search</span>
+      <span className="flex-1 text-left">{t('Search')}</span>
       <kbd className="rounded border border-border px-1 font-mono text-[10px]">
         {PALETTE_SHORTCUT}
       </kbd>

@@ -363,6 +363,10 @@ pnpm dev              # open-doc dev → http://localhost:5273`}</Code>
         <strong>Assets</strong>：工作區裡所有圖片，顯示大小；沒有任何文件使用時會標上{' '}
         <em>unused</em>，並提供可直接貼上的 import 語法。
       </li>
+      <li>
+        <strong>語言與外觀</strong>：側欄底部的按鈕可以把介面切換成 English
+        或繁體中文，以及淺色或深色；⌘K 面板也能切換。
+      </li>
     </ul>
 
     <h1 style={h1}>4. 閱讀文件</h1>

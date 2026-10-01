@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from '../../lib/i18n';
 import type { FolderIcon } from '../../lib/sdk';
 import { cn } from '../../lib/utils';
 
@@ -40,6 +41,7 @@ export function IconPicker({
   value: FolderIcon;
   onChange: (icon: FolderIcon) => void;
 }) {
+  const t = useT();
   const [tab, setTab] = useState<'emoji' | 'color'>(value.type);
 
   return (
@@ -55,7 +57,7 @@ export function IconPicker({
               tab === next ? 'bg-background font-medium' : 'text-muted-foreground',
             )}
           >
-            {next}
+            {t(next)}
           </button>
         ))}
       </div>

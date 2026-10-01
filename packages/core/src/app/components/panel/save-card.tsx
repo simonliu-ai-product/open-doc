@@ -1,5 +1,6 @@
 import { Check, Loader2, Redo2, Save, Undo2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useT } from '../../lib/i18n';
 
 const IS_APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const UNDO_KEYS = IS_APPLE ? '⌘Z' : 'Ctrl+Z';
@@ -34,6 +35,7 @@ export function SaveCard({
   onUndo: () => void;
   onRedo: () => void;
 }) {
+  const t = useT();
   const [justSaved, setJustSaved] = useState(false);
   useEffect(() => {
     if (!justSaved) return;
@@ -51,18 +53,20 @@ export function SaveCard({
   return (
     <div
       role="toolbar"
-      aria-label="Unsaved changes"
+      aria-label={t('Unsaved changes')}
       className="od-card-in pointer-events-auto absolute bottom-4 left-1/2 z-40 flex h-10 -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-background py-1 pr-1 pl-1 text-xs shadow-md"
     >
       <HistoryButton
-        label={`Undo (${UNDO_KEYS})`}
+        label={t('Undo')}
+        keys={UNDO_KEYS}
         disabled={committing || !canUndo}
         onClick={onUndo}
       >
         <Undo2 className="size-3.5" />
       </HistoryButton>
       <HistoryButton
-        label={`Redo (${REDO_KEYS})`}
+        label={t('Redo')}
+        keys={REDO_KEYS}
         disabled={committing || !canRedo}
         onClick={onRedo}
       >
@@ -75,7 +79,7 @@ export function SaveCard({
         {justSaved ? (
           <>
             <Check className="size-3.5 flex-none" strokeWidth={2.5} />
-            Saved
+            {t('Saved')}
           </>
         ) : error ? (
           <span className="max-w-72 truncate text-muted-foreground" title={error}>
@@ -85,7 +89,9 @@ export function SaveCard({
           <>
             <span aria-hidden className="size-1.5 flex-none rounded-full bg-foreground" />
             <span className="tabular-nums">
-              {count} unsaved change{count === 1 ? '' : 's'}
+              {count === 1
+                ? t('{count} unsaved change', { count })
+                : t('{count} unsaved changes', { count })}
             </span>
           </>
         ) : null}
@@ -97,7 +103,7 @@ export function SaveCard({
           disabled={committing}
           className="h-8 rounded-md px-3 text-foreground/80 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground/60 focus-visible:outline-offset-1 disabled:opacity-50"
         >
-          Discard
+          {t('Discard')}
         </button>
       )}
       {(dirty || committing) && (
@@ -105,7 +111,7 @@ export function SaveCard({
           type="button"
           onClick={() => void save()}
           disabled={committing}
-          title={`Save (${SAVE_KEYS})`}
+          title={`${t('Save')} (${SAVE_KEYS})`}
           className="flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-foreground/60 focus-visible:outline-offset-1 disabled:opacity-70"
         >
           {committing ? (
@@ -113,7 +119,7 @@ export function SaveCard({
           ) : (
             <Save className="size-3.5" />
           )}
-          {committing ? 'Saving' : 'Save'}
+          {committing ? t('Saving') : t('Save')}
         </button>
       )}
     </div>
@@ -122,11 +128,13 @@ export function SaveCard({
 
 function HistoryButton({
   label,
+  keys,
   disabled,
   onClick,
   children,
 }: {
   label: string;
+  keys: string;
   disabled: boolean;
   onClick: () => void;
   children: React.ReactNode;
@@ -134,8 +142,8 @@ function HistoryButton({
   return (
     <button
       type="button"
-      aria-label={label.replace(/ \(.*\)$/, '')}
-      title={label}
+      aria-label={label}
+      title={`${label} (${keys})`}
       disabled={disabled}
       onClick={onClick}
       className="flex size-8 items-center justify-center rounded-md text-foreground/75 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground/60 focus-visible:outline-offset-1 disabled:text-foreground/30 disabled:hover:bg-transparent"

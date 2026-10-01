@@ -1,6 +1,7 @@
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
+import { useT } from '../lib/i18n';
 import { Menu, MenuItem } from './ui/menu';
 
 const OPTIONS = [
@@ -10,6 +11,7 @@ const OPTIONS = [
 ] as const;
 
 export function ThemeToggle() {
+  const t = useT();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -20,8 +22,8 @@ export function ThemeToggle() {
       trigger={(props) => (
         <button
           type="button"
-          aria-label="Toggle theme"
-          title="Theme"
+          aria-label={t('Toggle theme')}
+          title={t('Theme')}
           className="relative flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-expanded:bg-accent"
           {...props}
         >
@@ -41,7 +43,7 @@ export function ThemeToggle() {
             }}
           >
             <Icon className="size-3.5" />
-            {label}
+            {t(label)}
           </MenuItem>
         ))
       }

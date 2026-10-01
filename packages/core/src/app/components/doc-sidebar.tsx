@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DesignSystem } from '../lib/design';
+import { useT } from '../lib/i18n';
 import type { OutlineEntry } from '../lib/outline';
 import type { PageGeometry } from '../lib/sdk';
 import type { ExpandedPage } from '../lib/use-doc-pages';
@@ -34,6 +35,7 @@ export function DocSidebar({
   onSelectPage,
   onSelectEntry,
 }: Props) {
+  const t = useT();
   const [tab, setTab] = useState<Tab>('pages');
   const railRef = useRef<HTMLDivElement>(null);
   // The assets panel talks to the dev API, so it has nothing to show in a
@@ -71,7 +73,7 @@ export function DocSidebar({
                 : 'text-muted-foreground hover:bg-accent/60',
             )}
           >
-            {value}
+            {t(value)}
           </button>
         ))}
       </div>
@@ -89,7 +91,7 @@ export function DocSidebar({
                   type="button"
                   data-thumb-page={page}
                   onClick={() => onSelectPage(page)}
-                  aria-label={`Page ${page}`}
+                  aria-label={t('Page {page}', { page })}
                   aria-current={page === currentPage ? 'page' : undefined}
                   className={cn(
                     'group flex w-full items-start gap-2 rounded-md p-1.5 transition-colors',
@@ -136,7 +138,7 @@ export function DocSidebar({
         <nav className="flex-1 overflow-y-auto px-2 pb-6">
           {entries.length === 0 ? (
             <p className="px-2 py-1 text-muted-foreground text-xs leading-relaxed">
-              No headings yet.
+              {t('No headings yet.')}
             </p>
           ) : (
             entries.map((entry) => (

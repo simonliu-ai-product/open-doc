@@ -375,6 +375,10 @@ pnpm dev              # open-doc dev → http://localhost:5273`}</Code>
         <strong>Assets</strong> — every image in the workspace, with its size, an <em>unused</em>{' '}
         badge when no document imports it, and a ready-to-paste import line.
       </li>
+      <li>
+        <strong>Language and theme</strong> — the buttons at the foot of the sidebar switch the
+        interface between English and 繁體中文, and between light and dark. ⌘K offers both too.
+      </li>
     </ul>
 
     <h1 style={h1}>4. Reading a document</h1>

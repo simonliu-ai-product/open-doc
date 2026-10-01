@@ -24,9 +24,11 @@ import {
   uploadAsset,
 } from '../lib/assets';
 import { docIds } from '../lib/docs';
+import { useT } from '../lib/i18n';
 import { cn } from '../lib/utils';
 
 export function AssetsPage() {
+  const t = useT();
   const scopes = useMemo(() => [GLOBAL_SCOPE, ...[...docIds].sort()], []);
   const [scope, setScope] = useState<string>(GLOBAL_SCOPE);
   const [assets, setAssets] = useState<Asset[] | null>(null);
@@ -58,7 +60,9 @@ export function AssetsPage() {
       for (const file of Array.from(files)) {
         let result = await uploadAsset(scope, file);
         if (!result.ok && result.error === 'asset exists') {
-          const replace = window.confirm(`"${file.name}" already exists in ${scope}. Replace it?`);
+          const replace = window.confirm(
+            t('"{name}" already exists in {scope}. Replace it?', { name: file.name, scope }),
+          );
           if (!replace) continue;
           result = await uploadAsset(scope, file, { overwrite: true });
         }
@@ -67,7 +71,7 @@ export function AssetsPage() {
       await refresh(scope);
       setBusy(false);
     },
-    [scope, refresh],
+    [scope, refresh, t],
   );
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -94,7 +98,7 @@ export function AssetsPage() {
       )}
     >
       <PageHeader
-        title="Assets"
+        title={t('Assets')}
         icon={ImageIcon}
         count={assets?.length}
         actions={
@@ -110,7 +114,7 @@ export function AssetsPage() {
               ) : (
                 <Upload className="size-3.5" />
               )}
-              Upload
+              {t('Upload')}
             </button>
             <input
               ref={inputRef}
@@ -126,7 +130,7 @@ export function AssetsPage() {
         }
       >
         <fieldset className="flex flex-wrap items-center gap-3">
-          <legend className="sr-only">Folder</legend>
+          <legend className="sr-only">{t('Folder')}</legend>
           <div className="flex max-w-full gap-0.5 overflow-x-auto rounded-md bg-muted p-0.5">
             {scopes.map((s) => (
               <button
@@ -139,11 +143,11 @@ export function AssetsPage() {
                   s === scope && 'bg-background text-foreground shadow-sm',
                 )}
               >
-                {s === GLOBAL_SCOPE ? 'Project' : s}
+                {s === GLOBAL_SCOPE ? t('Project') : s}
               </button>
             ))}
           </div>
-          <p className="text-muted-foreground text-xs">Drop files here to upload</p>
+          <p className="text-muted-foreground text-xs">{t('Drop files here to upload')}</p>
         </fieldset>
         {error && (
           <p
@@ -160,8 +164,8 @@ export function AssetsPage() {
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
         </div>
       ) : assets.length === 0 ? (
-        <EmptyState icon={ImageIcon} title="No assets yet">
-          Drop images here or choose Upload.
+        <EmptyState icon={ImageIcon} title={t('No assets yet')}>
+          {t('Drop images here or choose Upload.')}
         </EmptyState>
       ) : (
         <div className={CARD_GRID}>
@@ -191,6 +195,7 @@ function AssetCard({
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   const copyImport = async () => {
@@ -204,7 +209,7 @@ function AssetCard({
   };
 
   const rename = async () => {
-    const next = window.prompt('New file name', asset.name);
+    const next = window.prompt(t('New file name'), asset.name);
     if (!next || next === asset.name) return;
     const result = await renameAsset(scope, asset.name, next);
     if (!result.ok) onError(`${asset.name}: ${result.error}`);
@@ -212,7 +217,10 @@ function AssetCard({
   };
 
   const remove = async () => {
-    if (!window.confirm(`Delete "${asset.name}"? This removes the file from disk.`)) return;
+    if (
+      !window.confirm(t('Delete "{name}"? This removes the file from disk.', { name: asset.name }))
+    )
+      return;
     const result = await deleteAsset(scope, asset.name);
     if (!result.ok) onError(`${asset.name}: ${result.error}`);
     onChanged();
@@ -246,12 +254,12 @@ function AssetCard({
         <div className="mt-0.5 flex items-center gap-1">
           <p className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
             {formatBytes(asset.size)}
-            {asset.unused ? ' · unused' : ''}
+            {asset.unused ? t(' · unused') : ''}
           </p>
           <button
             type="button"
             onClick={copyImport}
-            aria-label={`Copy the import line for ${asset.name}`}
+            aria-label={t('Copy the import line for {name}', { name: asset.name })}
             title={importSnippet(asset)}
             className="flex size-7 flex-none items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
@@ -261,7 +269,7 @@ function AssetCard({
             trigger={(props) => (
               <button
                 type="button"
-                aria-label={`${asset.name} options`}
+                aria-label={t('{name} options', { name: asset.name })}
                 className="flex size-7 flex-none items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-expanded:bg-accent"
                 {...props}
               >
@@ -278,7 +286,7 @@ function AssetCard({
                   }}
                 >
                   <Copy className="size-3.5" />
-                  Copy import line
+                  {t('Copy import line')}
                 </MenuItem>
                 <MenuItem
                   onClick={() => {
@@ -287,7 +295,7 @@ function AssetCard({
                   }}
                 >
                   <PencilLine className="size-3.5" />
-                  Rename
+                  {t('Rename')}
                 </MenuItem>
                 <MenuSeparator />
                 <MenuItem
@@ -298,7 +306,7 @@ function AssetCard({
                   }}
                 >
                   <Trash2 className="size-3.5" />
-                  Delete
+                  {t('Delete')}
                 </MenuItem>
               </>
             )}
