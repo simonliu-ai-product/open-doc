@@ -1,5 +1,187 @@
 # @open-document/core
 
+## 0.10.0
+
+### Minor Changes
+
+- [#61](https://github.com/simonliu-ai-product/open-doc/pull/61) [`28b56fb`](https://github.com/simonliu-ai-product/open-doc/commit/28b56fbd4120790d6b15bfada9761baa0761409b) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - A pass over the browser and viewer chrome:
+  
+  - **⌘K command palette**, everywhere. Find any document by its title, a
+    folder, a theme, or a page of the browser, and switch between light and
+    dark. Inside a document it also lists the document's sections with their
+    pages, jumps to page N when you type a number, and runs the viewer's
+    actions: download in any format, the three layouts, fullscreen, edit mode
+    and the design panel. A Search field at the top of the sidebar opens it
+    too.
+  - **Document list.** It can be sorted (Newest, Oldest, A–Z, Z–A; the choice
+    is remembered) and filtered by title.
+  - **Page headers** show an icon, the title and a count. The explanatory text
+    meant for developers is gone, and empty states speak to people using
+    open-doc rather than to the framework.
+  - **Cards** grow with the window, so pages and themes preview at a readable
+    size.
+  - **Content panels.** Both the browser and the viewer sit on an inset,
+    rounded panel. The theme toggle moves to the sidebar footer.
+  - **Page rail.** It numbers its thumbnails (01, 02 …) and marks the current
+    page.
+  - **Copy link** button in the viewer header.
+  
+  Document titles are now read at build time alongside `createdAt`
+  (`docTitles` in `virtual:open-doc/docs`), so search and sorting don't load
+  every document. The user guides list ⌘K among the shortcuts.
+
+- [#55](https://github.com/simonliu-ai-product/open-doc/pull/55) [`bb8e505`](https://github.com/simonliu-ai-product/open-doc/commit/bb8e50591d1b7d65eefc4e15d711a5a1d75391db) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - `<Chart>` draws bar, line and pie charts from data. You no longer need to build
+  them by hand from `div`s:
+  
+  ```tsx
+  import costs from './data/costs.csv';
+  
+  <Chart data={costs} x="month" y={['cost', 'budget']} format="integer"
+         caption="每月費用與預算" />
+  <Chart type="line" data={costs} x="month" y="uptime" format="percent" values />
+  <Chart type="pie" data={services} x="service" y="cost" values />
+  ```
+  
+  - **Bars**: grouped or `stacked`, and they stand on zero, negative values
+    included.
+  - **Lines**: one per series.
+  - **Pies**: a legend that gives each slice's share.
+  - **Axes**: ticks fall on round numbers. Crowded category labels thin out
+    instead of colliding. `format` takes the same values as `<DataTable>`.
+  - **Colours**: the document's accent, then tints of it and of the text colour,
+    so a chart changes with the design.
+  - **Layout**: drawn synchronously into a fixed box, so it paginates like any
+    other block.
+  - **Figures**: with a caption it is numbered and appears in
+    `<ListOfFigures />`.
+  - **Word**: the export places it as a picture.
+
+- [#57](https://github.com/simonliu-ai-product/open-doc/pull/57) [`33b5688`](https://github.com/simonliu-ai-product/open-doc/commit/33b5688136d31545cf953a5b8d9e7737392556e2) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - `open-doc diff <id> --since <rev>` shows what changed in a document since a
+  git revision (default `HEAD`), page by page. MCP exposes the same thing as the
+  `diff_document` tool.
+  
+  - **Rendering.** It renders the current version and the version at the
+    revision through the same print pipeline as `export`. The old version is
+    checked out temporarily inside the workspace, so both versions use the same
+    installed packages.
+  - **Page pairing.** Pages are paired by content, so a page inserted in the
+    middle shows as one new page rather than as every later page having changed.
+    Each page is reported as same, changed, added or removed, with the lines of
+    text added and removed.
+  - **Report.** It writes `out/<id>-diff.html`, a self-contained report: before
+    and after side by side, changed regions outlined, the text changes beneath.
+    You can send it to a reviewer who has neither the repository nor open-doc.
+  - **Scaffolded projects** now ignore `out/` and `.open-doc-diff/`.
+
+- [#47](https://github.com/simonliu-ai-product/open-doc/pull/47) [`112c286`](https://github.com/simonliu-ai-product/open-doc/commit/112c286823ee9b4b2594ef82c0cb1cd0a2a8948e) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - `flow()` takes a running `header` alongside `footer`:
+  
+  ```tsx
+  flow(<>…</>, { header: Header, footer: Footer })
+  ```
+  
+  It prints on every page the section expands into, with `useDocPageNumber()` and
+  `useDocPageCount()` working inside it. Position it absolutely in the top margin
+  band, like a footer in the bottom one; neither takes space from the blocks.
+  
+  The Word export carries it as a real Word header, page numbers as `PAGE` /
+  `NUMPAGES` fields. Fixed pages sit in sections with no header or footer.
+
+- [#62](https://github.com/simonliu-ai-product/open-doc/pull/62) [`1cf458d`](https://github.com/simonliu-ai-product/open-doc/commit/1cf458d80d13aeb090bdb5983b1f0fb7bef28fda) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The viewer speaks English and 繁體中文.
+  
+  - **Coverage.** The whole interface is translated: the document browser, the
+    toolbar, the Download menu, the command palette, the design panel, the
+    editor and document search.
+  - **Switching.** Use the language button at the foot of the sidebar (or in
+    the header on a phone), or "Language" in ⌘K. The choice is remembered, and
+    a first visit follows the browser's language.
+  - **What stays as written.** Switching language never touches the document:
+    what prints on the page is the document's own, and figure and table names
+    still come from `meta.labels`.
+  
+  The user guides mention the switch.
+
+- [#63](https://github.com/simonliu-ai-product/open-doc/pull/63) [`2727875`](https://github.com/simonliu-ai-product/open-doc/commit/27278756c9ad5959dc392813d9aa943957d5290d) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The viewer also speaks 简体中文, 日本語 and 한국어, alongside English and
+  繁體中文. Pick one from the language button or ⌘K. A first visit follows the
+  browser's language: Chinese goes to Traditional for Taiwan, Hong Kong and Macau
+  and to Simplified otherwise. The user guides list the five languages.
+
+- [#47](https://github.com/simonliu-ai-product/open-doc/pull/47) [`112c286`](https://github.com/simonliu-ai-product/open-doc/commit/112c286823ee9b4b2594ef82c0cb1cd0a2a8948e) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The page has a base stylesheet of its own. The viewer's CSS reset used to
+  reach the sheet too, so a heading, a link or a quote written without inline
+  styles printed as plain body text. Now bare elements start from the
+  document's design:
+  
+  - Headings are bold, sized from `--od-size-h1`/`h2`/`h3`, and set in the
+    heading font.
+  - Paragraphs, lists, quotes and tables get a bottom margin.
+  - Links take the accent colour and an underline.
+  - `code` and `pre` use the document's mono font instead of the viewer's.
+  - A quote has a rule on its leading edge.
+  - The sheet's default text is the design's body font, size and leading.
+  
+  Inline styles and a document's own stylesheet still win. A document that
+  styled everything inline looks the same as before. One that relied on bare
+  elements now looks like a document, and may paginate differently.
+
+- [#54](https://github.com/simonliu-ai-product/open-doc/pull/54) [`9b946d0`](https://github.com/simonliu-ai-product/open-doc/commit/9b946d071b9ceb35362a23428222a9356041b4bd) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - PDFs written by `open-doc export` (and MCP's `export_document`) carry the
+  document outline as bookmarks, so a long report opens with a navigable sidebar
+  in Acrobat or Preview. They are also tagged for screen readers.
+  
+  The bookmarks are exactly the outline the viewer's sidebar and
+  `<TableOfContents />` show: a heading marked `data-od-outline="skip"` (the
+  cover title, "Contents") is left out, and `data-od-heading` sets a bookmark's
+  text. The Download menu prints through the browser's dialog, which doesn't
+  write bookmarks.
+
+### Patch Changes
+
+- [#60](https://github.com/simonliu-ai-product/open-doc/pull/60) [`b91e939`](https://github.com/simonliu-ai-product/open-doc/commit/b91e939390b9082f1fcd72abd13d8377cd7911cb) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The document browser's pages now line up. Documents, folders, Themes and
+  Assets share one page frame, one header (title, description, actions), one
+  empty state, and one card width and grid, so moving between them no longer
+  shifts every edge.
+  
+  - **Document cards** wrap long titles onto a second line instead of cutting
+    them off. Their second line reads as the sheet and the date, e.g.
+    `A4 · Oct 1, 2026`, where it used to say `3 + flow`.
+  - **Asset cards** use the same layout as documents:
+    - The name has its own line.
+    - The size and an *unused* note sit beneath it.
+    - Copy import is a button, and Rename and Delete are in the ⋯ menu.
+  - **Asset previews** are drawn on white paper in both themes, so a dark logo
+    is visible.
+  - **Assets page**:
+    - The Upload button sits in the header.
+    - Files can be dropped anywhere on the page.
+    - The scope switcher is a segmented control. Its first option is called
+      *Project*, as in the viewer's assets panel.
+
+- [#58](https://github.com/simonliu-ai-product/open-doc/pull/58) [`a95ec73`](https://github.com/simonliu-ai-product/open-doc/commit/a95ec7355aeefcf8916b7774436e5cf6f6ab8b9f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Diagrams now fit their box. A `<Diagram>` given a `width`, or placed in a column
+  narrower than its natural size, used to shrink only its container while the
+  drawing ran past it. It now scales down, keeping its aspect ratio. Box corners
+  also take `--od-radius` as intended; the radius had been set as an attribute,
+  which does not accept a CSS variable.
+
+- [#59](https://github.com/simonliu-ai-product/open-doc/pull/59) [`235c055`](https://github.com/simonliu-ai-product/open-doc/commit/235c0554668a41a69487d3efb89a767b731df4a1) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - A clearer Download menu:
+  
+  - **Page choice.** All, This page and Range sit in one row of equal segments,
+    so a label no longer wraps onto two lines.
+  - **Range.** Choosing Range puts the cursor in the range field. The menu reads
+    back what it will download as you type (`Pages 1–3, 6 · 4 pages`), or says
+    that the pages don't exist and how many the document has.
+  - **Formats.** They are grouped by what the file is for (Print & share, Edit,
+    Images), with the extension each one produces.
+
+- [#56](https://github.com/simonliu-ai-product/open-doc/pull/56) [`b2b2096`](https://github.com/simonliu-ai-product/open-doc/commit/b2b2096ff6954bb1299be46e4167bd697048a2b5) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - A tidier viewer toolbar:
+  
+  - **Grouped by job.** The way back and the title sit on the left. How you are
+    looking (page, zoom, layout, fullscreen) is in the centre. What you do to the
+    document (search, preview/edit, design, download) is on the right.
+  - **The page number is a visible field.** Type a page and press Enter to go
+    there.
+  - **The zoom is a field too.** Type `150` and press Enter for 150%. Values
+    outside 25–200% are clamped. Beside it, a menu holds Fit width, Fit page,
+    Actual size and common sizes, replacing three icon buttons. One of those
+    (`%`) did what clicking the percentage already did.
+
 ## 0.9.1
 
 ### Patch Changes
