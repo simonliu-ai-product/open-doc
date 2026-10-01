@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { diagnosePages, type LayoutFinding } from './diagnostics';
 import { buildDocDocx } from './export-docx';
 import { buildDocHtmlBundle } from './export-html';
-import { mountPrintCopy } from './export-pdf';
+import { mountPrintCopy, type PrintCopy } from './export-pdf';
+import { exposeOutline } from './outline';
 import type { DocModule, PageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
@@ -66,7 +67,7 @@ export function useAgentBridge(input: BridgeInput): void {
 
   useEffect(() => {
     const g = globalThis as GlobalWithBridge;
-    let held: { dispose: () => void } | null = null;
+    let held: PrintCopy | null = null;
 
     const status = (): BridgeStatus => {
       const { docId, doc, pages, geometry, measuring } = latest.current;
@@ -106,6 +107,11 @@ export function useAgentBridge(input: BridgeInput): void {
         const { docId, doc, pages } = latest.current;
         if (!doc || pages.length === 0) return { pageCount: 0 };
         held = await mountPrintCopy(doc, docId, pages);
+        // The copy is hidden from assistive tech while it sits offscreen, but
+        // the PDF's bookmarks and tags are built from that same tree. Nobody
+        // reads this tab, and the copy goes as soon as the PDF is written.
+        held.root.removeAttribute('aria-hidden');
+        exposeOutline(held.root);
         return { pageCount: pages.length };
       },
       releasePrint: release,
