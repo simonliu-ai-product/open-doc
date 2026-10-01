@@ -26,4 +26,23 @@ test.describe('language', () => {
     await expect(nav.getByText('Documents')).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   });
+
+  test('offers every language, and each sets the page language', async ({ page }) => {
+    await page.goto('/');
+    for (const [label, lang] of [
+      ['简体中文', 'zh-CN'],
+      ['日本語', 'ja'],
+      ['한국어', 'ko'],
+      ['English', 'en'],
+    ]) {
+      await page
+        .locator('aside')
+        .first()
+        .getByRole('button')
+        .filter({ has: page.locator('svg.lucide-languages') })
+        .click();
+      await page.getByRole('menuitem', { name: label }).click();
+      await expect(page.locator('html')).toHaveAttribute('lang', lang);
+    }
+  });
 });

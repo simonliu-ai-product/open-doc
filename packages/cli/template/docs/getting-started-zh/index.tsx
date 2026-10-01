@@ -364,8 +364,8 @@ pnpm dev              # open-doc dev → http://localhost:5273`}</Code>
         <em>unused</em>，並提供可直接貼上的 import 語法。
       </li>
       <li>
-        <strong>語言與外觀</strong>：側欄底部的按鈕可以把介面切換成 English
-        或繁體中文，以及淺色或深色；⌘K 面板也能切換。
+        <strong>語言與外觀</strong>：側欄底部的按鈕可以把介面切換成 English、
+        繁體中文、简体中文、日本語或한국어，以及淺色或深色；⌘K 面板也能切換。
       </li>
     </ul>
 

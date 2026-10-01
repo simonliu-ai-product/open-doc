@@ -377,7 +377,8 @@ pnpm dev              # open-doc dev → http://localhost:5273`}</Code>
       </li>
       <li>
         <strong>Language and theme</strong> — the buttons at the foot of the sidebar switch the
-        interface between English and 繁體中文, and between light and dark. ⌘K offers both too.
+        interface between English, 繁體中文, 简体中文, 日本語 and 한국어, and between light and
+        dark. ⌘K offers both too.
       </li>
     </ul>
 
