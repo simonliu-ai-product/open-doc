@@ -1,5 +1,17 @@
-import { Check, Copy, FileIcon, Loader2, Trash2, Upload } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  FileIcon,
+  Image as ImageIcon,
+  Loader2,
+  MoreHorizontal,
+  PencilLine,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CARD_GRID, EmptyState, PageHeader } from '../components/browser/browser-ui';
+import { Menu, MenuItem, MenuSeparator } from '../components/ui/menu';
 import {
   type Asset,
   deleteAsset,
@@ -65,101 +77,118 @@ export function AssetsPage() {
   };
 
   return (
-    <div>
-      <header className="border-border border-b px-8 py-6">
-        <h1 className="font-medium text-lg tracking-tight">Assets</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Images and fonts documents can import. Global files live in{' '}
-          <code className="font-mono">assets/</code>; per-document files in{' '}
-          <code className="font-mono">docs/&lt;id&gt;/assets/</code>.
-        </p>
-      </header>
-
-      <div className="flex flex-wrap items-center gap-2 px-8 pt-6">
-        {scopes.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setScope(s)}
-            className={cn(
-              'rounded-full border px-3 py-1 text-xs transition-colors',
-              s === scope
-                ? 'border-transparent bg-primary text-primary-foreground'
-                : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
-            )}
-          >
-            {s === GLOBAL_SCOPE ? 'Global' : s}
-          </button>
-        ))}
-      </div>
-
-      <div className="px-8 py-6">
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: drop target is an enhancement — the "Choose files" button is the keyboard path */}
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          className={cn(
-            'flex items-center justify-between gap-4 rounded-lg border border-dashed px-5 py-4 transition-colors',
-            dragging ? 'border-primary bg-accent' : 'border-border',
-          )}
-        >
-          <div className="text-sm">
-            <p className="font-medium">Drop files to upload</p>
-            <p className="mt-0.5 text-muted-foreground text-xs">
-              Up to 25 MB each · png, jpg, svg, webp, pdf, woff2, csv…
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={busy}
-            className="flex flex-none items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-60"
-          >
-            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-            Choose files
-          </button>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => {
-              if (e.target.files?.length) void upload(e.target.files);
-              e.target.value = '';
-            }}
-          />
-        </div>
-
-        {error && (
-          <p className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-xs">{error}</p>
-        )}
-
-        {assets === null ? (
-          <div className="grid place-items-center py-16">
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
-          </div>
-        ) : assets.length === 0 ? (
-          <p className="py-16 text-center text-muted-foreground text-sm">
-            No assets in {scope === GLOBAL_SCOPE ? 'the global folder' : scope} yet.
-          </p>
-        ) : (
-          <div className="mt-6 grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
-            {assets.map((asset) => (
-              <AssetCard
-                key={asset.name}
-                asset={asset}
-                scope={scope}
-                onChanged={() => refresh(scope)}
-                onError={setError}
-              />
+    // biome-ignore lint/a11y/noStaticElementInteractions: dropping files is an enhancement — "Choose files" is the keyboard path
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setDragging(false);
+      }}
+      onDrop={onDrop}
+      className={cn(
+        'min-h-[60vh] rounded-lg outline-2 outline-offset-8 transition-colors',
+        dragging ? 'outline-dashed outline-primary/50' : 'outline-transparent',
+      )}
+    >
+      <PageHeader
+        title="Assets"
+        description={
+          <>
+            Images and fonts documents can import. Project files, shared by every document, live in{' '}
+            <code className="font-mono">assets/</code>; a document's own in{' '}
+            <code className="font-mono">docs/&lt;id&gt;/assets/</code>.
+          </>
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {busy ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Upload className="size-3.5" />
+              )}
+              Upload
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files?.length) void upload(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </>
+        }
+      >
+        <fieldset className="flex flex-wrap items-center gap-3">
+          <legend className="sr-only">Folder</legend>
+          <div className="flex max-w-full gap-0.5 overflow-x-auto rounded-md bg-muted p-0.5">
+            {scopes.map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={s === scope}
+                onClick={() => setScope(s)}
+                className={cn(
+                  'h-7 flex-none whitespace-nowrap rounded px-3 text-xs text-muted-foreground transition-colors hover:text-foreground',
+                  s === scope && 'bg-background text-foreground shadow-sm',
+                )}
+              >
+                {s === GLOBAL_SCOPE ? 'Project' : s}
+              </button>
             ))}
           </div>
+          <p className="text-muted-foreground text-xs">
+            Drop files anywhere here · up to 25 MB each · png, jpg, svg, webp, pdf, woff2, csv…
+          </p>
+        </fieldset>
+        {error && (
+          <p
+            role="alert"
+            className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-xs"
+          >
+            {error}
+          </p>
         )}
-      </div>
+      </PageHeader>
+
+      {assets === null ? (
+        <div className="grid place-items-center py-16">
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : assets.length === 0 ? (
+        <EmptyState icon={ImageIcon} title="No assets yet">
+          Drop files here or choose Upload to add them to{' '}
+          {scope === GLOBAL_SCOPE ? (
+            <code className="font-mono">assets/</code>
+          ) : (
+            <code className="font-mono">docs/{scope}/assets/</code>
+          )}
+          .
+        </EmptyState>
+      ) : (
+        <div className={CARD_GRID}>
+          {assets.map((asset) => (
+            <AssetCard
+              key={asset.name}
+              asset={asset}
+              scope={scope}
+              onChanged={() => refresh(scope)}
+              onError={setError}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -203,54 +232,91 @@ function AssetCard({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="relative grid h-32 place-items-center overflow-hidden rounded-md border border-border bg-muted">
+    <div className="group flex flex-col gap-2.5">
+      <div
+        className={cn(
+          'grid aspect-[4/3] place-items-center overflow-hidden rounded-md ring-1 ring-border',
+          isPreviewable(asset.mime) ? 'bg-paper' : 'bg-muted',
+        )}
+      >
         {isPreviewable(asset.mime) ? (
           <img
             src={asset.url}
             alt={asset.name}
-            className="max-h-full max-w-full object-contain p-2"
+            className="max-h-full max-w-full object-contain p-3"
           />
         ) : (
           <FileIcon className="size-6 text-muted-foreground" />
         )}
-        {asset.unused && (
-          <span className="absolute top-1.5 left-1.5 rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            unused
-          </span>
-        )}
       </div>
 
+      {/* The name gets the full width — a file name broken mid-extension
+          reads as a different file — and the actions sit beside the facts. */}
       <div className="min-w-0">
-        <button
-          type="button"
-          onClick={rename}
-          title="Rename"
-          className="block w-full truncate text-left text-xs hover:underline"
-        >
+        <p className="line-clamp-2 font-medium text-sm leading-snug [overflow-wrap:anywhere]">
           {asset.name}
-        </button>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">{formatBytes(asset.size)}</p>
-      </div>
-
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={copyImport}
-          title={importSnippet(asset)}
-          className="flex flex-1 items-center justify-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors hover:bg-accent"
-        >
-          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-          {copied ? 'Copied' : 'Import'}
-        </button>
-        <button
-          type="button"
-          onClick={remove}
-          aria-label={`Delete ${asset.name}`}
-          className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <Trash2 className="size-3" />
-        </button>
+        </p>
+        <div className="mt-0.5 flex items-center gap-1">
+          <p className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
+            {formatBytes(asset.size)}
+            {asset.unused ? ' · unused' : ''}
+          </p>
+          <button
+            type="button"
+            onClick={copyImport}
+            aria-label={`Copy the import line for ${asset.name}`}
+            title={importSnippet(asset)}
+            className="flex size-7 flex-none items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+          </button>
+          <Menu
+            trigger={(props) => (
+              <button
+                type="button"
+                aria-label={`${asset.name} options`}
+                className="flex size-7 flex-none items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-expanded:bg-accent"
+                {...props}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </button>
+            )}
+          >
+            {(close) => (
+              <>
+                <MenuItem
+                  onClick={() => {
+                    close();
+                    void copyImport();
+                  }}
+                >
+                  <Copy className="size-3.5" />
+                  Copy import line
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    close();
+                    void rename();
+                  }}
+                >
+                  <PencilLine className="size-3.5" />
+                  Rename
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem
+                  destructive
+                  onClick={() => {
+                    close();
+                    void remove();
+                  }}
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </div>
       </div>
     </div>
   );

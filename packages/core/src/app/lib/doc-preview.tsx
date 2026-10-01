@@ -17,13 +17,3 @@ export function coverContent(doc: DocModule | null | undefined): ReactNode {
     blockIndices: entry.blocks.map((_, index) => index),
   });
 }
-
-/** "9 pages" for fixed docs; flow docs read "3 sections" until they are opened. */
-export function pageCountLabel(doc: DocModule | null | undefined): string {
-  const entries = (doc?.default as DocEntry[] | undefined) ?? [];
-  if (entries.length === 0) return '0 pages';
-  const flowCount = entries.filter(isFlowSection).length;
-  if (flowCount === 0) return `${entries.length} pages`;
-  const fixed = entries.length - flowCount;
-  return fixed > 0 ? `${fixed} + flow` : 'flow';
-}

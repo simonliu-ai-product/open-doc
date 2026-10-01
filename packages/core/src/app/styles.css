@@ -9,6 +9,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-canvas: var(--canvas);
+  --color-paper: var(--paper);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
@@ -24,6 +25,9 @@
   --background: oklch(0.99 0 0);
   --foreground: oklch(0.145 0 0);
   --canvas: oklch(0.93 0 0);
+  /* What prints on: white in both themes. An asset is previewed on it, since a
+     dark logo on the dark chrome would read as an empty tile. */
+  --paper: oklch(1 0 0);
   --muted: oklch(0.955 0 0);
   --muted-foreground: oklch(0.5 0 0);
   --accent: oklch(0.945 0 0);
@@ -37,6 +41,7 @@
   --background: oklch(0.16 0 0);
   --foreground: oklch(0.97 0 0);
   --canvas: oklch(0.12 0 0);
+  --paper: oklch(1 0 0);
   --muted: oklch(0.24 0 0);
   --muted-foreground: oklch(0.68 0 0);
   --accent: oklch(0.25 0 0);

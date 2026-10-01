@@ -22,9 +22,9 @@ test.describe('assets', () => {
     await expect(page.getByText('unused').first()).toBeVisible();
   });
 
-  test('the scope switcher lists each document alongside Global', async ({ page }) => {
+  test('the scope switcher lists each document alongside Project', async ({ page }) => {
     await page.goto('/assets');
-    await expect(page.getByRole('button', { name: 'Global' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Project', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'alpha', exact: true })).toBeVisible();
   });
 });

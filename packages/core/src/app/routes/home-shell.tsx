@@ -99,8 +99,6 @@ export function HomeShell() {
     deleteDoc,
   };
 
-  const isAssetsRoute = location.pathname === '/assets';
-
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <div className="hidden md:block">
@@ -188,13 +186,9 @@ export function HomeShell() {
           </div>
         </div>
 
-        <div
-          className={
-            isAssetsRoute
-              ? 'flex min-h-0 flex-1 flex-col'
-              : 'mx-auto w-full max-w-[1180px] px-5 py-8 md:px-10 md:py-10'
-          }
-        >
+        {/* One frame for every page of the browser, so Documents, Themes and
+            Assets share their edges; the pages add no padding of their own. */}
+        <div className="mx-auto w-full max-w-[1180px] px-5 py-8 md:px-10 md:py-10">
           <Outlet context={ctx} />
         </div>
       </div>
