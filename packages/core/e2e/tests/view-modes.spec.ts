@@ -43,7 +43,8 @@ test.describe('view modes', () => {
 
   test('fit width in two-up fits the spread, not one sheet', async ({ page }) => {
     await mode(page, 'Two-up').click();
-    await page.getByRole('button', { name: 'Fit width' }).click();
+    await page.getByRole('button', { name: 'Zoom options' }).click();
+    await page.getByRole('menuitem', { name: 'Fit width' }).click();
     const pane = await viewer(page).boundingBox();
     const [, two, three] = await boxes(page);
     expect(two?.x).toBeGreaterThanOrEqual(pane?.x ?? 0);
