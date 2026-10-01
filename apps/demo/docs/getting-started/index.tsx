@@ -132,10 +132,8 @@ const Table = ({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) =>
     </thead>
     <tbody>
       {rows.map((row, at) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: a static table, never reordered
         <tr key={at}>
           {row.map((value, column) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a static table, never reordered
             <td key={column} style={column === 0 ? { ...cell, whiteSpace: 'nowrap' } : cell}>
               {value}
             </td>
@@ -737,7 +735,7 @@ import photo from './assets/team.jpg';
     <h1 style={h1}>16. Exporting</h1>
     <p style={p}>
       The <strong>Download</strong> menu first asks which pages — <em>All</em>, <em>This page</em>,
-      or a <em>Custom</em> range like <code>1-3, 6</code> — then the format (
+      or a <em>Range</em> such as <code>1-3, 6</code>, read back as you type — then the format (
       <Ref to="t-formats" />
       ).
     </p>

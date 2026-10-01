@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { describeSelection, parseRange, resolveSelection } from './page-range';
+import { describeSelection, formatPages, parseRange, resolveSelection } from './page-range';
 
 describe('parseRange', () => {
   it('reads single pages, one-based', () => {
@@ -91,5 +91,14 @@ describe('describeSelection', () => {
       count: 0,
       valid: false,
     });
+  });
+});
+
+describe('formatPages', () => {
+  it('writes runs back the way a reader types them', () => {
+    expect(formatPages([0, 1, 2, 5])).toBe('1–3, 6');
+    expect(formatPages([4])).toBe('5');
+    expect(formatPages([0, 2, 4])).toBe('1, 3, 5');
+    expect(formatPages([])).toBe('');
   });
 });

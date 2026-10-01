@@ -41,7 +41,12 @@ import { exportDocAsHtml } from '../lib/export-html';
 import { exportDocAsImages } from '../lib/export-image';
 import { exportDocAsPdf } from '../lib/export-pdf';
 import { type OutlineEntry, useDocOutline } from '../lib/outline';
-import { describeSelection, type PageSelection, resolveSelection } from '../lib/page-range';
+import {
+  describeSelection,
+  formatPages,
+  type PageSelection,
+  resolveSelection,
+} from '../lib/page-range';
 import { nextFrame, waitForFonts } from '../lib/print-ready';
 import { scanDocument } from '../lib/scan';
 import { resolvePageGeometry } from '../lib/sdk';
@@ -66,16 +71,61 @@ const DOWNLOAD_LABEL: Record<DownloadFormat, string> = {
   docx: 'Word',
 };
 
-const DOWNLOAD_FORMATS = [
-  { format: 'pdf' as const, label: 'PDF', hint: 'True page size, print-ready', icon: FileText },
-  { format: 'html' as const, label: 'HTML', hint: 'Self-contained, printable', icon: FileCode2 },
-  { format: 'png' as const, label: 'PNG', hint: 'Pixels, 2x — for slides and chat', icon: Image },
-  { format: 'svg' as const, label: 'SVG', hint: 'Vector, keeps text as text', icon: FileImage },
+/**
+ * Grouped by what the file is for rather than listed by type: the reader is
+ * choosing between "send it", "edit it" and "drop it in a slide", and the
+ * extension on the right says what lands in their downloads folder.
+ */
+const DOWNLOAD_GROUPS = [
   {
-    format: 'docx' as const,
-    label: 'Word (DOCX)',
-    hint: 'Editable — Word lays out the pages',
-    icon: FileType2,
+    label: 'Print & share',
+    formats: [
+      {
+        format: 'pdf' as const,
+        label: 'PDF',
+        hint: 'True page size, print-ready',
+        ext: '.pdf',
+        icon: FileText,
+      },
+      {
+        format: 'html' as const,
+        label: 'HTML',
+        hint: 'One self-contained file',
+        ext: '.html',
+        icon: FileCode2,
+      },
+    ],
+  },
+  {
+    label: 'Edit',
+    formats: [
+      {
+        format: 'docx' as const,
+        label: 'Word',
+        hint: 'Editable; Word lays out the pages',
+        ext: '.docx',
+        icon: FileType2,
+      },
+    ],
+  },
+  {
+    label: 'Images',
+    formats: [
+      {
+        format: 'png' as const,
+        label: 'PNG',
+        hint: 'Pixels at 2×, for slides and chat',
+        ext: '.png',
+        icon: Image,
+      },
+      {
+        format: 'svg' as const,
+        label: 'SVG',
+        hint: 'Vector, text stays text',
+        ext: '.svg',
+        icon: FileImage,
+      },
+    ],
   },
 ];
 
@@ -545,6 +595,7 @@ export function Doc() {
           {!appConfig.build.showDocBrowser && <ThemeToggle />}
 
           <Menu
+            className="w-[300px] p-1.5"
             trigger={(props) => (
               <button
                 type="button"
@@ -578,21 +629,31 @@ export function Doc() {
                   onSelection={setSelection}
                   onCustom={setCustomRange}
                 />
-                {DOWNLOAD_FORMATS.map(({ format, label, hint, icon: Icon }) => (
-                  <MenuItem
-                    key={format}
-                    disabled={!chosenPages.valid}
-                    onClick={() => {
-                      close();
-                      void runDownload(format);
-                    }}
-                  >
-                    <Icon className="size-3.5 flex-none" />
-                    <span className="flex-1">
-                      {label}
-                      <span className="block text-[10px] text-muted-foreground">{hint}</span>
-                    </span>
-                  </MenuItem>
+                {DOWNLOAD_GROUPS.map((group) => (
+                  <fieldset key={group.label}>
+                    <legend className={MENU_LABEL}>{group.label}</legend>
+                    {group.formats.map(({ format, label, hint, ext, icon: Icon }) => (
+                      <MenuItem
+                        key={format}
+                        disabled={!chosenPages.valid}
+                        onClick={() => {
+                          close();
+                          void runDownload(format);
+                        }}
+                      >
+                        <Icon className="size-4 flex-none text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">{label}</span>
+                          <span className="block truncate text-[10.5px] text-muted-foreground">
+                            {hint}
+                          </span>
+                        </span>
+                        <span className="flex-none font-mono text-[10px] text-muted-foreground">
+                          {ext}
+                        </span>
+                      </MenuItem>
+                    ))}
+                  </fieldset>
                 ))}
               </>
             )}
@@ -700,6 +761,8 @@ export function Doc() {
  * 自訂欄位只在被選中時出現。三個選項配一個永遠佔著位置的空欄位，會讓人以為那是
  * 必填的。
  */
+const MENU_LABEL = 'px-2 pt-2 pb-1 text-[10px] text-muted-foreground uppercase tracking-wide';
+
 function PageChoice({
   selection,
   custom,
@@ -715,65 +778,92 @@ function PageChoice({
   onSelection: (selection: PageSelection) => void;
   onCustom: (text: string) => void;
 }) {
+  const rangeRef = useRef<HTMLInputElement>(null);
   const options = [
-    { kind: 'all' as const, label: 'All', hint: `${total}` },
-    { kind: 'current' as const, label: 'This page', hint: `${currentPage}` },
-    { kind: 'custom' as const, label: 'Custom', hint: '' },
+    { kind: 'all' as const, label: 'All', count: total },
+    { kind: 'current' as const, label: 'This page', count: currentPage },
+    { kind: 'custom' as const, label: 'Range', count: null },
   ];
-  const chosen = describeSelection(
-    selection.kind === 'custom' ? { kind: 'custom', text: custom } : selection,
-    total,
-    currentPage,
-  );
+  const current =
+    selection.kind === 'custom' ? { kind: 'custom' as const, text: custom } : selection;
+  const pages = resolveSelection(current, total, currentPage);
+
+  // Choosing a range is choosing to type one.
+  useEffect(() => {
+    if (selection.kind === 'custom') rangeRef.current?.focus();
+  }, [selection.kind]);
+
+  const summary =
+    pages === null
+      ? selection.kind === 'custom' && custom.trim() !== ''
+        ? `No such pages — this document has ${total}`
+        : `Type pages, like 1-3, 6`
+      : selection.kind === 'all'
+        ? `All ${total} page${total === 1 ? '' : 's'}`
+        : `Page${pages.length === 1 ? '' : 's'} ${formatPages(pages)} · ${pages.length} page${pages.length === 1 ? '' : 's'}`;
 
   return (
-    <div className="border-border border-b px-1 pt-1 pb-2">
-      <p className="px-1 pb-1 text-[10px] text-muted-foreground uppercase tracking-wide">Pages</p>
-      <div className="flex gap-0.5">
-        {options.map((option) => (
-          <button
-            key={option.kind}
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelection(
-                option.kind === 'custom' ? { kind: 'custom', text: custom } : { kind: option.kind },
-              );
-            }}
-            className={cn(
-              'flex-1 rounded px-2 py-1 text-[11px] transition-colors hover:bg-accent',
-              selection.kind === option.kind && 'bg-accent text-foreground',
-            )}
-          >
-            {option.label}
-            {option.hint && (
-              <span className="ml-1 font-mono text-[10px] text-muted-foreground">
-                {option.hint}
-              </span>
-            )}
-          </button>
-        ))}
+    <fieldset className="border-border border-b pb-2">
+      <legend className={MENU_LABEL}>Pages</legend>
+      {/* One row of equal segments; labels never wrap, so a two-word option
+          doesn't stand taller than its neighbours. */}
+      <div
+        role="radiogroup"
+        aria-label="Pages to download"
+        className="mx-1 grid grid-cols-3 gap-0.5 rounded-md bg-muted p-0.5"
+      >
+        {options.map((option) => {
+          const active = selection.kind === option.kind;
+          return (
+            <button
+              key={option.kind}
+              type="button"
+              aria-pressed={active}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelection(
+                  option.kind === 'custom'
+                    ? { kind: 'custom', text: custom }
+                    : { kind: option.kind },
+                );
+              }}
+              className={cn(
+                'flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded px-1.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground',
+                active && 'bg-background text-foreground shadow-sm',
+              )}
+            >
+              {option.label}
+              {option.count !== null && (
+                <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                  {option.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
       {selection.kind === 'custom' && (
         <input
+          ref={rangeRef}
           value={custom}
           onChange={(event) => onCustom(event.target.value)}
           onClick={(event) => event.stopPropagation()}
-          placeholder="e.g. 1-3, 5"
-          aria-label="Pages to download"
-          aria-invalid={!chosen.valid}
-          className={cn(
-            'mt-1.5 w-full rounded border border-border bg-transparent px-2 py-1 text-[11px] outline-none placeholder:text-muted-foreground focus:border-foreground/40',
-            !chosen.valid && custom !== '' && 'border-foreground/40',
-          )}
+          onKeyDown={(event) => event.stopPropagation()}
+          placeholder="1-3, 6"
+          aria-label="Page range"
+          aria-invalid={pages === null && custom.trim() !== ''}
+          aria-describedby="od-download-pages"
+          className="mx-1 mt-1.5 h-7 w-[calc(100%-0.5rem)] rounded border border-border bg-background px-2 font-mono text-[11px] outline-none placeholder:text-muted-foreground focus-visible:border-foreground focus-visible:ring-2 focus-visible:ring-primary/30 aria-invalid:border-foreground/60"
         />
       )}
-      <p className="px-1 pt-1.5 text-[10px] text-muted-foreground">
-        {chosen.valid
-          ? `${chosen.count} page${chosen.count === 1 ? '' : 's'} will be downloaded`
-          : 'Type page numbers, like 1-3, 5'}
+      <p
+        id="od-download-pages"
+        aria-live="polite"
+        className="px-2 pt-1.5 text-[10.5px] text-muted-foreground"
+      >
+        {summary}
       </p>
-    </div>
+    </fieldset>
   );
 }
 

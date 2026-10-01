@@ -26,6 +26,25 @@ async function downloadHtml(page: Page, docId: string): Promise<Download> {
 }
 
 test.describe('export', () => {
+  test('the page range reads back what it will download, and refuses pages that do not exist', async ({
+    page,
+  }) => {
+    await openDoc(page, 'alpha');
+    await page.getByRole('button', { name: 'Download', exact: true }).click();
+    await expect(page.getByText('All 3 pages')).toBeVisible();
+
+    await page.getByRole('button', { name: /Range/ }).click();
+    const range = page.getByLabel('Page range');
+    await expect(range).toBeFocused();
+    await range.fill('1, 3');
+    await expect(page.getByText('Pages 1, 3 · 2 pages')).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /PDF/ })).toBeEnabled();
+
+    await range.fill('9');
+    await expect(page.getByText('No such pages — this document has 3')).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /PDF/ })).toBeDisabled();
+  });
+
   test('HTML export downloads a self-contained document', async ({ page }) => {
     test.setTimeout(90_000);
     await openDoc(page, 'alpha');

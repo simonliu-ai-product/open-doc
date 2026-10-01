@@ -133,10 +133,8 @@ const Table = ({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) =>
     </thead>
     <tbody>
       {rows.map((row, at) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: a static table, never reordered
         <tr key={at}>
           {row.map((value, column) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a static table, never reordered
             <td key={column} style={column === 0 ? { ...cell, whiteSpace: 'nowrap' } : cell}>
               {value}
             </td>
@@ -705,8 +703,8 @@ import photo from './assets/team.jpg';
     <h1 style={h1}>16. 匯出</h1>
     <p style={p}>
       <strong>Download</strong> 選單會先問要哪些頁面：<em>All</em>（全部）、
-      <em>This page</em>（這一頁），或 <em>Custom</em> 自訂範圍（例如 <code>1-3, 6</code>
-      ），再選格式（
+      <em>This page</em>（這一頁），或 <em>Range</em> 自訂範圍（例如 <code>1-3, 6</code>
+      ，輸入時會即時顯示解析結果 ），再選格式（
       <Ref to="t-formats" />
       ）。
     </p>
