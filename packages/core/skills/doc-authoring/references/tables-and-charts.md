@@ -95,7 +95,24 @@ Every stat needs a comparison (target, prior period) — a number with nothing t
 
 ## Charts
 
-No chart library is available, and none is needed. Write **inline SVG** sized in absolute px:
+For a bar, line or pie chart of data, use **`<Chart>`** — it draws from rows (an imported `.csv`, or an array literal), in the document's accent and tints of it, and numbers as a figure when given a caption:
+
+```tsx
+import costs from './data/costs.csv';
+
+<Chart data={costs} x="month" y={['cost', 'budget']} labels={{ cost: '實際', budget: '預算' }}
+       format="integer" caption="每月費用與預算" id="f-cost" />
+<Chart type="line" data={costs} x="month" y="uptime" format="percent" values caption="可用率" />
+<Chart type="pie" data={services} x="service" y="cost" values caption="費用占比" />
+```
+
+- `type`: `bar` (default), `line`, `pie`. `y` takes one key or several (one series each); a pie reads the first.
+- `stacked` stacks bar series instead of grouping them; `values` prints each value on its bar, point or slice.
+- `format`: `number`, `integer`, `percent`, or a function — the same vocabulary as `<DataTable>`.
+- `width` / `height` are the drawn size in px (default 560 × 260); it scales down to the column.
+- It lays out synchronously into a fixed box, so it paginates like any block. In Word it arrives as a picture.
+
+Anything `<Chart>` doesn't draw — a sparkline in a stat row, an annotated timeline — write as **inline SVG** sized in absolute px:
 
 ```tsx
 const Bars = () => {
