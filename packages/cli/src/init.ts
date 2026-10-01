@@ -120,7 +120,10 @@ export async function init(opts: InitOptions): Promise<void> {
     await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
   }
 
-  await writeFile(join(target, '.gitignore'), 'node_modules\ndist\n.DS_Store\n');
+  await writeFile(
+    join(target, '.gitignore'),
+    'node_modules\ndist\nout\n.open-doc-diff\n.DS_Store\n',
+  );
 
   // pnpm blocks postinstall scripts unless a package opts in, and Vite is dead
   // in the water without esbuild's — it never unpacks its platform binary.

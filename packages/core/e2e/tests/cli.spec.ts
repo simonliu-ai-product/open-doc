@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -59,6 +60,35 @@ test.describe('open-doc CLI', () => {
     );
     expect(bookmarks).toEqual(['Findings']);
     expect(pdf).toContain('/StructTreeRoot');
+  });
+
+  test('diff reports what changed since a commit, page by page', async () => {
+    const dir = prepareScratchProject('cli-diff');
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
+    await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\nout\n');
+    git('init', '-q');
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '.');
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base');
+
+    const source = path.join(dir, 'docs', 'alpha', 'index.tsx');
+    const before = await fs.readFile(source, 'utf8');
+    await fs.writeFile(source, before.replace('Middle content', 'Middle content, revised'));
+
+    const res = await runCli(['diff', 'alpha', '--json'], dir);
+    expect(res.code, res.stderr).toBe(0);
+    const result = JSON.parse(res.stdout) as {
+      pages: Array<{ status: string; lines: Array<{ op: string; text: string }> }>;
+      file: string;
+    };
+    expect(result.pages.map((page) => page.status)).toEqual(['same', 'changed', 'same']);
+    expect(result.pages[1]?.lines).toEqual([
+      { op: 'remove', text: 'Middle content' },
+      { op: 'add', text: 'Middle content, revised' },
+    ]);
+    const report = await fs.readFile(path.join(dir, result.file), 'utf8');
+    expect(report).toContain('Middle content, revised');
+    // The old version's checkout is cleaned up.
+    await expect(fs.access(path.join(dir, '.open-doc-diff'))).rejects.toThrow();
   });
 
   test('export writes a PDF, and check passes the fixture documents', async () => {

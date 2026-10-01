@@ -8,6 +8,7 @@ import {
   createFolder,
   deleteAsset,
   deleteDocument,
+  diffDocument,
   duplicateDocument,
   EXPORT_FORMATS,
   exportDocument,
@@ -384,6 +385,27 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
       }),
     },
     ({ docId, format, outDir }) => run(() => exportDocument(ctx, docId, { format, outDir })),
+  );
+
+  server.registerTool(
+    'diff_document',
+    {
+      title: 'What changed since a revision',
+      description:
+        'Renders the document as it is and as it was at a git revision (default HEAD), pairs the pages by content, and reports each page as same, changed, added or removed — with the lines of text added and removed and the changed regions. Also writes a self-contained HTML report with before/after pictures for a human reviewer. Use it to summarise your edits before handing a document back, or to answer "what changed since main".',
+      inputSchema: z.object({
+        docId: z.string(),
+        since: z.string().optional().describe('git revision to compare against; defaults to HEAD'),
+        outDir: z.string().optional().describe('relative to the workspace root; defaults to `out`'),
+      }),
+    },
+    ({ docId, since, outDir }) =>
+      run(() =>
+        diffDocument(ctx, docId, {
+          ...(since ? { since } : {}),
+          ...(outDir ? { outDir } : {}),
+        }),
+      ),
   );
 
   server.registerTool(
