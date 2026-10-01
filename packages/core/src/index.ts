@@ -1,3 +1,5 @@
+export type { ChartProps } from './app/components/chart.tsx';
+export { Chart } from './app/components/chart.tsx';
 export type {
   DataAlign,
   DataColumn,
@@ -15,6 +17,7 @@ export type { FigureProps, ListOfProps, RefProps } from './app/components/number
 export { Figure, ListOf, ListOfFigures, ListOfTables, Ref } from './app/components/numbering.tsx';
 export type { TableOfContentsProps } from './app/components/table-of-contents.tsx';
 export { TableOfContents } from './app/components/table-of-contents.tsx';
+export type { ChartFormat, ChartType } from './app/lib/chart.ts';
 export type {
   DesignFonts,
   DesignPalette,

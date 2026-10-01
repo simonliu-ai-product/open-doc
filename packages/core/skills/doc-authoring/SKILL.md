@@ -155,6 +155,8 @@ contents list does. Read `references/long-form.md` before using any of them.
 - **`<DataTable rows={…}>`** — a print-shaped table from an imported `.csv`.
 - **`<Diagram chart={…} caption>`** — an architecture or flow drawing from an
   imported `.mmd`. Given a caption it numbers as a figure, like `<Figure>`.
+- **`<Chart data x y caption>`** — a bar, line or pie chart from rows, in the
+  document's colours; numbers as a figure. See `references/tables-and-charts.md`.
 
 `meta.labels` sets what they are called (`圖`, `表`) — the numbering itself is
 structural.
