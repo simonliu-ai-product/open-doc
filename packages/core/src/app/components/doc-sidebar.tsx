@@ -67,7 +67,7 @@ export function DocSidebar({
             type="button"
             onClick={() => setTab(value)}
             className={cn(
-              'flex-1 rounded-md px-2 py-1 text-[11px] capitalize transition-colors',
+              'flex-1 truncate whitespace-nowrap rounded-md px-2 py-1 text-[11px] capitalize transition-colors',
               tab === value
                 ? 'bg-accent font-medium text-foreground'
                 : 'text-muted-foreground hover:bg-accent/60',

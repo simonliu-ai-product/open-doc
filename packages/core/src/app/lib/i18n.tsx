@@ -8,10 +8,13 @@ import {
   useRef,
   useState,
 } from 'react';
+import { JA } from './i18n-ja';
+import { KO } from './i18n-ko';
+import { ZH_CN } from './i18n-zh-cn';
 import { ZH_TW } from './i18n-zh-tw';
 
 /**
- * The viewer chrome in English or Traditional Chinese. The English text is the
+ * The viewer chrome in English, Chinese, Japanese or Korean. The English text is the
  * key, so a string with no translation yet still reads — in English — instead
  * of showing a key. Only the chrome is translated: what prints on the page is
  * the document's, and `meta.labels` already decides what a figure is called.
@@ -19,19 +22,39 @@ import { ZH_TW } from './i18n-zh-tw';
 export const LOCALES = [
   { value: 'en', label: 'English' },
   { value: 'zh-TW', label: '繁體中文' },
+  { value: 'zh-CN', label: '简体中文' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
 ] as const;
 export type Locale = (typeof LOCALES)[number]['value'];
 
 const STORAGE = 'open-doc:locale';
-const DICTIONARIES: Record<Locale, Record<string, string>> = { en: {}, 'zh-TW': ZH_TW };
+export const DICTIONARIES: Record<Locale, Record<string, string>> = {
+  en: {},
+  'zh-TW': ZH_TW,
+  'zh-CN': ZH_CN,
+  ja: JA,
+  ko: KO,
+};
+
+const isLocale = (value: string | null): value is Locale =>
+  LOCALES.some((entry) => entry.value === value);
+
+/** The reader's browser language, mapped onto a locale we have; Chinese splits by script. */
+function browserLocale(language: string): Locale {
+  if (/^zh-(TW|HK|MO)\b|^zh-Hant/i.test(language)) return 'zh-TW';
+  if (/^zh/i.test(language)) return 'zh-CN';
+  if (/^ja/i.test(language)) return 'ja';
+  if (/^ko/i.test(language)) return 'ko';
+  return 'en';
+}
 
 function initialLocale(): Locale {
   try {
     const stored = localStorage.getItem(STORAGE);
-    if (stored === 'en' || stored === 'zh-TW') return stored;
+    if (isLocale(stored)) return stored;
   } catch {}
-  if (typeof navigator !== 'undefined' && /^zh/i.test(navigator.language)) return 'zh-TW';
-  return 'en';
+  return typeof navigator === 'undefined' ? 'en' : browserLocale(navigator.language);
 }
 
 export type Translate = (text: string, vars?: Record<string, string | number>) => string;
