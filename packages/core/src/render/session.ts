@@ -21,6 +21,8 @@ type HeadlessPage = {
     printBackground?: boolean;
     preferCSSPageSize?: boolean;
     scale?: number;
+    outline?: boolean;
+    tagged?: boolean;
   }): Promise<Uint8Array>;
   $(selector: string): Promise<HeadlessElement | null>;
   close(): Promise<void>;
@@ -169,7 +171,12 @@ export async function createRenderSession(opts: RenderSessionOptions): Promise<R
         async pdf() {
           await page.evaluate('globalThis.__openDoc.preparePrint()');
           try {
-            return await page.pdf({ printBackground: true, preferCSSPageSize: true });
+            return await page.pdf({
+              printBackground: true,
+              preferCSSPageSize: true,
+              outline: true,
+              tagged: true,
+            });
           } finally {
             await page.evaluate('globalThis.__openDoc.releasePrint()');
           }
