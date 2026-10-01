@@ -85,6 +85,32 @@ export function describeSelection(
   return { count: pages?.length ?? 0, valid: pages !== null };
 }
 
+/**
+ * Zero-based indices as the reader would write them back: `[0,1,2,5]` →
+ * `1–3, 6`. Shown under the range field so a typo is caught before the
+ * download, not after.
+ */
+export function formatPages(indices: number[]): string {
+  const runs: string[] = [];
+  let start: number | undefined;
+  let prev: number | undefined;
+  const flush = () => {
+    if (start === undefined || prev === undefined) return;
+    runs.push(start === prev ? `${start + 1}` : `${start + 1}–${prev + 1}`);
+  };
+  for (const index of indices) {
+    if (prev !== undefined && index === prev + 1) {
+      prev = index;
+      continue;
+    }
+    flush();
+    start = index;
+    prev = index;
+  }
+  flush();
+  return runs.join(', ');
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
