@@ -11,6 +11,7 @@ export {
   type PageSizeName,
 } from '../app/lib/sdk.ts';
 export { type ApiContext, makeContext } from '../vite/routes/context.ts';
+export { type DiffResult, diffDocument, type PageChange, type PageStatus } from './diff.ts';
 export {
   createDocument,
   type DocumentSummary,

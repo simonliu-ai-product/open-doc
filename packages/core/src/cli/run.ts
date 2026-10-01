@@ -39,6 +39,12 @@ interface ExportFlags {
   all?: boolean;
 }
 
+interface DiffFlags {
+  since?: string;
+  outDir?: string;
+  json?: boolean;
+}
+
 interface CheckFlags {
   json?: boolean;
 }
@@ -158,6 +164,17 @@ export async function run(argv: string[]): Promise<void> {
     .action(async (docIds: string[], flags: ExportFlags) => {
       const { exportDocs } = await import('./export.ts');
       await exportDocs(docIds, flags as Parameters<typeof exportDocs>[1]);
+    });
+
+  program
+    .command('diff <docId>')
+    .description('Show what changed in a document since a git revision, page by page')
+    .option('-s, --since <rev>', 'revision to compare against (defaults to HEAD)')
+    .option('-o, --out-dir <dir>', 'directory to write the report into (defaults to `out`)')
+    .option('--json', 'print the result as JSON')
+    .action(async (docId: string, flags: DiffFlags) => {
+      const { diffDoc } = await import('./diff.ts');
+      await diffDoc(docId, flags);
     });
 
   program

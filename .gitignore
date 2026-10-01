@@ -11,3 +11,5 @@ playwright-report
 test-results
 # `open-doc export` writes here by default
 apps/demo/out
+# `open-doc diff` checks the old version out here while it runs
+.open-doc-diff
