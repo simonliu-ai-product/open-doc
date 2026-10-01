@@ -58,16 +58,22 @@ function toId(absFile: string, docsRoot: string): string {
 
 const META_CREATED_AT_RE = /(?:^|[\s,{])createdAt\s*:\s*['"]([^'"]+)['"]/;
 const META_THEME_RE = /(?:^|[\s,{])theme\s*:\s*['"]([^'"]+)['"]/;
+const META_TITLE_RE = /(?:^|[\s,{])title\s*:\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/;
 
-export type ExtractedMeta = { theme: string | null; createdAt: string | null };
+export type ExtractedMeta = {
+  theme: string | null;
+  createdAt: string | null;
+  title: string | null;
+};
 
 /**
  * Reads `meta` with a brace-matched regex instead of parsing: the plugin runs on
- * every discovery pass, and the two fields it needs (sort order, theme back-link)
- * are contractually string literals.
+ * every discovery pass, and the fields it needs (sort order, theme back-link,
+ * the title search and sorting use without loading every document) are
+ * contractually string literals.
  */
 export function extractMeta(src: string): ExtractedMeta {
-  const empty: ExtractedMeta = { theme: null, createdAt: null };
+  const empty: ExtractedMeta = { theme: null, createdAt: null, title: null };
   const metaStart = src.search(/export\s+const\s+meta\b/);
   if (metaStart === -1) return empty;
   const openBrace = src.indexOf('{', src.indexOf('=', metaStart));
@@ -90,7 +96,12 @@ export function extractMeta(src: string): ExtractedMeta {
   return {
     theme: body.match(META_THEME_RE)?.[1] ?? null,
     createdAt: body.match(META_CREATED_AT_RE)?.[1] ?? null,
+    title: unescapeLiteral(body.match(META_TITLE_RE)?.[2] ?? null),
   };
+}
+
+function unescapeLiteral(raw: string | null): string | null {
+  return raw === null ? null : raw.replace(/\\(.)/g, '$1');
 }
 
 function parseCreatedAtMs(iso: string | null): number | null {
@@ -103,7 +114,7 @@ async function readMeta(abs: string): Promise<ExtractedMeta> {
   try {
     return extractMeta(await fs.readFile(abs, 'utf8'));
   } catch {
-    return { theme: null, createdAt: null };
+    return { theme: null, createdAt: null, title: null };
   }
 }
 
@@ -121,6 +132,7 @@ export async function generateDocsModule(
         id: toId(abs, docsRoot),
         importPath: isDev ? `@fs/${normalizePath(abs).replace(/^\/+/, '')}` : abs,
         theme: meta.theme,
+        title: meta.title,
         createdAt: parseCreatedAtMs(meta.createdAt),
       };
     }),
@@ -134,9 +146,11 @@ export async function generateDocsModule(
   const ids = JSON.stringify(entries.map((e) => e.id).sort());
   const createdAtMap: Record<string, number> = {};
   const themesMap: Record<string, string> = {};
+  const titlesMap: Record<string, string> = {};
   for (const e of entries) {
     if (e.createdAt !== null) createdAtMap[e.id] = e.createdAt;
     if (e.theme) themesMap[e.id] = e.theme;
+    if (e.title) titlesMap[e.id] = e.title;
   }
 
   const importTokens = JSON.stringify(Object.fromEntries(entries.map((e) => [e.id, 0])));
@@ -168,6 +182,7 @@ if (import.meta.hot) {
 export const docIds = ${ids};
 export const docCreatedAt = ${JSON.stringify(createdAtMap)};
 export const docThemes = ${JSON.stringify(themesMap)};
+export const docTitles = ${JSON.stringify(titlesMap)};
 ${devRuntime}
 
 export async function loadDoc(id) {

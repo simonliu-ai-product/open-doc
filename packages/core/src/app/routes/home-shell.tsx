@@ -1,6 +1,9 @@
-import { Menu as MenuIcon } from 'lucide-react';
+import { Menu as MenuIcon, Search } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { useCallback, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { CommandPaletteProvider, useCommandPalette } from '../components/command-palette';
+import { browserItems } from '../components/palette-items';
 import {
   ALL_DOCS_ID,
   ASSETS_ID,
@@ -83,6 +86,12 @@ export function HomeShell() {
     return { draftDocs: draft, docsByFolder: byFolder };
   }, [manifest]);
 
+  const { setTheme } = useTheme();
+  const paletteItems = useCallback(
+    () => browserItems({ navigate, manifest, setTheme }),
+    [navigate, manifest, setTheme],
+  );
+
   const countFor = (folderId: string | null) =>
     folderId === null ? draftDocs.length : (docsByFolder[folderId]?.length ?? 0);
 
@@ -100,98 +109,117 @@ export function HomeShell() {
   };
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <div className="hidden md:block">
-        <Sidebar
-          folders={manifest.folders}
-          countFor={countFor}
-          allCount={docIds.length}
-          themesCount={themes.length}
-          assetsCount={assetCount}
-          selectedId={selectedId}
-          onSelect={selectFolder}
-          onCreate={create}
-          onRename={(id, name) => update(id, { name })}
-          onChangeIcon={(id, icon) => update(id, { icon })}
-          onDelete={async (id) => {
-            if (selectedId === id) selectFolder(ALL_DOCS_ID);
-            await remove(id).catch(() => {});
-          }}
-          onDropToFolder={(folderId, docId) => void assign(docId, folderId)}
-          onDropToDraft={(docId) => void assign(docId, null)}
-          onReorder={(ids) => void reorder(ids).catch(() => {})}
-        />
-      </div>
+    <CommandPaletteProvider items={paletteItems}>
+      <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+        <div className="hidden md:block">
+          <Sidebar
+            folders={manifest.folders}
+            countFor={countFor}
+            allCount={docIds.length}
+            themesCount={themes.length}
+            assetsCount={assetCount}
+            selectedId={selectedId}
+            onSelect={selectFolder}
+            onCreate={create}
+            onRename={(id, name) => update(id, { name })}
+            onChangeIcon={(id, icon) => update(id, { icon })}
+            onDelete={async (id) => {
+              if (selectedId === id) selectFolder(ALL_DOCS_ID);
+              await remove(id).catch(() => {});
+            }}
+            onDropToFolder={(folderId, docId) => void assign(docId, folderId)}
+            onDropToDraft={(docId) => void assign(docId, null)}
+            onReorder={(ids) => void reorder(ids).catch(() => {})}
+          />
+        </div>
 
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-y-auto bg-canvas">
-        <div className="flex items-center justify-between border-border border-b bg-background px-4 py-3 md:hidden">
-          <h1 className="font-semibold text-base tracking-tight">open-doc</h1>
-          <div className="-mr-1 flex items-center gap-0.5">
-            <ThemeToggle />
-            <Menu
-              trigger={(props) => (
-                <button
-                  type="button"
-                  aria-label="Menu"
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent"
-                  {...props}
-                >
-                  <MenuIcon className="size-4" />
-                </button>
-              )}
-            >
-              {(close) => (
-                <>
-                  <MenuItem
-                    active={selectedId !== THEMES_ID && selectedId !== ASSETS_ID}
-                    onClick={() => {
-                      selectFolder(ALL_DOCS_ID);
-                      close();
-                    }}
+        {/* The content sits on its own inset panel, so the sidebar reads as the
+          frame around it rather than a column beside it. */}
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-y-auto bg-canvas md:my-2 md:mr-2 md:rounded-xl md:border md:border-border">
+          <div className="flex items-center justify-between border-border border-b bg-background px-4 py-3 md:hidden">
+            <h1 className="font-semibold text-base tracking-tight">open-doc</h1>
+            <div className="-mr-1 flex items-center gap-0.5">
+              <MobileSearch />
+              <ThemeToggle />
+              <Menu
+                trigger={(props) => (
+                  <button
+                    type="button"
+                    aria-label="Menu"
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent"
+                    {...props}
                   >
-                    Documents
-                  </MenuItem>
-                  <MenuItem
-                    active={selectedId === DRAFT_ID}
-                    onClick={() => {
-                      selectFolder(DRAFT_ID);
-                      close();
-                    }}
-                  >
-                    Unfiled
-                  </MenuItem>
-                  <MenuItem
-                    active={selectedId === THEMES_ID}
-                    onClick={() => {
-                      selectFolder(THEMES_ID);
-                      close();
-                    }}
-                  >
-                    Themes
-                  </MenuItem>
-                  {import.meta.env.DEV && (
+                    <MenuIcon className="size-4" />
+                  </button>
+                )}
+              >
+                {(close) => (
+                  <>
                     <MenuItem
-                      active={selectedId === ASSETS_ID}
+                      active={selectedId !== THEMES_ID && selectedId !== ASSETS_ID}
                       onClick={() => {
-                        selectFolder(ASSETS_ID);
+                        selectFolder(ALL_DOCS_ID);
                         close();
                       }}
                     >
-                      Assets
+                      Documents
                     </MenuItem>
-                  )}
-                </>
-              )}
-            </Menu>
+                    <MenuItem
+                      active={selectedId === DRAFT_ID}
+                      onClick={() => {
+                        selectFolder(DRAFT_ID);
+                        close();
+                      }}
+                    >
+                      Unfiled
+                    </MenuItem>
+                    <MenuItem
+                      active={selectedId === THEMES_ID}
+                      onClick={() => {
+                        selectFolder(THEMES_ID);
+                        close();
+                      }}
+                    >
+                      Themes
+                    </MenuItem>
+                    {import.meta.env.DEV && (
+                      <MenuItem
+                        active={selectedId === ASSETS_ID}
+                        onClick={() => {
+                          selectFolder(ASSETS_ID);
+                          close();
+                        }}
+                      >
+                        Assets
+                      </MenuItem>
+                    )}
+                  </>
+                )}
+              </Menu>
+            </div>
+          </div>
+
+          {/* One frame for every page of the browser, so Documents, Themes and
+            Assets share their edges; the pages add no padding of their own. */}
+          <div className="mx-auto w-full max-w-[1180px] px-5 py-8 md:px-10 md:py-10">
+            <Outlet context={ctx} />
           </div>
         </div>
-
-        {/* One frame for every page of the browser, so Documents, Themes and
-            Assets share their edges; the pages add no padding of their own. */}
-        <div className="mx-auto w-full max-w-[1180px] px-5 py-8 md:px-10 md:py-10">
-          <Outlet context={ctx} />
-        </div>
       </div>
-    </div>
+    </CommandPaletteProvider>
+  );
+}
+
+function MobileSearch() {
+  const palette = useCommandPalette();
+  return (
+    <button
+      type="button"
+      aria-label="Search"
+      onClick={palette.open}
+      className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+    >
+      <Search className="size-4" />
+    </button>
   );
 }

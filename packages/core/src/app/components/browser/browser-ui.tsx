@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type ReactNode, type RefObject, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * The pieces every page of the document browser shares — Documents, a folder,
@@ -8,19 +8,44 @@ import type { ReactNode } from 'react';
  * adds its own.
  */
 
-/** Every card in the browser is this wide, so a document, a theme and an asset line up. */
-export const CARD_WIDTH = 180;
+/** The narrowest a card gets; columns share whatever width is left over. */
+export const CARD_WIDTH = 200;
 
 export const CARD_GRID =
-  'grid justify-start gap-x-8 gap-y-9 [grid-template-columns:repeat(auto-fill,180px)]';
+  'grid gap-x-6 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]';
+
+/**
+ * A card's picture is a real page scaled down, and the scale is a number, so the
+ * card has to know how wide its column came out. Starts at the narrowest width
+ * so the first paint already has the right shape.
+ */
+export function useCardWidth<T extends HTMLElement>(): [RefObject<T>, number] {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(CARD_WIDTH);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setWidth(Math.max(1, Math.floor(el.getBoundingClientRect().width)));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
 
 export function PageHeader({
   title,
+  icon: Icon,
+  count,
   description,
   actions,
   children,
 }: {
   title: ReactNode;
+  icon?: LucideIcon;
+  /** How many things the page lists, beside the title. */
+  count?: number;
   description?: ReactNode;
   /** Page-level actions, at the right of the title. */
   actions?: ReactNode;
@@ -29,9 +54,17 @@ export function PageHeader({
 }) {
   return (
     <header className="mb-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="font-medium text-lg tracking-tight">{title}</h1>
+          <h1 className="flex items-center gap-2.5 font-medium text-lg tracking-tight">
+            {Icon && <Icon className="size-4.5 text-muted-foreground" aria-hidden />}
+            <span className="truncate">{title}</span>
+            {count !== undefined && (
+              <span className="font-mono font-normal text-muted-foreground text-xs tabular-nums">
+                {String(count).padStart(2, '0')}
+              </span>
+            )}
+          </h1>
           {description && (
             <p className="mt-1 max-w-2xl text-muted-foreground text-sm">{description}</p>
           )}

@@ -3,12 +3,15 @@ import {
   docIds as ids,
   loadDoc as load,
   docThemes as themes,
+  docTitles as titles,
 } from 'virtual:open-doc/docs';
 import type { DocModule } from './sdk';
 
 export const docIds: string[] = ids;
 export const docCreatedAt: Record<string, number> = createdAt;
 export const docThemes: Record<string, string> = themes;
+/** Titles read from `meta` at build time — for search and sorting, before any document loads. */
+export const docTitles: Record<string, string> = titles;
 
 export function docsByTheme(themeId: string): string[] {
   return docIds.filter((id) => docThemes[id] === themeId);

@@ -18,17 +18,30 @@ describe('extractMeta', () => {
     expect(extractMeta(src)).toEqual({
       theme: 'corporate-neutral',
       createdAt: '2026-08-15T13:44:40.268Z',
+      title: 'Q3 report',
     });
   });
 
+  it('reads a title with quotes and CJK, and skips the subtitle', () => {
+    const src = `export const meta = {
+  subtitle: 'Not this one',
+  title: "It's 平台 \\"Q3\\"",
+};`;
+    expect(extractMeta(src).title).toBe('It\'s 平台 "Q3"');
+  });
+
   it('returns nulls when there is no meta export', () => {
-    expect(extractMeta('export default [];')).toEqual({ theme: null, createdAt: null });
+    expect(extractMeta('export default [];')).toEqual({
+      theme: null,
+      createdAt: null,
+      title: null,
+    });
   });
 
   it('ignores fields that live outside the meta braces', () => {
     const src = `const other = { createdAt: '2020-01-01T00:00:00Z', theme: 'nope' };
 export const meta = { title: 'No date' };`;
-    expect(extractMeta(src)).toEqual({ theme: null, createdAt: null });
+    expect(extractMeta(src)).toEqual({ theme: null, createdAt: null, title: 'No date' });
   });
 });
 

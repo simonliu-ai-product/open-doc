@@ -95,13 +95,8 @@ export function AssetsPage() {
     >
       <PageHeader
         title="Assets"
-        description={
-          <>
-            Images and fonts documents can import. Project files, shared by every document, live in{' '}
-            <code className="font-mono">assets/</code>; a document's own in{' '}
-            <code className="font-mono">docs/&lt;id&gt;/assets/</code>.
-          </>
-        }
+        icon={ImageIcon}
+        count={assets?.length}
         actions={
           <>
             <button
@@ -148,9 +143,7 @@ export function AssetsPage() {
               </button>
             ))}
           </div>
-          <p className="text-muted-foreground text-xs">
-            Drop files anywhere here · up to 25 MB each · png, jpg, svg, webp, pdf, woff2, csv…
-          </p>
+          <p className="text-muted-foreground text-xs">Drop files here to upload</p>
         </fieldset>
         {error && (
           <p
@@ -168,13 +161,7 @@ export function AssetsPage() {
         </div>
       ) : assets.length === 0 ? (
         <EmptyState icon={ImageIcon} title="No assets yet">
-          Drop files here or choose Upload to add them to{' '}
-          {scope === GLOBAL_SCOPE ? (
-            <code className="font-mono">assets/</code>
-          ) : (
-            <code className="font-mono">docs/{scope}/assets/</code>
-          )}
-          .
+          Drop images here or choose Upload.
         </EmptyState>
       ) : (
         <div className={CARD_GRID}>

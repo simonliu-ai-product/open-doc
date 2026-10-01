@@ -2,14 +2,15 @@ import { ArrowLeft, Palette } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import {
   CARD_GRID,
-  CARD_WIDTH,
   CardText,
   EmptyState,
   PageHeader,
+  useCardWidth,
 } from '../components/browser/browser-ui';
 import { Markdown } from '../components/themes/markdown';
 import { ThemePreview } from '../components/themes/theme-preview';
 import { docsByTheme } from '../lib/docs';
+import type { ThemeMeta } from '../lib/themes';
 import { findTheme, themes } from '../lib/themes';
 
 const DETAIL_WIDTH = 260;
@@ -17,42 +18,39 @@ const DETAIL_WIDTH = 260;
 export function ThemesGalleryPage() {
   return (
     <div>
-      <PageHeader
-        title="Themes"
-        description={
-          <>
-            Every <code className="font-mono">.md</code> file under{' '}
-            <code className="font-mono">themes/</code>. A theme is documentation — palette, type
-            scale, and paste-ready components a document copies from.
-          </>
-        }
-      />
+      <PageHeader title="Themes" icon={Palette} count={themes.length} />
 
       {themes.length === 0 ? (
         <EmptyState icon={Palette} title="No themes yet">
-          Ask your agent for the <code className="font-mono">create-theme</code> skill, or add{' '}
-          <code className="font-mono">themes/&lt;id&gt;.md</code>.
+          Ask your agent to create a theme from a document you like.
         </EmptyState>
       ) : (
         <div className={CARD_GRID}>
           {themes.map((theme) => (
-            <Link
-              key={theme.id}
-              to={`/themes/${theme.id}`}
-              className="group flex flex-col gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4"
-            >
-              <div className="w-fit rounded-md transition-shadow group-hover:shadow-lg">
-                <ThemePreview theme={theme} width={CARD_WIDTH} />
-              </div>
-              <CardText
-                title={<span className="group-hover:underline">{theme.name}</span>}
-                meta={theme.description || theme.id}
-              />
-            </Link>
+            <ThemeCard key={theme.id} theme={theme} />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function ThemeCard({ theme }: { theme: ThemeMeta }) {
+  const [ref, width] = useCardWidth<HTMLAnchorElement>();
+  return (
+    <Link
+      ref={ref}
+      to={`/themes/${theme.id}`}
+      className="group flex min-w-0 flex-col gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4"
+    >
+      <div className="w-fit rounded-md transition-shadow group-hover:shadow-lg">
+        <ThemePreview theme={theme} width={width} />
+      </div>
+      <CardText
+        title={<span className="group-hover:underline">{theme.name}</span>}
+        meta={theme.description || theme.id}
+      />
+    </Link>
   );
 }
 

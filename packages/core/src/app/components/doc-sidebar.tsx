@@ -7,7 +7,7 @@ import { cn } from '../lib/utils';
 import { DocAssets } from './doc-assets';
 import { PageFrame } from './page-frame';
 
-const THUMB_WIDTH = 116;
+const THUMB_WIDTH = 150;
 
 type Tab = 'pages' | 'outline' | 'assets';
 
@@ -57,7 +57,7 @@ export function DocSidebar({
   }, [currentPage, tab]);
 
   return (
-    <aside className="hidden w-56 flex-none flex-col border-border border-r bg-background md:flex">
+    <aside className="hidden w-56 flex-none flex-col bg-background md:flex">
       <div className="flex flex-none gap-1 p-2">
         {tabs.map((value) => (
           <button
@@ -79,8 +79,8 @@ export function DocSidebar({
       {tab === 'assets' ? (
         <DocAssets docId={docId} />
       ) : tab === 'pages' ? (
-        <div ref={railRef} className="flex-1 overflow-y-auto px-3 pb-6">
-          <div className="flex flex-col items-center gap-3">
+        <div ref={railRef} className="flex-1 overflow-y-auto px-2 pb-6">
+          <div className="flex flex-col gap-1">
             {pages.map((entry, index) => {
               const page = index + 1;
               return (
@@ -89,14 +89,27 @@ export function DocSidebar({
                   type="button"
                   data-thumb-page={page}
                   onClick={() => onSelectPage(page)}
-                  className="flex flex-col items-center gap-1"
+                  aria-label={`Page ${page}`}
+                  aria-current={page === currentPage ? 'page' : undefined}
+                  className={cn(
+                    'group flex w-full items-start gap-2 rounded-md p-1.5 transition-colors',
+                    page === currentPage ? 'bg-accent' : 'hover:bg-accent/60',
+                  )}
                 >
+                  <span
+                    className={cn(
+                      'w-5 flex-none pt-0.5 text-right font-mono text-[10px] tabular-nums',
+                      page === currentPage ? 'text-foreground' : 'text-muted-foreground',
+                    )}
+                  >
+                    {String(page).padStart(2, '0')}
+                  </span>
                   <div
                     className={cn(
                       'overflow-hidden rounded-sm ring-1 transition-shadow',
                       page === currentPage
                         ? 'ring-2 ring-foreground'
-                        : 'ring-border hover:ring-foreground/40',
+                        : 'ring-border group-hover:ring-foreground/40',
                     )}
                     style={{
                       width: THUMB_WIDTH,
@@ -114,14 +127,6 @@ export function DocSidebar({
                       {entry.content}
                     </PageFrame>
                   </div>
-                  <span
-                    className={cn(
-                      'font-mono text-[10px] tabular-nums',
-                      page === currentPage ? 'text-foreground' : 'text-muted-foreground',
-                    )}
-                  >
-                    {page}
-                  </span>
                 </button>
               );
             })}
@@ -131,8 +136,7 @@ export function DocSidebar({
         <nav className="flex-1 overflow-y-auto px-2 pb-6">
           {entries.length === 0 ? (
             <p className="px-2 py-1 text-muted-foreground text-xs leading-relaxed">
-              No headings yet. Add an <code className="font-mono">h1</code>/
-              <code className="font-mono">h2</code> to a page and it shows up here.
+              No headings yet.
             </p>
           ) : (
             entries.map((entry) => (

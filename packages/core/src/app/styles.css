@@ -73,6 +73,9 @@
 .od-panel-in {
   animation: od-panel-in 150ms ease-out;
 }
+.od-fade-in {
+  animation: od-fade-in 100ms ease-out;
+}
 /* The save card rises from the edge it sits on; `translate` rather than
    `transform`, which already centres it. */
 .od-card-in {

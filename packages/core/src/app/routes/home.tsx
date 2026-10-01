@@ -1,33 +1,39 @@
 import {
+  ArrowDownAZ,
+  ArrowUpAZ,
+  Check,
+  ChevronDown,
+  Clock,
   Copy,
   FileText,
+  Folder,
   FolderInput,
+  Inbox,
   MoreHorizontal,
   Palette,
   PencilLine,
+  Search,
   Trash2,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import {
   CARD_GRID,
-  CARD_WIDTH,
   CardText,
   EmptyState,
   PageHeader,
+  useCardWidth,
 } from '../components/browser/browser-ui';
 import { PageFrame } from '../components/page-frame';
 import { DOC_DND_MIME } from '../components/sidebar/folder-item';
 import { ALL_DOCS_ID, DRAFT_ID } from '../components/sidebar/sidebar';
 import { Menu, MenuItem, MenuSeparator } from '../components/ui/menu';
 import { coverContent } from '../lib/doc-preview';
-import { docCreatedAt, docIds, docThemes } from '../lib/docs';
+import { docCreatedAt, docIds, docThemes, docTitles } from '../lib/docs';
 import { resolvePageGeometry } from '../lib/sdk';
 import { findTheme } from '../lib/themes';
 import { useDocModule } from '../lib/use-doc-module';
 import type { HomeOutletContext } from './home-shell';
-
-const THUMB_WIDTH = CARD_WIDTH;
 
 /** Sheet and date, the two facts that tell documents apart at a glance. */
 function cardMeta(pageSize: string, landscape: boolean, createdAt: number | undefined): string {
@@ -41,25 +47,68 @@ function cardMeta(pageSize: string, landscape: boolean, createdAt: number | unde
   return `${sheet} · ${date}`;
 }
 
+const SORTS = [
+  { key: 'newest', label: 'Newest', icon: Clock },
+  { key: 'oldest', label: 'Oldest', icon: Clock },
+  { key: 'az', label: 'A–Z', icon: ArrowDownAZ },
+  { key: 'za', label: 'Z–A', icon: ArrowUpAZ },
+] as const;
+type SortKey = (typeof SORTS)[number]['key'];
+
+const SORT_STORAGE = 'open-doc:sort';
+
+function readSort(): SortKey {
+  try {
+    const stored = localStorage.getItem(SORT_STORAGE);
+    return SORTS.some((sort) => sort.key === stored) ? (stored as SortKey) : 'newest';
+  } catch {
+    return 'newest';
+  }
+}
+
+const titleOf = (id: string) => docTitles[id] ?? id;
+
+function compare(sort: SortKey) {
+  return (a: string, b: string): number => {
+    if (sort === 'az') return titleOf(a).localeCompare(titleOf(b));
+    if (sort === 'za') return titleOf(b).localeCompare(titleOf(a));
+    const at = docCreatedAt[a] ?? 0;
+    const bt = docCreatedAt[b] ?? 0;
+    if (at !== bt) return sort === 'newest' ? bt - at : at - bt;
+    return a.localeCompare(b);
+  };
+}
+
 export function Home() {
   const ctx = useOutletContext<HomeOutletContext>();
   const [error, setError] = useState<string | null>(null);
+  const [sort, setSortState] = useState<SortKey>(readSort);
+  const [filter, setFilter] = useState('');
+
+  const setSort = (next: SortKey) => {
+    setSortState(next);
+    try {
+      localStorage.setItem(SORT_STORAGE, next);
+    } catch {}
+  };
 
   const folder = ctx.manifest.folders.find((f) => f.id === ctx.selectedId);
+  const sourceIds =
+    ctx.selectedId === ALL_DOCS_ID
+      ? docIds
+      : ctx.selectedId === DRAFT_ID
+        ? ctx.draftDocs
+        : (ctx.docsByFolder[ctx.selectedId] ?? []);
   const visibleIds = useMemo(() => {
-    const source =
-      ctx.selectedId === ALL_DOCS_ID
-        ? [...docIds]
-        : ctx.selectedId === DRAFT_ID
-          ? [...ctx.draftDocs]
-          : [...(ctx.docsByFolder[ctx.selectedId] ?? [])];
-    return source.sort((a, b) => {
-      const at = docCreatedAt[a] ?? 0;
-      const bt = docCreatedAt[b] ?? 0;
-      if (at !== bt) return bt - at;
-      return a.localeCompare(b);
-    });
-  }, [ctx.selectedId, ctx.draftDocs, ctx.docsByFolder]);
+    const words = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return sourceIds
+      .filter((id) => {
+        const haystack = `${titleOf(id)} ${id}`.toLowerCase();
+        return words.every((word) => haystack.includes(word));
+      })
+      .sort(compare(sort));
+  }, [sourceIds, filter, sort]);
+  const currentSort = SORTS.find((entry) => entry.key === sort) ?? SORTS[0];
 
   const heading =
     ctx.selectedId === ALL_DOCS_ID
@@ -72,16 +121,57 @@ export function Home() {
     <div>
       <PageHeader
         title={heading}
-        description={
-          ctx.selectedId === ALL_DOCS_ID ? (
+        icon={
+          ctx.selectedId === ALL_DOCS_ID ? FileText : ctx.selectedId === DRAFT_ID ? Inbox : Folder
+        }
+        count={sourceIds.length}
+        actions={
+          sourceIds.length > 0 && (
             <>
-              Every folder under <code className="font-mono">docs/</code> with an{' '}
-              <code className="font-mono">index.tsx</code>.
+              <Menu
+                placement="bottom-end"
+                trigger={(props) => (
+                  <button
+                    type="button"
+                    aria-label={`Sort: ${currentSort.label}`}
+                    className="flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs transition-colors hover:bg-accent aria-expanded:bg-accent"
+                    {...props}
+                  >
+                    <currentSort.icon className="size-3.5 text-muted-foreground" />
+                    {currentSort.label}
+                    <ChevronDown className="size-3 text-muted-foreground" />
+                  </button>
+                )}
+              >
+                {(close) =>
+                  SORTS.map((entry) => (
+                    <MenuItem
+                      key={entry.key}
+                      active={entry.key === sort}
+                      onClick={() => {
+                        setSort(entry.key);
+                        close();
+                      }}
+                    >
+                      <entry.icon className="size-3.5" />
+                      <span className="flex-1">{entry.label}</span>
+                      {entry.key === sort && <Check className="size-3.5" />}
+                    </MenuItem>
+                  ))
+                }
+              </Menu>
+              <label className="flex h-8 w-56 items-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs focus-within:border-foreground focus-within:ring-2 focus-within:ring-primary/30">
+                <Search className="size-3.5 flex-none text-muted-foreground" />
+                <input
+                  type="search"
+                  value={filter}
+                  onChange={(event) => setFilter(event.target.value)}
+                  placeholder="Filter documents"
+                  aria-label="Filter documents"
+                  className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+                />
+              </label>
             </>
-          ) : ctx.selectedId === DRAFT_ID ? (
-            'Documents that have not been filed into a folder yet.'
-          ) : (
-            `${visibleIds.length} document${visibleIds.length === 1 ? '' : 's'} in this folder.`
           )
         }
       >
@@ -95,16 +185,15 @@ export function Home() {
         )}
       </PageHeader>
 
-      {visibleIds.length === 0 ? (
+      {visibleIds.length === 0 && sourceIds.length > 0 ? (
+        <EmptyState icon={Search} title={`Nothing matches “${filter.trim()}”`}>
+          Try another word from the title.
+        </EmptyState>
+      ) : visibleIds.length === 0 ? (
         <EmptyState icon={FileText} title="Nothing here yet">
-          {ctx.selectedId === ALL_DOCS_ID ? (
-            <>
-              Create <code className="font-mono">docs/&lt;id&gt;/index.tsx</code> and it appears
-              here.
-            </>
-          ) : (
-            'Drag a document onto this folder in the sidebar, or use Move to on its card.'
-          )}
+          {ctx.selectedId === ALL_DOCS_ID
+            ? 'Ask your agent to write a document, and it appears here.'
+            : 'Drag a document onto this folder, or use Move to on its card.'}
         </EmptyState>
       ) : (
         <div className={CARD_GRID}>
@@ -127,10 +216,11 @@ function DocCard({
   onError: (message: string | null) => void;
 }) {
   const navigate = useNavigate();
+  const [cardRef, cardWidth] = useCardWidth<HTMLDivElement>();
   const state = useDocModule(docId);
   const doc = state.doc;
   const geometry = resolvePageGeometry(doc?.meta);
-  const scale = THUMB_WIDTH / geometry.width;
+  const scale = cardWidth / geometry.width;
   const cover = coverContent(doc);
   const theme = findTheme(docThemes[docId]);
   const title = doc?.meta?.title ?? docId;
@@ -148,7 +238,8 @@ function DocCard({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: dragging files a document — the card menu's "Move to" is the keyboard path
     <div
-      className="group flex flex-col gap-2.5"
+      ref={cardRef}
+      className="group flex min-w-0 flex-col gap-2.5"
       draggable={import.meta.env.DEV}
       onDragStart={(e) => {
         if (!import.meta.env.DEV) return;
@@ -159,7 +250,7 @@ function DocCard({
       <Link to={`/d/${docId}`}>
         <div
           className="overflow-hidden rounded-md ring-1 ring-border transition-shadow group-hover:shadow-lg"
-          style={{ width: THUMB_WIDTH, height: geometry.height * scale }}
+          style={{ width: cardWidth, height: geometry.height * scale }}
         >
           {cover ? (
             <PageFrame

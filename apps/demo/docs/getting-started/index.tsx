@@ -873,6 +873,7 @@ import photo from './assets/team.jpg';
       <Table
         columns={['Keys', 'Where', 'Action']}
         rows={[
+          [<Kbd key="k">⌘K</Kbd>, 'Everywhere', 'Search documents, sections, pages and actions'],
           [<Kbd key="k">F</Kbd>, 'Viewer', 'Fullscreen on / off'],
           [<Kbd key="k">D</Kbd>, 'Viewer (dev)', 'Design panel'],
           [<Kbd key="k">Enter</Kbd>, 'Page or zoom field', 'Apply the number you typed'],
