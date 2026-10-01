@@ -28,6 +28,16 @@ export type DiagramProps = {
 };
 
 /**
+ * The compiled SVG carries its natural size as `width`/`height`, which pins it
+ * there whatever box holds it — a `width` prop or a narrow column then only
+ * shrinks the box while the drawing runs past it. Without them the viewBox
+ * scales the drawing to the box, its height following the aspect ratio.
+ */
+function fluid(svg: string): string {
+  return svg.replace(/^<svg([^>]*?) width="[^"]*" height="[^"]*"/, '<svg$1');
+}
+
+/**
  * A diagram compiled from Mermaid-flavoured text at build time. The SVG is
  * inlined rather than referenced through `<img>` so it inherits the document's
  * theme variables — an `<img src="data:…">` would be painted in a document of
@@ -55,7 +65,7 @@ export function Diagram({
         ...(caption ? undefined : style),
       }}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: the SVG is produced by this package's own renderer at build time, never from document input at runtime
-      dangerouslySetInnerHTML={{ __html: chart.svg }}
+      dangerouslySetInnerHTML={{ __html: fluid(chart.svg) }}
     />
   );
 
