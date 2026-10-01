@@ -138,6 +138,8 @@ The framework builds the document outline by scanning rendered pages for `h1`, `
 - **The cover title and the word "Contents" both carry `data-od-outline="skip"`.** A contents list that opens with the cover and lists itself reads as a bug.
 - Override the listed text with `data-od-heading="Short title"` when the visible heading is long or contains markup.
 
+Bare elements on the sheet start from a base drawn from the design, not from a blank reset: headings are bold at `--od-size-h1`/`h2`/`h3` in the heading font, paragraphs, lists, quotes and tables have a bottom margin, lists have their markers and indent, links take `--od-accent` with an underline, `code`/`pre` use `--od-font-mono`, and a quote carries a rule on its leading edge. Anything you set inline replaces it, so style the elements that matter to the layout explicitly — margins above all, since they decide where a page breaks.
+
 ## Footnotes, numbering, and data
 
 Four primitives resolve themselves from the rendered pages, the same way the
@@ -226,8 +228,8 @@ const Footer = () => {
 ```
 
 - **Never hardcode** `3 / 12`. Both hooks are 1-based and return `0` outside a page.
-- Define the header/footer once as a local component and drop it into every page that needs it. Cover pages normally omit it.
-- Footers are absolutely positioned inside the margin band; they do not consume the text block's vertical budget — but keep at least 24px of clearance between the last line of body copy and the footer.
+- Define the header/footer once as a local component. A `flow()` section takes both — `flow(<>…</>, { header: Header, footer: Footer })` — and prints them on every page it expands into; on a fixed page, drop the component in yourself. Cover pages normally omit them.
+- Headers and footers are absolutely positioned inside the margin band (`top: 32` for a header, `bottom: 40` for a footer); they do not consume the text block's vertical budget — but keep at least 24px of clearance between the body copy and either one.
 
 ## Starter template
 
@@ -361,7 +363,7 @@ A document is not a slide deck. Long-form copy is the point — but it still has
 - **Inspect mode** (the "Inspect" button, dev only): click any element on a page to edit its text in place — the change is written straight back into `docs/<id>/index.tsx` — or leave a note for the agent, which is stored as a `@doc-comment` marker and processed by the `apply-comments` skill.
 - **Download menu** — PDF (true page size) and self-contained HTML.
 - **Headless render** — `open-doc export <id> --format pdf|html|png|docx` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces.
-- **Word (DOCX)** — for review that runs in Word. It carries structure, not page breaks: headings become Word heading styles, `<TableOfContents />` a TOC field, `<Footnote>` real footnotes, a `flow()` footer a Word footer with page-number fields, and the theme's CJK font the East Asian font. Write headings as real `h1`–`h3` and tables as `<table>`/`<DataTable>` so they arrive as structure; anything drawn with boxes (a chart made of `div`s) arrives as a picture, and absolutely positioned layouts on fixed pages flow as plain paragraphs.
+- **Word (DOCX)** — for review that runs in Word. It carries structure, not page breaks: headings become Word heading styles, `<TableOfContents />` a TOC field, `<Footnote>` real footnotes, a `flow()` header and footer a Word header and footer with page-number fields, and the theme's CJK font the East Asian font. Write headings as real `h1`–`h3` and tables as `<table>`/`<DataTable>` so they arrive as structure; anything drawn with boxes (a chart made of `div`s) arrives as a picture, and absolutely positioned layouts on fixed pages flow as plain paragraphs.
 - **Design panel** (the "Design" button in the document view, dev only): live-tweaks the `design` const — palette, fonts, type scale, margin, leading, radius — previewing on the real pages and writing the values back into `docs/<id>/index.tsx` on save.
 
 ### Writing for the inspector

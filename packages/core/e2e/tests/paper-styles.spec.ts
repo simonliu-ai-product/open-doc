@@ -1,9 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { deleteDoc, duplicateDoc, openDoc, refreshDocsModule, writeDocSource } from './helpers.ts';
 
-const SOURCE = `import type { DocMeta, DocPage } from '@open-document/core';
+const SOURCE = `import { type DesignSystem, type DocMeta, type DocPage, defaultDesign } from '@open-document/core';
 
 export const meta: DocMeta = { title: 'Paper styles', createdAt: '2026-01-03T00:00:00.000Z' };
+
+export const design: DesignSystem = {
+  ...defaultDesign,
+  palette: { ...defaultDesign.palette, accent: '#c2410c', rule: '#d1d5db' },
+  fonts: { ...defaultDesign.fonts, mono: '"Courier New", monospace' },
+  typeScale: { ...defaultDesign.typeScale, h2: 22 },
+};
 
 const sheet = {
   width: '100%',
@@ -17,6 +24,11 @@ const sheet = {
 
 const Only: DocPage = () => (
   <div style={sheet}>
+    <h2 data-probe="heading">A bare heading</h2>
+    <p data-probe="para">
+      A <a data-probe="link" href="https://example.com">link</a> and <code data-probe="code">code</code>.
+    </p>
+    <blockquote data-probe="quote">A quote.</blockquote>
     <ul data-probe="bullets">
       <li>
         First
@@ -76,6 +88,34 @@ test.describe('the sheet as paper', () => {
     expect((await style('nested')).list).toBe('circle');
     expect((await style('numbers')).list).toBe('decimal');
     expect(await style('plain')).toEqual({ list: 'none', indent: '0px' });
+  });
+
+  test('bare elements take the document’s design instead of printing as body text', async ({
+    page,
+  }) => {
+    await openDoc(page, 'paper-styles');
+    const sheet = page.locator('[data-od-viewer] [data-od-page]').first();
+    const read = (probe: string, props: string[]) =>
+      sheet.locator(`[data-probe="${probe}"]`).evaluate((el, names) => {
+        const computed = getComputedStyle(el);
+        return Object.fromEntries(names.map((name) => [name, computed.getPropertyValue(name)]));
+      }, props);
+
+    expect(await read('heading', ['font-size', 'font-weight', 'margin-bottom'])).toEqual({
+      'font-size': '22px',
+      'font-weight': '700',
+      'margin-bottom': '11px',
+    });
+    expect(await read('para', ['margin-bottom'])).toEqual({ 'margin-bottom': '10.5px' });
+    expect(await read('link', ['color', 'text-decoration-line'])).toEqual({
+      color: 'rgb(194, 65, 12)',
+      'text-decoration-line': 'underline',
+    });
+    expect((await read('code', ['font-family']))['font-family']).toMatch(/^"Courier New"/);
+    expect(await read('quote', ['border-left-color', 'border-left-width'])).toEqual({
+      'border-left-color': 'rgb(209, 213, 219)',
+      'border-left-width': '3px',
+    });
   });
 
   test('the print copy draws its gradients from its own defs, not the hidden viewer’s', async ({

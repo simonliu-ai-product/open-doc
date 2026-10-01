@@ -45,15 +45,20 @@ test.describe('Word export', () => {
     );
     expect(coverGap).toBeGreaterThan(3000);
 
-    // The fixed sheets sit in a section of their own with an empty footer; the
-    // flow carries the running one.
+    // The fixed sheets sit in a section of their own with an empty header and
+    // footer; the flow carries the running ones.
     const rels = parts['word/_rels/document.xml.rels'] ?? '';
-    const bare = rels.match(/Id="(rId\d+)"[^>]*Target="footer2\.xml"/)?.[1];
-    const full = rels.match(/Id="(rId\d+)"[^>]*Target="footer1\.xml"/)?.[1];
+    const id = (target: string) =>
+      rels.match(new RegExp(`Id="(rId\\d+)"[^>]*Target="${target}"`))?.[1];
     const sections = [
-      ...doc.matchAll(/<w:sectPr><w:footerReference w:type="default" r:id="(rId\d+)"/g),
+      ...doc.matchAll(
+        /<w:sectPr><w:headerReference w:type="default" r:id="(rId\d+)"\/><w:footerReference w:type="default" r:id="(rId\d+)"/g,
+      ),
     ];
-    expect(sections.map((match) => match[1])).toEqual([bare, full]);
+    expect(sections.map((match) => [match[1], match[2]])).toEqual([
+      [id('header2.xml'), id('footer2.xml')],
+      [id('header1.xml'), id('footer1.xml')],
+    ]);
     expect(doc).toMatch(
       /<w:caps\/>(?:(?!<\/w:r>).)*?<w:spacing w:val="\d+"\/>(?:(?!<\/w:r>).)*?Platform engineering/,
     );
@@ -117,10 +122,23 @@ test.describe('Word export', () => {
 
     // A4, and the flow footer with Word's own page numbers.
     expect(doc).toContain('<w:pgSz w:w="11910" w:h="16845"/>');
+    const header = parts['word/header1.xml'] ?? '';
+    expect(header).toContain('<w:pStyle w:val="Header"/>');
+    expect(header).toMatch(/機密 · 第 (?:(?!<\/w:p>).)*?<w:fldSimple w:instr=" PAGE ">/);
     const footer = parts['word/footer1.xml'] ?? '';
     expect(footer).toContain('平台可靠度季報');
     expect(footer).toContain('<w:fldSimple w:instr=" PAGE ">');
     expect(footer).toContain('<w:fldSimple w:instr=" NUMPAGES ">');
+  });
+
+  test('a flow header prints on every page of the section, numbered', async ({ page }) => {
+    await openDoc(page, 'docx-sample');
+    const heads = page.locator('[data-od-viewer] [data-od-running="header"]');
+    await expect(heads.first()).toBeVisible();
+    const texts = await heads.allTextContents();
+    expect(texts.length).toBeGreaterThan(0);
+    // The cover is a fixed page; the flow starts on sheet 2.
+    expect(texts[0]).toBe('機密 · 第 2 頁');
   });
 
   test('a fixed-page document exports too, each sheet starting a page', async ({ page }) => {

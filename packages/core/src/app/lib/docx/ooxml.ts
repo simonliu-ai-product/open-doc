@@ -75,11 +75,12 @@ export type Paragraph = {
   /** An exact line height, twips — a spacer that holds open a gap. */
   lineExact?: number;
   /**
-   * Ends a section here — whether that section's pages carry the footer.
+   * Ends a section here — whether that section's pages carry the running
+   * header and footer.
    * Fixed sheets print their own running lines, so they sit in sections
    * without one.
    */
-  sectionEnd?: { footer: boolean };
+  sectionEnd?: { running: boolean };
   /** Right-aligned tab stop, twips from the left margin — a footer's page number. */
   rightTab?: number;
   /** Dots leading to the right tab, as a contents entry has. */
@@ -161,9 +162,10 @@ export type DocxModel = {
   line: number;
   blocks: Block[];
   footnotes: Array<{ id: number; paragraphs: Paragraph[] }>;
+  header?: Paragraph;
   footer?: Paragraph;
-  /** Whether the last section carries the footer. Defaults to true. */
-  finalFooter?: boolean;
+  /** Whether the last section carries the header and footer. Defaults to true. */
+  finalRunning?: boolean;
   images: ImagePart[];
   /** One entry per list; ordered lists restart at 1 each. */
   lists: Array<'bullet' | 'decimal'>;
@@ -283,8 +285,8 @@ type WriteContext = {
   imageIds: Map<string, string>;
   drawingId: { value: number };
   bookmarkId?: { value: number };
-  /** A section's properties, with or without the footer. */
-  section?: (footer: boolean) => string;
+  /** A section's properties, with or without the running header and footer. */
+  section?: (running: boolean) => string;
 };
 
 const REL_HYPERLINK =
@@ -425,7 +427,7 @@ export function paragraphXml(paragraph: Paragraph, ctx: WriteContext): string {
     props.push(`<w:ind w:left="${Math.round(paragraph.indent)}"/>`);
   if (paragraph.align && paragraph.align !== 'left')
     props.push(`<w:jc w:val="${paragraph.align}"/>`);
-  if (paragraph.sectionEnd && ctx.section) props.push(ctx.section(paragraph.sectionEnd.footer));
+  if (paragraph.sectionEnd && ctx.section) props.push(ctx.section(paragraph.sectionEnd.running));
   const pPr = props.length > 0 ? `<w:pPr>${props.join('')}</w:pPr>` : '';
   const runs = paragraph.inlines.map((inline) => inlineXml(inline, ctx)).join('');
   if (!paragraph.bookmark) return `<w:p>${pPr}${runs}</w:p>`;
@@ -562,6 +564,7 @@ function stylesXml(model: DocxModel): string {
     `<w:style w:type="paragraph" w:styleId="FootnoteText"><w:name w:val="footnote text"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:color w:val="${colors.muted}"/><w:sz w:val="${sizes.caption}"/><w:szCs w:val="${sizes.caption}"/></w:rPr></w:style>` +
     '<w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>' +
     `<w:style w:type="character" w:styleId="Hyperlink"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="${colors.accent}"/><w:u w:val="single"/></w:rPr></w:style>` +
+    `<w:style w:type="paragraph" w:styleId="Header"><w:name w:val="header"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:color w:val="${colors.muted}"/><w:sz w:val="${sizes.caption}"/><w:szCs w:val="${sizes.caption}"/></w:rPr></w:style>` +
     `<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:color w:val="${colors.muted}"/><w:sz w:val="${sizes.caption}"/><w:szCs w:val="${sizes.caption}"/></w:rPr></w:style>` +
     `<w:style w:type="paragraph" w:styleId="TOCHeading"><w:name w:val="TOC Heading"/><w:basedOn w:val="Heading1"/><w:next w:val="Normal"/><w:pPr><w:outlineLvl w:val="9"/></w:pPr></w:style>` +
     toc(1) +
@@ -624,32 +627,38 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
     ],
   ] as const;
   for (const [type, target] of fixedRels) relFor(docCtx, type, target);
-  const REL_FOOTER = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer';
-  const footerRel = model.footer ? relFor(docCtx, REL_FOOTER, 'footer1.xml') : null;
-  // A section with no footer reference inherits the one before it, so a
-  // section meant to have none points at an empty footer instead.
-  const bareFooter =
-    footerRel &&
-    (model.finalFooter === false ||
-      model.blocks.some(
-        (block) => block.type === 'paragraph' && block.sectionEnd?.footer === false,
-      ));
-  const bareRel = bareFooter ? relFor(docCtx, REL_FOOTER, 'footer2.xml') : null;
+  const REL_BASE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  // A section with no header or footer reference inherits the one before it,
+  // so a section meant to have none points at an empty part instead.
+  const bare =
+    model.finalRunning === false ||
+    model.blocks.some((block) => block.type === 'paragraph' && block.sectionEnd?.running === false);
+  const running = (kind: 'header' | 'footer') => {
+    if (!model[kind]) return { full: null, bare: null };
+    return {
+      full: relFor(docCtx, `${REL_BASE}/${kind}`, `${kind}1.xml`),
+      bare: bare ? relFor(docCtx, `${REL_BASE}/${kind}`, `${kind}2.xml`) : null,
+    };
+  };
+  const headerRels = running('header');
+  const footerRels = running('footer');
 
   const { page } = model;
   const margin = Math.round(page.margin);
-  docCtx.section = (footer) => {
-    const rel = footer ? footerRel : bareRel;
+  docCtx.section = (on) => {
+    const header = on ? headerRels.full : headerRels.bare;
+    const footer = on ? footerRels.full : footerRels.bare;
     return (
       '<w:sectPr>' +
-      (rel ? `<w:footerReference w:type="default" r:id="${rel}"/>` : '') +
+      (header ? `<w:headerReference w:type="default" r:id="${header}"/>` : '') +
+      (footer ? `<w:footerReference w:type="default" r:id="${footer}"/>` : '') +
       `<w:pgSz w:w="${Math.round(page.width)}" w:h="${Math.round(page.height)}"${page.landscape ? ' w:orient="landscape"' : ''}/>` +
       `<w:pgMar w:top="${margin}" w:right="${margin}" w:bottom="${margin}" w:left="${margin}" w:header="${Math.round(margin / 2)}" w:footer="${Math.round(margin / 2)}" w:gutter="0"/>` +
       '</w:sectPr>'
     );
   };
   const body = model.blocks.map((block) => blockXml(block, docCtx)).join('');
-  const sectPr = docCtx.section(model.finalFooter !== false);
+  const sectPr = docCtx.section(model.finalRunning !== false);
   const documentXml = `${XML_HEAD}<w:document ${NS}><w:body>${body}${sectPr}</w:body></w:document>`;
 
   // Footnotes and the footer are parts of their own, with their own rels.
@@ -678,10 +687,26 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
     '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>' +
     `${notes}</w:footnotes>`;
 
-  const footerCtx: WriteContext = { model, rels: [], imageIds: new Map(), drawingId };
-  const footerXml = model.footer
-    ? `${XML_HEAD}<w:ftr ${NS}>${paragraphXml({ ...model.footer, style: model.footer.style ?? ('Footer' as StyleId) }, footerCtx)}</w:ftr>`
-    : null;
+  // The running header and footer: each a part with its own rels, plus an
+  // empty twin for the sections that carry none.
+  const runningParts: Record<string, string> = {};
+  const runningTypes: string[] = [];
+  for (const [kind, rels, tag, style] of [
+    ['header', headerRels, 'hdr', 'Header'],
+    ['footer', footerRels, 'ftr', 'Footer'],
+  ] as const) {
+    const line = model[kind];
+    if (!line || !rels.full) continue;
+    const ctx: WriteContext = { model, rels: [], imageIds: new Map(), drawingId };
+    runningParts[`word/${kind}1.xml`] =
+      `${XML_HEAD}<w:${tag} ${NS}>${paragraphXml({ ...line, style: line.style ?? (style as StyleId) }, ctx)}</w:${tag}>`;
+    if (ctx.rels.length > 0) runningParts[`word/_rels/${kind}1.xml.rels`] = relsXml(ctx.rels);
+    runningTypes.push(`/word/${kind}1.xml|${kind}`);
+    if (rels.bare) {
+      runningParts[`word/${kind}2.xml`] = `${XML_HEAD}<w:${tag} ${NS}><w:p/></w:${tag}>`;
+      runningTypes.push(`/word/${kind}2.xml|${kind}`);
+    }
+  }
 
   const settingsXml =
     `${XML_HEAD}<w:settings ${NS}>` +
@@ -717,12 +742,12 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
     '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>' +
     '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
     '<Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>' +
-    (footerXml
-      ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
-      : '') +
-    (bareRel
-      ? '<Override PartName="/word/footer2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
-      : '') +
+    runningTypes
+      .map((entry) => {
+        const [part, kind] = entry.split('|');
+        return `<Override PartName="${part}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${kind}+xml"/>`;
+      })
+      .join('') +
     '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
     '</Types>';
 
@@ -745,11 +770,7 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
     'word/footnotes.xml': footnotesXml,
   };
   if (noteCtx.rels.length > 0) parts['word/_rels/footnotes.xml.rels'] = relsXml(noteCtx.rels);
-  if (footerXml) {
-    parts['word/footer1.xml'] = footerXml;
-    if (footerCtx.rels.length > 0) parts['word/_rels/footer1.xml.rels'] = relsXml(footerCtx.rels);
-  }
-  if (bareRel) parts['word/footer2.xml'] = `${XML_HEAD}<w:ftr ${NS}><w:p/></w:ftr>`;
+  Object.assign(parts, runningParts);
   for (const image of model.images) parts[`word/media/${image.name}.${image.ext}`] = image.bytes;
   return parts;
 }

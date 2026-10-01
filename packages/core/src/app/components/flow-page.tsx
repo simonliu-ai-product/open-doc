@@ -51,10 +51,12 @@ export function FlowPage({
   blocks?: ReactNode[];
   notes?: ExtractedNote[];
 }) {
+  const Header = section.header;
   const Footer = section.footer;
   const source = blocks ?? section.blocks;
   return (
     <div style={flowShellStyle(design, section.padding)}>
+      {Header && <Header />}
       <div style={{ flex: 1, minHeight: 0 }}>
         {blockIndices.map((index) => (
           <FlowBlock key={index}>{source[index]}</FlowBlock>

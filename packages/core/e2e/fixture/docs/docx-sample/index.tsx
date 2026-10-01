@@ -84,6 +84,22 @@ const Footer = () => (
   </div>
 );
 
+const Header = () => (
+  <div
+    data-od-running="header"
+    style={{
+      position: 'absolute',
+      top: 32,
+      left: 76,
+      right: 76,
+      fontSize: 9,
+      color: 'var(--od-muted)',
+    }}
+  >
+    機密 · 第 {useDocPageNumber()} 頁
+  </div>
+);
+
 const Body = flow(
   <>
     <h1 style={h1}>一、方法</h1>
@@ -122,7 +138,7 @@ const Body = flow(
   transcode: async`}
     </pre>
   </>,
-  { footer: Footer },
+  { header: Header, footer: Footer },
 );
 
 export default [Cover, Body] satisfies DocEntry[];

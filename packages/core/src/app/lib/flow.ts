@@ -27,7 +27,7 @@ function toBlocks(node: ReactNode): ReactNode[] {
  */
 export function flow(
   children: ReactNode,
-  opts: { footer?: ComponentType; padding?: number } = {},
+  opts: { header?: ComponentType; footer?: ComponentType; padding?: number } = {},
 ): FlowSection {
   return { __odFlow: true, blocks: toBlocks(children), ...opts };
 }
