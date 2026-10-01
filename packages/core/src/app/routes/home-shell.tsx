@@ -3,6 +3,7 @@ import { useTheme } from 'next-themes';
 import { useCallback, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CommandPaletteProvider, useCommandPalette } from '../components/command-palette';
+import { LanguageToggle } from '../components/language-toggle';
 import { browserItems } from '../components/palette-items';
 import {
   ALL_DOCS_ID,
@@ -16,6 +17,7 @@ import { Menu, MenuItem } from '../components/ui/menu';
 import { useAssetCount } from '../lib/assets';
 import { docIds } from '../lib/docs';
 import { useFolders } from '../lib/folders';
+import { useLocale, useT } from '../lib/i18n';
 import type { FoldersManifest } from '../lib/sdk';
 import { themes } from '../lib/themes';
 
@@ -87,9 +89,10 @@ export function HomeShell() {
   }, [manifest]);
 
   const { setTheme } = useTheme();
+  const { t, setLocale } = useLocale();
   const paletteItems = useCallback(
-    () => browserItems({ navigate, manifest, setTheme }),
-    [navigate, manifest, setTheme],
+    () => browserItems({ navigate, manifest, setTheme, t, setLocale }),
+    [navigate, manifest, setTheme, t, setLocale],
   );
 
   const countFor = (folderId: string | null) =>
@@ -140,12 +143,13 @@ export function HomeShell() {
             <h1 className="font-semibold text-base tracking-tight">open-doc</h1>
             <div className="-mr-1 flex items-center gap-0.5">
               <MobileSearch />
+              <LanguageToggle />
               <ThemeToggle />
               <Menu
                 trigger={(props) => (
                   <button
                     type="button"
-                    aria-label="Menu"
+                    aria-label={t('Menu')}
                     className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent"
                     {...props}
                   >
@@ -162,7 +166,7 @@ export function HomeShell() {
                         close();
                       }}
                     >
-                      Documents
+                      {t('Documents')}
                     </MenuItem>
                     <MenuItem
                       active={selectedId === DRAFT_ID}
@@ -171,7 +175,7 @@ export function HomeShell() {
                         close();
                       }}
                     >
-                      Unfiled
+                      {t('Unfiled')}
                     </MenuItem>
                     <MenuItem
                       active={selectedId === THEMES_ID}
@@ -180,7 +184,7 @@ export function HomeShell() {
                         close();
                       }}
                     >
-                      Themes
+                      {t('Themes')}
                     </MenuItem>
                     {import.meta.env.DEV && (
                       <MenuItem
@@ -190,7 +194,7 @@ export function HomeShell() {
                           close();
                         }}
                       >
-                        Assets
+                        {t('Assets')}
                       </MenuItem>
                     )}
                   </>
@@ -211,11 +215,12 @@ export function HomeShell() {
 }
 
 function MobileSearch() {
+  const t = useT();
   const palette = useCommandPalette();
   return (
     <button
       type="button"
-      aria-label="Search"
+      aria-label={t('Search')}
       onClick={palette.open}
       className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
     >

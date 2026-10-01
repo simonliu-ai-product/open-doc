@@ -1,5 +1,6 @@
 import { FileText, Image, MoreHorizontal, Palette, PencilLine, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../../lib/i18n';
 import type { Folder, FolderIcon } from '../../lib/sdk';
 import { cn } from '../../lib/utils';
 import { Menu, MenuItem, MenuSeparator } from '../ui/menu';
@@ -55,6 +56,7 @@ export function FolderItem({
   onSelect: () => void;
   onDropDoc: (docId: string) => void;
 }) {
+  const t = useT();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState('');
   const [dragOver, setDragOver] = useState(false);
@@ -68,12 +70,12 @@ export function FolderItem({
     row.kind === 'folder'
       ? row.folder.name
       : row.kind === 'all'
-        ? 'Documents'
+        ? t('Documents')
         : row.kind === 'themes'
-          ? 'Themes'
+          ? t('Themes')
           : row.kind === 'assets'
-            ? 'Assets'
-            : 'Unfiled';
+            ? t('Assets')
+            : t('Unfiled');
 
   const acceptsDrop = row.kind === 'folder' || row.kind === 'draft';
 
@@ -114,7 +116,7 @@ export function FolderItem({
           trigger={(props) => (
             <button
               type="button"
-              aria-label="Change icon"
+              aria-label={t('Change icon')}
               className="shrink-0 transition-transform hover:scale-110"
               {...props}
             >
@@ -171,7 +173,7 @@ export function FolderItem({
             trigger={(props) => (
               <button
                 type="button"
-                aria-label={`${row.folder.name} options`}
+                aria-label={t('{name} options', { name: row.folder.name })}
                 className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground aria-expanded:bg-background"
                 {...props}
               >
@@ -189,7 +191,7 @@ export function FolderItem({
                   }}
                 >
                   <PencilLine className="size-3.5" />
-                  Rename
+                  {t('Rename')}
                 </MenuItem>
                 <MenuSeparator />
                 <MenuItem
@@ -200,7 +202,7 @@ export function FolderItem({
                   }}
                 >
                   <Trash2 className="size-3.5" />
-                  Delete folder
+                  {t('Delete folder')}
                 </MenuItem>
               </>
             )}

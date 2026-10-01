@@ -45,6 +45,11 @@ export function Menu({ trigger, children, placement = 'bottom-end', className }:
     let top = placement === 'right-start' ? a.top : a.bottom + gap;
     let left = placement === 'bottom-end' ? a.right - p.width : a.left;
     if (placement === 'right-start') left = a.right + gap;
+    // A trigger near the foot of the screen (the sidebar's footer) opens upward;
+    // clamping alone would slide the menu over the button that opened it.
+    if (placement !== 'right-start' && top + p.height > window.innerHeight - 8) {
+      top = a.top - gap - p.height;
+    }
     left = Math.max(8, Math.min(left, window.innerWidth - p.width - 8));
     top = Math.max(8, Math.min(top, window.innerHeight - p.height - 8));
     setCoords({ top, left });

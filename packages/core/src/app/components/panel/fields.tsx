@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useId, useState } from 'react';
+import { useT } from '../../lib/i18n';
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -48,6 +49,7 @@ export function ColorField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const t = useT();
   const id = useId();
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
@@ -59,7 +61,7 @@ export function ColorField({
         <span className="size-5 rounded-sm border border-border" style={{ background: value }} />
         <input
           type="color"
-          aria-label={`${label} swatch`}
+          aria-label={t('{label} swatch', { label })}
           value={HEX6.test(value) ? value : '#000000'}
           onChange={(e) => onChange(e.target.value)}
           className="absolute inset-0 cursor-pointer opacity-0"
@@ -223,6 +225,7 @@ export function FontField({
   presets: FontPreset[];
   onChange: (value: string) => void;
 }) {
+  const t = useT();
   const id = useId();
   const matched = presets.find((preset) => preset.value === value);
   return (
@@ -240,7 +243,7 @@ export function FontField({
             {preset.label}
           </option>
         ))}
-        {!matched && <option value="__custom__">Custom (from source)</option>}
+        {!matched && <option value="__custom__">{t('Custom (from source)')}</option>}
       </select>
     </Field>
   );

@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { type DesignSystem, defaultDesign, designToCssVars } from '../../lib/design';
 import { shuffleDesign } from '../../lib/design-presets';
+import { useT } from '../../lib/i18n';
 import { useHistory } from '../history-provider';
 import { useDesign as useDesignFetch } from './use-design';
 
@@ -49,6 +50,7 @@ export function DesignProvider({ docId, children }: { docId: string; children: R
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const history = useHistory();
+  const t = useT();
   const draftRef = useRef<DesignSystem | null>(null);
   draftRef.current = draft;
 
@@ -89,10 +91,10 @@ export function DesignProvider({ docId, children }: { docId: string; children: R
     setCommitting(true);
     const result = await save(current);
     setCommitting(false);
-    const error = result.ok ? null : (result.error ?? 'Failed to save');
+    const error = result.ok ? null : (result.error ?? t('Failed to save'));
     setError(error);
     return error ? { ok: false, error } : { ok: true };
-  }, [save]);
+  }, [save, t]);
 
   const discard = useCallback(() => {
     if (design) setDraft(clone(design));

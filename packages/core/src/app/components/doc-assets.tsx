@@ -8,6 +8,7 @@ import {
   isPreviewable,
   listAssets,
 } from '../lib/assets';
+import { useT } from '../lib/i18n';
 import { cn } from '../lib/utils';
 
 type Group = { scope: string; label: string; assets: Asset[] };
@@ -18,6 +19,7 @@ type Group = { scope: string; label: string; assets: Asset[] };
  * paste into the source.
  */
 export function DocAssets({ docId }: { docId: string }) {
+  const t = useT();
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [selected, setSelected] = useState<Asset | null>(null);
   const [copied, setCopied] = useState(false);
@@ -63,7 +65,7 @@ export function DocAssets({ docId }: { docId: string }) {
     <div className="flex-1 overflow-y-auto px-3 pb-6">
       {empty && (
         <p className="px-1 py-2 text-muted-foreground text-xs leading-relaxed">
-          No assets yet. Add images from the Assets page.
+          {t('No assets yet. Add images from the Assets page.')}
         </p>
       )}
 
@@ -71,7 +73,7 @@ export function DocAssets({ docId }: { docId: string }) {
         group.assets.length === 0 ? null : (
           <section key={group.scope} className="mb-4">
             <h3 className="mb-1.5 px-1 text-[10px] text-muted-foreground uppercase tracking-wider">
-              {group.label}
+              {t(group.label)}
             </h3>
             <div className="grid grid-cols-2 gap-1.5">
               {group.assets.map((asset) => (
@@ -108,7 +110,7 @@ export function DocAssets({ docId }: { docId: string }) {
           <p className="truncate font-medium text-[11px]">{selected.name}</p>
           <p className="mt-0.5 text-[10px] text-muted-foreground">
             {formatBytes(selected.size)}
-            {selected.unused ? ' · unused' : ''}
+            {selected.unused ? t(' · unused') : ''}
           </p>
           <code className="mt-1.5 block truncate rounded bg-muted px-1.5 py-1 font-mono text-[10px]">
             {selected.importPath}
@@ -119,7 +121,7 @@ export function DocAssets({ docId }: { docId: string }) {
             className="mt-1.5 flex w-full items-center justify-center gap-1 rounded border border-border px-2 py-1 text-[11px] transition-colors hover:bg-accent"
           >
             {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-            {copied ? 'Copied' : 'Copy import'}
+            {copied ? t('Copied') : t('Copy import')}
           </button>
         </div>
       )}

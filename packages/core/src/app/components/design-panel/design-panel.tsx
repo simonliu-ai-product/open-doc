@@ -1,5 +1,6 @@
 import { Palette, RotateCcw, Shuffle, X } from 'lucide-react';
 import type { DesignSystem } from '../../lib/design';
+import { useT } from '../../lib/i18n';
 import { ColorField, FontField, type FontPreset, Section, SliderField } from '../panel/fields';
 import { PanelBanner, PanelIconButton, PanelShell } from '../panel/panel-shell';
 import { useDesignPanelState } from './design-provider';
@@ -53,6 +54,7 @@ const TYPE_KEYS: Array<{
 export function DesignPanel({ onClose }: { onClose: () => void }) {
   const { loaded, exists, warning, draft, dirty, update, resetToDefaults, shuffle } =
     useDesignPanelState();
+  const t = useT();
 
   // The dock stays closed until there is a draft to show, rather than opening
   // on a spinner the reader has to wait out.
@@ -60,46 +62,46 @@ export function DesignPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <PanelShell
-      label="Design"
+      label={t('Design')}
       header={
         <>
           <Palette aria-hidden className="size-3.5 flex-none text-muted-foreground" />
-          <span className="font-medium text-xs">Design</span>
+          <span className="font-medium text-xs">{t('Design')}</span>
           {!exists && (
             <span
-              title="This document has no design const yet — saving writes one"
+              title={t('This document has no design const yet — saving writes one')}
               className="rounded border border-border bg-muted px-1.5 py-px font-mono text-[9.5px] text-muted-foreground uppercase tracking-wider"
             >
-              Draft
+              {t('Draft')}
             </span>
           )}
           <span
             aria-hidden
-            title={dirty ? 'Unsaved changes' : undefined}
+            title={dirty ? t('Unsaved changes') : undefined}
             className={`size-1.5 rounded-full bg-foreground transition-opacity duration-150 ${dirty ? 'opacity-100' : 'opacity-0'}`}
           />
         </>
       }
       actions={
         <>
-          <PanelIconButton label="Shuffle preset" onClick={shuffle}>
+          <PanelIconButton label={t('Shuffle preset')} onClick={shuffle}>
             <Shuffle className="size-3.5" />
           </PanelIconButton>
-          <PanelIconButton label="Reset to defaults" onClick={resetToDefaults}>
+          <PanelIconButton label={t('Reset to defaults')} onClick={resetToDefaults}>
             <RotateCcw className="size-3.5" />
           </PanelIconButton>
-          <PanelIconButton label="Close design panel (D)" onClick={onClose}>
+          <PanelIconButton label={t('Close design panel (D)')} onClick={onClose}>
             <X className="size-3.5" />
           </PanelIconButton>
         </>
       }
       banner={warning ? <PanelBanner>{warning}</PanelBanner> : null}
     >
-      <Section title="Palette">
+      <Section title={t('Palette')}>
         {PALETTE_KEYS.map(({ key, label }) => (
           <ColorField
             key={key}
-            label={label}
+            label={t(label)}
             value={draft.palette[key]}
             onChange={(value) =>
               update((d) => {
@@ -110,13 +112,13 @@ export function DesignPanel({ onClose }: { onClose: () => void }) {
         ))}
       </Section>
 
-      <Section title="Fonts">
+      <Section title={t('Fonts')}>
         {FONT_KEYS.map(({ key, label }) => (
           <FontField
             key={key}
-            label={label}
+            label={t(label)}
             value={draft.fonts[key]}
-            presets={FONT_PRESETS}
+            presets={FONT_PRESETS.map((preset) => ({ ...preset, label: t(preset.label) }))}
             onChange={(value) =>
               update((d) => {
                 d.fonts[key] = value;
@@ -126,11 +128,11 @@ export function DesignPanel({ onClose }: { onClose: () => void }) {
         ))}
       </Section>
 
-      <Section title="Type scale">
+      <Section title={t('Type scale')}>
         {TYPE_KEYS.map(({ key, label, min, max }) => (
           <SliderField
             key={key}
-            label={label}
+            label={t(label)}
             value={draft.typeScale[key]}
             min={min}
             max={max}
@@ -144,14 +146,14 @@ export function DesignPanel({ onClose }: { onClose: () => void }) {
         ))}
         {draft.typeScale.body < 12 && (
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Body under 12px prints below 9pt — hard to read on paper.
+            {t('Body under 12px prints below 9pt — hard to read on paper.')}
           </p>
         )}
       </Section>
 
-      <Section title="Page">
+      <Section title={t('Page')}>
         <SliderField
-          label="Margin"
+          label={t('Margin')}
           value={draft.margin}
           min={32}
           max={140}
@@ -164,7 +166,7 @@ export function DesignPanel({ onClose }: { onClose: () => void }) {
           }
         />
         <SliderField
-          label="Leading"
+          label={t('Leading')}
           value={draft.leading}
           min={1.2}
           max={2}
@@ -176,7 +178,7 @@ export function DesignPanel({ onClose }: { onClose: () => void }) {
           }
         />
         <SliderField
-          label="Radius"
+          label={t('Radius')}
           value={draft.radius}
           min={0}
           max={24}

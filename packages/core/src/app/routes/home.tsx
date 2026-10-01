@@ -30,16 +30,23 @@ import { ALL_DOCS_ID, DRAFT_ID } from '../components/sidebar/sidebar';
 import { Menu, MenuItem, MenuSeparator } from '../components/ui/menu';
 import { coverContent } from '../lib/doc-preview';
 import { docCreatedAt, docIds, docThemes, docTitles } from '../lib/docs';
+import { type Translate, useLocale, useT } from '../lib/i18n';
 import { resolvePageGeometry } from '../lib/sdk';
 import { findTheme } from '../lib/themes';
 import { useDocModule } from '../lib/use-doc-module';
 import type { HomeOutletContext } from './home-shell';
 
 /** Sheet and date, the two facts that tell documents apart at a glance. */
-function cardMeta(pageSize: string, landscape: boolean, createdAt: number | undefined): string {
-  const sheet = landscape ? `${pageSize} landscape` : pageSize;
+function cardMeta(
+  t: Translate,
+  locale: string,
+  pageSize: string,
+  landscape: boolean,
+  createdAt: number | undefined,
+): string {
+  const sheet = landscape ? t('{size} landscape', { size: pageSize }) : pageSize;
   if (!createdAt) return sheet;
-  const date = new Date(createdAt).toLocaleDateString(undefined, {
+  const date = new Date(createdAt).toLocaleDateString(locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -80,6 +87,7 @@ function compare(sort: SortKey) {
 }
 
 export function Home() {
+  const t = useT();
   const ctx = useOutletContext<HomeOutletContext>();
   const [error, setError] = useState<string | null>(null);
   const [sort, setSortState] = useState<SortKey>(readSort);
@@ -112,10 +120,10 @@ export function Home() {
 
   const heading =
     ctx.selectedId === ALL_DOCS_ID
-      ? 'Documents'
+      ? t('Documents')
       : ctx.selectedId === DRAFT_ID
-        ? 'Unfiled'
-        : (folder?.name ?? 'Documents');
+        ? t('Unfiled')
+        : (folder?.name ?? t('Documents'));
 
   return (
     <div>
@@ -133,12 +141,12 @@ export function Home() {
                 trigger={(props) => (
                   <button
                     type="button"
-                    aria-label={`Sort: ${currentSort.label}`}
+                    aria-label={t('Sort: {label}', { label: t(currentSort.label) })}
                     className="flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs transition-colors hover:bg-accent aria-expanded:bg-accent"
                     {...props}
                   >
                     <currentSort.icon className="size-3.5 text-muted-foreground" />
-                    {currentSort.label}
+                    {t(currentSort.label)}
                     <ChevronDown className="size-3 text-muted-foreground" />
                   </button>
                 )}
@@ -154,7 +162,7 @@ export function Home() {
                       }}
                     >
                       <entry.icon className="size-3.5" />
-                      <span className="flex-1">{entry.label}</span>
+                      <span className="flex-1">{t(entry.label)}</span>
                       {entry.key === sort && <Check className="size-3.5" />}
                     </MenuItem>
                   ))
@@ -166,8 +174,8 @@ export function Home() {
                   type="search"
                   value={filter}
                   onChange={(event) => setFilter(event.target.value)}
-                  placeholder="Filter documents"
-                  aria-label="Filter documents"
+                  placeholder={t('Filter documents')}
+                  aria-label={t('Filter documents')}
                   className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
                 />
               </label>
@@ -186,14 +194,14 @@ export function Home() {
       </PageHeader>
 
       {visibleIds.length === 0 && sourceIds.length > 0 ? (
-        <EmptyState icon={Search} title={`Nothing matches “${filter.trim()}”`}>
-          Try another word from the title.
+        <EmptyState icon={Search} title={t('Nothing matches “{query}”', { query: filter.trim() })}>
+          {t('Try another word from the title.')}
         </EmptyState>
       ) : visibleIds.length === 0 ? (
-        <EmptyState icon={FileText} title="Nothing here yet">
+        <EmptyState icon={FileText} title={t('Nothing here yet')}>
           {ctx.selectedId === ALL_DOCS_ID
-            ? 'Ask your agent to write a document, and it appears here.'
-            : 'Drag a document onto this folder, or use Move to on its card.'}
+            ? t('Ask your agent to write a document, and it appears here.')
+            : t('Drag a document onto this folder, or use Move to on its card.')}
         </EmptyState>
       ) : (
         <div className={CARD_GRID}>
@@ -215,6 +223,8 @@ function DocCard({
   ctx: HomeOutletContext;
   onError: (message: string | null) => void;
 }) {
+  const t = useT();
+  const { locale } = useLocale();
   const navigate = useNavigate();
   const [cardRef, cardWidth] = useCardWidth<HTMLDivElement>();
   const state = useDocModule(docId);
@@ -278,6 +288,8 @@ function DocCard({
               </Link>
             }
             meta={cardMeta(
+              t,
+              locale,
               doc?.meta?.pageSize ?? 'A4',
               doc?.meta?.orientation === 'landscape',
               docCreatedAt[docId],
@@ -299,7 +311,7 @@ function DocCard({
             trigger={(props) => (
               <button
                 type="button"
-                aria-label={`${title} options`}
+                aria-label={t('{name} options', { name: title })}
                 className="flex size-7 flex-none items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
                 {...props}
               >
@@ -312,12 +324,12 @@ function DocCard({
                 <MenuItem
                   onClick={() => {
                     close();
-                    const next = window.prompt('Document title', title);
+                    const next = window.prompt(t('Document title'), title);
                     if (next && next !== title) void run(() => ctx.renameDoc(docId, next));
                   }}
                 >
                   <PencilLine className="size-3.5" />
-                  Rename
+                  {t('Rename')}
                 </MenuItem>
                 <MenuItem
                   onClick={() => {
@@ -329,12 +341,12 @@ function DocCard({
                   }}
                 >
                   <Copy className="size-3.5" />
-                  Duplicate
+                  {t('Duplicate')}
                 </MenuItem>
 
                 <MenuSeparator />
                 <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Move to
+                  {t('Move to')}
                 </p>
                 <MenuItem
                   active={!currentFolder}
@@ -344,7 +356,7 @@ function DocCard({
                   }}
                 >
                   <FolderInput className="size-3.5" />
-                  Unfiled
+                  {t('Unfiled')}
                 </MenuItem>
                 {ctx.manifest.folders.map((folder) => (
                   <MenuItem
@@ -366,14 +378,19 @@ function DocCard({
                   onClick={() => {
                     close();
                     if (
-                      !window.confirm(`Delete "${title}"? This removes docs/${docId}/ from disk.`)
+                      !window.confirm(
+                        t('Delete "{title}"? This removes docs/{id}/ from disk.', {
+                          title,
+                          id: docId,
+                        }),
+                      )
                     )
                       return;
                     void run(() => ctx.deleteDoc(docId));
                   }}
                 >
                   <Trash2 className="size-3.5" />
-                  Delete document
+                  {t('Delete document')}
                 </MenuItem>
               </>
             )}

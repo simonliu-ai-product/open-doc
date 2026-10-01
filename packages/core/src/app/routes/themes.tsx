@@ -10,19 +10,21 @@ import {
 import { Markdown } from '../components/themes/markdown';
 import { ThemePreview } from '../components/themes/theme-preview';
 import { docsByTheme } from '../lib/docs';
+import { useT } from '../lib/i18n';
 import type { ThemeMeta } from '../lib/themes';
 import { findTheme, themes } from '../lib/themes';
 
 const DETAIL_WIDTH = 260;
 
 export function ThemesGalleryPage() {
+  const t = useT();
   return (
     <div>
-      <PageHeader title="Themes" icon={Palette} count={themes.length} />
+      <PageHeader title={t('Themes')} icon={Palette} count={themes.length} />
 
       {themes.length === 0 ? (
-        <EmptyState icon={Palette} title="No themes yet">
-          Ask your agent to create a theme from a document you like.
+        <EmptyState icon={Palette} title={t('No themes yet')}>
+          {t('Ask your agent to create a theme from a document you like.')}
         </EmptyState>
       ) : (
         <div className={CARD_GRID}>
@@ -55,15 +57,16 @@ function ThemeCard({ theme }: { theme: ThemeMeta }) {
 }
 
 export function ThemeDetailPage() {
+  const t = useT();
   const { themeId } = useParams<{ themeId: string }>();
   const theme = findTheme(themeId);
 
   if (!theme) {
     return (
       <div className="py-16 text-center">
-        <p className="font-medium text-sm">Theme “{themeId}” not found.</p>
+        <p className="font-medium text-sm">{t('Theme “{id}” not found.', { id: themeId ?? '' })}</p>
         <Link to="/themes" className="mt-3 inline-block text-muted-foreground text-xs underline">
-          Back to themes
+          {t('Back to themes')}
         </Link>
       </div>
     );
@@ -79,7 +82,7 @@ export function ThemeDetailPage() {
         className="inline-flex items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
       >
         <ArrowLeft className="size-3" />
-        Themes
+        {t('Themes')}
       </Link>
 
       <div className="mt-4 flex flex-wrap items-baseline gap-3">
@@ -104,7 +107,7 @@ export function ThemeDetailPage() {
 
       {usedBy.length > 0 && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground text-xs">Used by</span>
+          <span className="text-muted-foreground text-xs">{t('Used by')}</span>
           {usedBy.map((docId) => (
             <Link
               key={docId}
