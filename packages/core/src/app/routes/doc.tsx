@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
+  ChevronDown,
   Download,
   Eye,
   FileCode2,
@@ -19,7 +20,6 @@ import {
   MoveVertical,
   Palette,
   Pencil,
-  Percent,
   Plus,
   Rows3,
 } from 'lucide-react';
@@ -366,9 +366,9 @@ export function Doc() {
     setZoomMode(mode);
   };
 
-  const actualSize = () => {
+  const setZoom = (value: number) => {
     setZoomMode('auto');
-    setManualScale(1);
+    setManualScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(value.toFixed(2)))));
   };
 
   const toggleFullscreen = useCallback(() => {
@@ -441,58 +441,29 @@ export function Doc() {
           The control rail keeps its automatic minimum — no `min-w-0` — so when
           it outgrows its share the title truncates and slides instead of being
           overlapped by it. */}
-      <header className="grid h-12 flex-none grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-3 border-b border-border px-3">
-        <div className="flex min-w-0 items-center">
+      {/* Three rails by job: where you are (back, title), how you are looking
+          (page, zoom, layout, fullscreen), and what you do to the document
+          (search, edit, design, download). The middle rail is `auto` between
+          two equal `1fr` rails, so it sits at the true centre of the bar while
+          the title truncates before anything is overlapped. */}
+      <header className="grid h-12 flex-none grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-border px-3">
+        <div className="flex min-w-0 items-center gap-1">
           <HeaderBackLink />
+          <h1 className="truncate font-medium text-sm">{doc.meta?.title ?? docId}</h1>
         </div>
 
-        <h1 className="truncate text-center font-medium text-sm">{doc.meta?.title ?? docId}</h1>
-
-        <div className="flex items-center justify-end gap-3">
-          <span className="hidden items-center gap-1.5 sm:flex">
-            <PageJump page={currentPage} total={pages.length} onJump={scrollToPage} />
-            <DocSearch scrollRef={scrollRef} pagesRef={pagesRef} onFoundPage={setCurrentPage} />
-          </span>
-
-          <div className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
-            <IconButton label="Zoom out" onClick={() => zoom(-0.1)}>
-              <Minus className="size-3.5" />
-            </IconButton>
-            <button
-              type="button"
-              onClick={actualSize}
-              title="Actual size (100%)"
-              className="w-11 rounded text-center font-mono text-[11px] tabular-nums transition-colors hover:bg-accent"
-            >
-              {Math.round(scale * 100)}%
-            </button>
-            <IconButton label="Zoom in" onClick={() => zoom(0.1)}>
-              <Plus className="size-3.5" />
-            </IconButton>
-            <IconButton
-              label="Fit width"
-              onClick={() => fitTo('fit-width')}
-              active={manualScale === null && zoomMode === 'fit-width'}
-            >
-              <MoveHorizontal className="size-3.5" />
-            </IconButton>
-            {/* Fit-width moves the page sideways to the edges, fit-page moves it
-                up and down to them. Both used to be a square-ish glyph, and the
-                fit-page one was the same square as fullscreen — three controls,
-                two shapes, no way to tell which did what without clicking. */}
-            <IconButton
-              label="Fit page"
-              onClick={() => fitTo('fit-page')}
-              active={manualScale === null && zoomMode === 'fit-page'}
-            >
-              <MoveVertical className="size-3.5" />
-            </IconButton>
-            <IconButton label="Actual size (100%)" onClick={actualSize}>
-              <Percent className="size-3.5" />
-            </IconButton>
-          </div>
-
-          <fieldset className="flex items-center gap-0.5 rounded-md border border-border px-1 py-0.5">
+        <div className="hidden items-center gap-2 sm:flex">
+          <PageJump page={currentPage} total={pages.length} onJump={scrollToPage} />
+          <Divider />
+          <ZoomControl
+            scale={scale}
+            fit={manualScale === null ? zoomMode : null}
+            onStep={zoom}
+            onSet={setZoom}
+            onFit={fitTo}
+          />
+          <Divider />
+          <fieldset className="flex items-center gap-0.5">
             <legend className="sr-only">Page layout</legend>
             <IconButton
               label="Continuous"
@@ -516,18 +487,16 @@ export function Doc() {
               <LayoutGrid className="size-3.5" />
             </IconButton>
           </fieldset>
-
           <IconButton
             label={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
             onClick={toggleFullscreen}
           >
-            {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+            {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
           </IconButton>
+        </div>
 
-          {/* The document browser normally carries this. A viewer mounted with
-            `showDocBrowser: false` never shows that shell, and without it a
-            reader has no way to change the theme at all. */}
-          {!appConfig.build.showDocBrowser && <ThemeToggle />}
+        <div className="flex items-center justify-end gap-2">
+          <DocSearch scrollRef={scrollRef} pagesRef={pagesRef} onFoundPage={setCurrentPage} />
 
           {import.meta.env.DEV && (
             // Same two modes as open-slide: reading the document, or editing it
@@ -569,6 +538,12 @@ export function Doc() {
               </kbd>
             </button>
           )}
+
+          {/* The document browser normally carries this. A viewer mounted with
+            `showDocBrowser: false` never shows that shell, and without it a
+            reader has no way to change the theme at all. */}
+          {!appConfig.build.showDocBrowser && <ThemeToggle />}
+
           <Menu
             trigger={(props) => (
               <button
@@ -828,6 +803,8 @@ function PageJump({
 
   return (
     <span className="flex items-center whitespace-nowrap font-mono text-muted-foreground text-xs tabular-nums">
+      {/* A bordered field, not bare digits: a number that looks like a label
+          reads as one, and nobody thinks to type into it. */}
       <input
         value={draft ?? String(page)}
         onChange={(event) => setDraft(event.target.value)}
@@ -849,11 +826,139 @@ function PageJump({
         aria-label={`Page number, ${total} pages`}
         title="Go to page"
         inputMode="numeric"
-        className="w-7 rounded bg-transparent text-right outline-none transition-colors hover:bg-accent focus:bg-accent focus:text-foreground"
+        className={FIELD_CLASS}
+        style={{ width: `${Math.max(2, String(total).length) + 2}ch` }}
       />
       <span className="px-1">/</span>
       <span>{total}</span>
     </span>
+  );
+}
+
+const FIELD_CLASS =
+  'h-6 rounded border border-border bg-background px-1 text-center text-foreground outline-none transition-colors hover:border-muted-foreground/50 focus-visible:border-foreground focus-visible:ring-2 focus-visible:ring-primary/30';
+
+function Divider() {
+  return <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />;
+}
+
+const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200];
+
+/**
+ * The zoom as a field you can type into, with the fits and common sizes one
+ * menu away. It replaces a read-only percentage beside three icon buttons —
+ * fit width, fit page, and actual size — the last of which did exactly what
+ * clicking the percentage already did.
+ */
+function ZoomControl({
+  scale,
+  fit,
+  onStep,
+  onSet,
+  onFit,
+}: {
+  scale: number;
+  /** The fit in force, or null once the reader has set a size by hand. */
+  fit: 'auto' | 'fit-width' | 'fit-page' | null;
+  onStep: (delta: number) => void;
+  onSet: (scale: number) => void;
+  onFit: (mode: 'fit-width' | 'fit-page') => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const percent = Math.round(scale * 100);
+
+  const commit = (raw: string) => {
+    setDraft(null);
+    const digits = raw.replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10));
+    const wanted = Number.parseFloat(digits.replace(/[%\s]/g, ''));
+    if (Number.isFinite(wanted) && wanted > 0) onSet(wanted / 100);
+  };
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <IconButton label="Zoom out" onClick={() => onStep(-0.1)}>
+        <Minus className="size-3.5" />
+      </IconButton>
+      <input
+        value={draft ?? `${percent}%`}
+        onChange={(event) => setDraft(event.target.value)}
+        onFocus={(event) => {
+          setDraft(String(percent));
+          requestAnimationFrame(() => event.target.select());
+        }}
+        onBlur={(event) => commit(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+          if (event.key === 'Escape') {
+            setDraft(null);
+            event.currentTarget.blur();
+          }
+        }}
+        aria-label="Zoom level, percent"
+        title="Type a zoom level"
+        inputMode="decimal"
+        className={cn(FIELD_CLASS, 'w-[6ch] font-mono text-xs tabular-nums')}
+      />
+      <IconButton label="Zoom in" onClick={() => onStep(0.1)}>
+        <Plus className="size-3.5" />
+      </IconButton>
+      <Menu
+        placement="bottom-start"
+        trigger={(props) => (
+          <button
+            type="button"
+            aria-label="Zoom options"
+            title="Zoom options"
+            className="flex h-6 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground"
+            {...props}
+          >
+            <ChevronDown className="size-3.5" />
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
+            <MenuItem
+              active={fit === 'fit-width'}
+              onClick={() => {
+                onFit('fit-width');
+                close();
+              }}
+            >
+              <MoveHorizontal className="size-3.5" />
+              Fit width
+            </MenuItem>
+            <MenuItem
+              active={fit === 'fit-page'}
+              onClick={() => {
+                onFit('fit-page');
+                close();
+              }}
+            >
+              <MoveVertical className="size-3.5" />
+              Fit page
+            </MenuItem>
+            <div aria-hidden className="my-1 h-px bg-border" />
+            {ZOOM_PRESETS.map((value) => (
+              <MenuItem
+                key={value}
+                active={fit === null && percent === value}
+                onClick={() => {
+                  onSet(value / 100);
+                  close();
+                }}
+              >
+                <span className="w-3.5" />
+                {value === 100 ? 'Actual size (100%)' : `${value}%`}
+              </MenuItem>
+            ))}
+          </>
+        )}
+      </Menu>
+    </div>
   );
 }
 
