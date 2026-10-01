@@ -55,7 +55,8 @@ function shapePath(node: LaidOutNode): string {
     case 'round':
       return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" ry="10" ${common} />`;
     default:
-      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="var(--od-radius, 2)" ${common} />`;
+      // `rx` as an attribute takes a length, not a CSS variable; as a style it takes both.
+      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" style="rx: var(--od-radius, 2px)" ${common} />`;
   }
 }
 

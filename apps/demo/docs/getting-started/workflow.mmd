@@ -1,0 +1,5 @@
+flowchart LR
+  Ask[Ask an agent] --> Write[docs/my-doc/index.tsx]
+  Write --> View{Viewer}
+  View -->|edit on the page| Write
+  View ==> Export([PDF · Word · HTML])
