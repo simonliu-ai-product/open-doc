@@ -9,18 +9,37 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
+import {
+  CARD_GRID,
+  CARD_WIDTH,
+  CardText,
+  EmptyState,
+  PageHeader,
+} from '../components/browser/browser-ui';
 import { PageFrame } from '../components/page-frame';
 import { DOC_DND_MIME } from '../components/sidebar/folder-item';
 import { ALL_DOCS_ID, DRAFT_ID } from '../components/sidebar/sidebar';
 import { Menu, MenuItem, MenuSeparator } from '../components/ui/menu';
-import { coverContent, pageCountLabel } from '../lib/doc-preview';
+import { coverContent } from '../lib/doc-preview';
 import { docCreatedAt, docIds, docThemes } from '../lib/docs';
 import { resolvePageGeometry } from '../lib/sdk';
 import { findTheme } from '../lib/themes';
 import { useDocModule } from '../lib/use-doc-module';
 import type { HomeOutletContext } from './home-shell';
 
-const THUMB_WIDTH = 190;
+const THUMB_WIDTH = CARD_WIDTH;
+
+/** Sheet and date, the two facts that tell documents apart at a glance. */
+function cardMeta(pageSize: string, landscape: boolean, createdAt: number | undefined): string {
+  const sheet = landscape ? `${pageSize} landscape` : pageSize;
+  if (!createdAt) return sheet;
+  const date = new Date(createdAt).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  return `${sheet} · ${date}`;
+}
 
 export function Home() {
   const ctx = useOutletContext<HomeOutletContext>();
@@ -51,10 +70,10 @@ export function Home() {
 
   return (
     <div>
-      <header className="mb-8">
-        <h1 className="font-medium text-lg tracking-tight">{heading}</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          {ctx.selectedId === ALL_DOCS_ID ? (
+      <PageHeader
+        title={heading}
+        description={
+          ctx.selectedId === ALL_DOCS_ID ? (
             <>
               Every folder under <code className="font-mono">docs/</code> with an{' '}
               <code className="font-mono">index.tsx</code>.
@@ -63,32 +82,32 @@ export function Home() {
             'Documents that have not been filed into a folder yet.'
           ) : (
             `${visibleIds.length} document${visibleIds.length === 1 ? '' : 's'} in this folder.`
-          )}
-        </p>
+          )
+        }
+      >
         {error && (
-          <p className="mt-3 rounded-md border border-border bg-background px-3 py-2 text-xs">
+          <p
+            role="alert"
+            className="rounded-md border border-border bg-background px-3 py-2 text-xs"
+          >
             {error}
           </p>
         )}
-      </header>
+      </PageHeader>
 
       {visibleIds.length === 0 ? (
-        <div className="py-16 text-center">
-          <FileText className="mx-auto size-6 text-muted-foreground" />
-          <p className="mt-3 font-medium text-sm">Nothing here yet</p>
-          <p className="mt-1 text-muted-foreground text-xs">
-            {ctx.selectedId === ALL_DOCS_ID ? (
-              <>
-                Create <code className="font-mono">docs/&lt;id&gt;/index.tsx</code> and it appears
-                here.
-              </>
-            ) : (
-              'Drag a document onto this folder in the sidebar to file it here.'
-            )}
-          </p>
-        </div>
+        <EmptyState icon={FileText} title="Nothing here yet">
+          {ctx.selectedId === ALL_DOCS_ID ? (
+            <>
+              Create <code className="font-mono">docs/&lt;id&gt;/index.tsx</code> and it appears
+              here.
+            </>
+          ) : (
+            'Drag a document onto this folder in the sidebar, or use Move to on its card.'
+          )}
+        </EmptyState>
       ) : (
-        <div className="grid gap-7 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
+        <div className={CARD_GRID}>
           {visibleIds.map((id) => (
             <DocCard key={id} docId={id} ctx={ctx} onError={setError} />
           ))}
@@ -161,12 +180,18 @@ function DocCard({
 
       <div className="flex min-w-0 items-start gap-1">
         <div className="min-w-0 flex-1">
-          <Link to={`/d/${docId}`} className="block truncate font-medium text-sm hover:underline">
-            {title}
-          </Link>
-          <p className="mt-0.5 truncate text-muted-foreground text-xs">
-            {pageCountLabel(doc)} · {doc?.meta?.pageSize ?? 'A4'}
-          </p>
+          <CardText
+            title={
+              <Link to={`/d/${docId}`} className="hover:underline">
+                {title}
+              </Link>
+            }
+            meta={cardMeta(
+              doc?.meta?.pageSize ?? 'A4',
+              doc?.meta?.orientation === 'landscape',
+              docCreatedAt[docId],
+            )}
+          />
           {theme && (
             <Link
               to={`/themes/${theme.id}`}
@@ -184,7 +209,7 @@ function DocCard({
               <button
                 type="button"
                 aria-label={`${title} options`}
-                className="flex size-6 flex-none items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+                className="flex size-7 flex-none items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
                 {...props}
               >
                 <MoreHorizontal className="size-3.5" />
