@@ -204,6 +204,7 @@ export function Doc() {
   const [selection, setSelection] = useState<PageSelection>({ kind: 'all' });
   const [customRange, setCustomRange] = useState('');
   const [designOpen, setDesignOpen] = useState(false);
+  const closeDesign = useCallback(() => setDesignOpen(false), []);
   const [editing, setEditingState] = useState(readEditing);
   // The dev server reloads every open viewer when a document is added or
   // removed anywhere in the workspace. Edit mode is per tab and survives that.
@@ -858,6 +859,7 @@ export function Doc() {
               docId={docId}
               containerRef={scrollRef}
               panelHidden={designOpen}
+              onPick={closeDesign}
               quiet={cardShown}
               onExit={() => setEditing(false)}
               exitRef={leaveEditRef}

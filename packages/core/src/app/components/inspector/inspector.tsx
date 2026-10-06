@@ -2,11 +2,20 @@ import {
   Bold,
   Check,
   Code,
+  Copy,
+  Heading,
+  Image,
   Italic,
   Link2,
-  Loader2,
+  List,
+  Lock,
   MessageSquarePlus,
+  Pencil,
+  Pilcrow,
   RemoveFormatting,
+  Square,
+  Table,
+  Type,
   Unlink,
   X,
 } from 'lucide-react';
@@ -23,10 +32,12 @@ import { createPortal } from 'react-dom';
 import { isSafeHref } from '../../lib/href';
 import { useT } from '../../lib/i18n';
 import { candidateLocs, formatLocs } from '../../lib/inspector/fiber';
+import type { StyleInfo } from '../../lib/inspector/format';
 import {
   cleanRun,
   cleanSegments,
   clearFormatting,
+  EDITING_ATTR,
   focusAt,
   hasMark,
   hrefOf,
@@ -55,7 +66,10 @@ import {
 } from '../../lib/inspector/inline-edit';
 import { PROP_ATTR } from '../../lib/source-loc';
 import { useHistory } from '../history-provider';
+import { CollapsibleSection, Section } from '../panel/fields';
 import { PanelIconButton, PanelShell } from '../panel/panel-shell';
+import { FormatSection } from './format-section';
+import { elementsAt, styleKey, useStyleEdits } from './use-style-edits';
 
 type TextPart =
   | { kind: 'text'; index: number; value: string; formattable?: true; segments?: Segment[] }
@@ -133,10 +147,11 @@ const DOUBLE_CLICK_MS = 600;
 // Same visual language as open-slide's inspector: dashed on hover, solid on
 // selection, both in the same blue. Unsaved text keeps a dashed frame after the
 // cursor leaves it, so a change that exists only on screen never looks saved.
-const FRAME_STYLE: Record<'hover' | 'selected' | 'pending', CSSProperties> = {
+const FRAME_STYLE: Record<'hover' | 'selected' | 'pending' | 'twin', CSSProperties> = {
   hover: { outline: '1.5px dashed #3b82f6', background: 'rgba(59,130,246,0.05)' },
   selected: { outline: '2px solid #3b82f6', background: 'rgba(59,130,246,0.1)' },
   pending: { outline: '1.5px dashed #3b82f6', outlineOffset: 2 },
+  twin: { outline: '1px solid rgba(59,130,246,0.55)', background: 'rgba(59,130,246,0.05)' },
 };
 
 // Past this, a reload that should have replaced a saved element is not coming
@@ -159,6 +174,24 @@ function targetFrom(el: Element | null): InspectorTarget | null {
   return { line, column, anchor: host, tag: host.tagName.toLowerCase(), ...(prop ? { prop } : {}) };
 }
 
+/** What the panel's header calls the selected element — by role, not by tag. */
+function kindOf(tag: string): { label: string; vars?: Record<string, number>; icon: typeof Type } {
+  const level = /^h([1-6])$/.exec(tag)?.[1];
+  if (level) return { label: 'Heading {level}', vars: { level: Number(level) }, icon: Heading };
+  if (tag === 'p' || tag === 'blockquote') return { label: 'Paragraph', icon: Pilcrow };
+  if (tag === 'li' || tag === 'ul' || tag === 'ol') return { label: 'List', icon: List };
+  if (tag === 'td' || tag === 'th' || tag === 'table' || tag === 'tr') {
+    return { label: 'Table', icon: Table };
+  }
+  if (tag === 'img' || tag === 'svg' || tag === 'figure') return { label: 'Image', icon: Image };
+  if (
+    ['span', 'strong', 'em', 'b', 'i', 'a', 'code', 'small', 'figcaption', 'label'].includes(tag)
+  ) {
+    return { label: 'Text', icon: Type };
+  }
+  return { label: 'Box', icon: Square };
+}
+
 type Rect = { left: number; top: number; width: number; height: number };
 
 function sameRect(a: Rect | null, b: Rect) {
@@ -178,7 +211,7 @@ function Frame({
 }: {
   anchor: HTMLElement | null;
   container: HTMLElement;
-  variant: 'hover' | 'selected' | 'pending';
+  variant: 'hover' | 'selected' | 'pending' | 'twin';
 }) {
   const [rect, setRect] = useState<Rect | null>(null);
 
@@ -239,9 +272,9 @@ const TOOL_CLASS =
 
 /**
  * Inline formatting, floating over the text being edited: emphasis, code,
- * links, and a way to take them off. Size, colour and alignment are not here
- * on purpose — they belong to the document's design system, and a one-off
- * inline style would quietly fork it.
+ * links, and a way to take them off. Size, colour and alignment are the
+ * element panel's, which offers the document's design tokens before a
+ * one-off value — here they would style a few words and quietly fork it.
  */
 function TextToolbar({
   anchor,
@@ -532,8 +565,10 @@ type Props = {
   docId: string;
   /** The scroll container the pages live in. */
   containerRef: React.RefObject<HTMLDivElement | null>;
-  /** The design panel shares the right dock and wins it while open. */
+  /** The design panel shares the right dock; the panel opened last holds it. */
   panelHidden: boolean;
+  /** An element was picked on the page — the dock should show its panel. */
+  onPick: () => void;
   /** The save card is showing, so the hint underneath it steps aside. */
   quiet: boolean;
   onExit: () => void;
@@ -547,6 +582,7 @@ export function Inspector({
   docId,
   containerRef,
   panelHidden,
+  onPick,
   quiet,
   onExit,
   exitRef,
@@ -585,8 +621,24 @@ export function Inspector({
   const entriesRef = useRef(new Map<HTMLElement, Entry>());
   const sessionStartRef = useRef<Segment[][]>([]);
   const firstClickRef = useRef<{ anchor: HTMLElement; at: At; time: number } | null>(null);
+  const onPickRef = useRef(onPick);
+  onPickRef.current = onPick;
 
   useLayoutEffect(() => setContainer(containerRef.current), [containerRef]);
+
+  const {
+    count: styleCount,
+    edits: styleEdits,
+    change: changeStyle,
+    pendingFor,
+    discard: discardStyles,
+    forget: forgetStyles,
+    revert: revertStyles,
+    repaint: repaintStyles,
+  } = useStyleEdits(container);
+  const [styleInfo, setStyleInfo] = useState<{ anchor: HTMLElement; value: StyleInfo } | null>(
+    null,
+  );
 
   const insideChrome = useCallback(
     (node: EventTarget | null) =>
@@ -698,10 +750,11 @@ export function Inspector({
 
   const discard = useCallback(() => {
     for (const entry of [...entriesRef.current.values()]) drop(entry);
+    discardStyles();
     setActive(null);
     refresh();
     setStatus(t('Discarded unsaved edits'));
-  }, [drop, refresh, t]);
+  }, [drop, refresh, discardStyles, t]);
 
   /**
    * Leaves the clone in place until hot reload has replaced what it covers —
@@ -845,23 +898,42 @@ export function Inspector({
         owners.push(entry);
       }
     }
-    if (edits.length === 0) return { ok: true };
+    const styles = styleEdits();
+    if (edits.length === 0 && styles.length === 0) return { ok: true };
 
     setBusy(true);
     try {
-      const res = await fetch('/__edit/texts', {
+      // Text and style go in one request, so the file is read, spliced and
+      // written once — two requests would each start from the file before
+      // the other, and the second would put back what the first changed.
+      const res = await fetch('/__edit/batch', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ docId, edits }),
+        body: JSON.stringify({
+          docId,
+          texts: edits,
+          styles: styles.map(({ line, column, tag, changes, expected }) => ({
+            line,
+            column,
+            tag,
+            changes,
+            expected,
+          })),
+        }),
       });
-      const body = (await res.json()) as { results?: Outcome[]; error?: string };
-      if (!res.ok || !body.results) {
+      const body = (await res.json()) as {
+        texts?: Outcome[];
+        styles?: Outcome[];
+        error?: string;
+      };
+      if (!res.ok || !body.texts || !body.styles) {
         const error = body.error ?? t('Save failed');
         setStatus(error);
         return { ok: false, error };
       }
-      const results = body.results;
-      const failures = results.filter(
+      const results = body.texts;
+      const styleResults = body.styles;
+      const failures = [...results, ...styleResults].filter(
         (result): result is Extract<Outcome, { ok: false }> => !result.ok,
       );
       for (const entry of new Set(owners)) {
@@ -869,6 +941,9 @@ export function Inspector({
         if (wrote) settle(entry);
         else drop(entry);
       }
+      const keys = styles.map(styleKey);
+      forgetStyles(keys.filter((_, at) => styleResults[at]?.ok));
+      revertStyles(keys.filter((_, at) => !styleResults[at]?.ok));
       refresh();
       setSelected(null);
       if (failures.length === 0) {
@@ -877,7 +952,7 @@ export function Inspector({
       }
       const error = t('{failed} of {total} not saved — {reason}', {
         failed: failures.length,
-        total: edits.length,
+        total: edits.length + styles.length,
         reason: failures[0]?.error ?? t('refused'),
       });
       setStatus(error);
@@ -888,7 +963,7 @@ export function Inspector({
     } finally {
       setBusy(false);
     }
-  }, [active, docId, drop, finish, refresh, settle, t]);
+  }, [active, docId, drop, finish, refresh, settle, styleEdits, forgetStyles, revertStyles, t]);
 
   const leave = useCallback(async () => {
     if ((await save()).ok) onExit();
@@ -903,9 +978,10 @@ export function Inspector({
     };
   }, [exitRef, leave, controlsRef, save, discard]);
 
+  const pendingCount = pending.length + styleCount;
   useEffect(() => {
-    onPendingChange(pending.length);
-  }, [pending.length, onPendingChange]);
+    onPendingChange(pendingCount);
+  }, [pendingCount, onPendingChange]);
   useEffect(() => () => onPendingChange(0), [onPendingChange]);
 
   // Leaving edit mode any other way — a route change, closing the tab — drops
@@ -919,11 +995,11 @@ export function Inspector({
   }, []);
 
   useEffect(() => {
-    if (pending.length === 0) return;
+    if (pendingCount === 0) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [pending.length]);
+  }, [pendingCount]);
 
   // An external write — an agent, the design panel, another save — reloads the
   // document and replaces elements, clones and all. When the element at the
@@ -986,6 +1062,7 @@ export function Inspector({
         }
       }
       if (replaced) refresh();
+      repaintStyles();
       if (lost > 0) {
         setStatus(
           lost > 1
@@ -1019,7 +1096,7 @@ export function Inspector({
     });
     observer.observe(container, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [container, refresh, t]);
+  }, [container, refresh, repaintStyles, t]);
 
   useEffect(() => {
     if (!container) return;
@@ -1036,6 +1113,7 @@ export function Inspector({
       if (entry) {
         const owner = targetFrom(entry.anchor);
         if (owner) setSelected((prev) => (prev?.anchor === owner.anchor ? prev : owner));
+        onPickRef.current();
         if (active !== entry) {
           begin(entry.anchor, atIn(entry.editor.clone, e.clientX, e.clientY), false);
         }
@@ -1063,6 +1141,7 @@ export function Inspector({
         target.anchor.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
       setSelected((prev) => (prev?.anchor === target.anchor ? prev : target));
+      onPickRef.current();
       setStatus(null);
       setNote('');
     };
@@ -1084,6 +1163,7 @@ export function Inspector({
       if (!target?.anchor.contains(e.target as Node)) return;
       e.preventDefault();
       setSelected((prev) => (prev?.anchor === target.anchor ? prev : target));
+      onPickRef.current();
       setWantEdit({
         anchor: target.anchor,
         at: atIn(target.anchor, e.clientX, e.clientY),
@@ -1314,6 +1394,40 @@ export function Inspector({
     };
   }, [selected, docId, t]);
 
+  // The Format section reads the element's own `style` from source: the page
+  // shows the value, only source can say whether it is a token, a shared
+  // style object's, or code.
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    const params = new URLSearchParams({
+      docId,
+      line: String(selected.line),
+      column: String(selected.column),
+      tag: selected.tag,
+    });
+    fetch(`/__edit/style?${params}`)
+      .then((res) => res.json())
+      .then((body: StyleInfo & { error?: string }) => {
+        if (cancelled) return;
+        setStyleInfo({
+          anchor: selected.anchor,
+          value: body.error ? { editable: false, reason: body.error } : body,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStyleInfo({
+            anchor: selected.anchor,
+            value: { editable: false, reason: 'could not read source' },
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, docId]);
+
   useEffect(() => {
     if (!wantEdit || !target || selected?.anchor !== wantEdit.anchor) return;
     setWantEdit(null);
@@ -1351,6 +1465,27 @@ export function Inspector({
     }
   };
 
+  const kind = kindOf(selected?.tag ?? '');
+  const editingHere = active !== null && active.anchor === selected?.anchor;
+  const startEdit = () => {
+    if (!selected) return;
+    if (entriesRef.current.has(selected.anchor)) begin(selected.anchor, null, false);
+    else setWantEdit({ anchor: selected.anchor, at: null, selectWord: false });
+  };
+  // Every other element the selected one's source prints — a `.map()` row, a
+  // block split across pages. A style change lands on all of them, so the
+  // page shows them before it happens rather than the panel saying so.
+  const twins =
+    container && selected
+      ? elementsAt(container, selected).filter(
+          (el) => el !== selected.anchor && !el.hasAttribute(EDITING_ATTR),
+        )
+      : [];
+  const KindIcon = kind.icon;
+  const loc = selected
+    ? `${target?.line ?? selected.line}:${target?.column ?? selected.column}`
+    : '';
+
   const visible = (anchor: HTMLElement | null | undefined) =>
     anchor ? (entriesRef.current.get(anchor)?.editor.clone ?? anchor) : null;
   const selectedEl = visible(selected?.anchor);
@@ -1379,6 +1514,10 @@ export function Inspector({
               container={container}
               variant="hover"
             />
+            {twins.map((twin, at) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: twins share one loc; order is stable
+              <Frame key={at} anchor={twin} container={container} variant="twin" />
+            ))}
             <Frame anchor={selectedEl} container={container} variant="selected" />
           </div>
           {/* Only while there is something to act on: a row of disabled
@@ -1416,10 +1555,20 @@ export function Inspector({
           label={t('Element')}
           panelRef={panelRef}
           header={
-            <span className="truncate font-mono text-[11px] text-muted-foreground">
-              &lt;{selected.tag}&gt; · {target?.line ?? selected.line}:
-              {target?.column ?? selected.column}
-            </span>
+            <>
+              <KindIcon aria-hidden className="size-3.5 flex-none text-muted-foreground" />
+              <span className="truncate font-medium text-xs">{t(kind.label, kind.vars)}</span>
+              {twins.length > 0 && (
+                <span
+                  title={t('{count} elements print from this line of source', {
+                    count: twins.length + 1,
+                  })}
+                  className="flex flex-none items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                >
+                  <Copy aria-hidden className="size-3" />×{twins.length + 1}
+                </span>
+              )}
+            </>
           }
           actions={
             <PanelIconButton label={t('Close')} onClick={() => setSelected(null)}>
@@ -1427,36 +1576,75 @@ export function Inspector({
             </PanelIconButton>
           }
         >
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            <span className="block text-[10px] text-muted-foreground uppercase tracking-wider">
-              {t('Text')}
-            </span>
+          <FormatSection
+            // A new element is a new set of fields: a half-typed number must
+            // not commit onto whatever is selected next.
+            key={`${selected.line}:${selected.column}`}
+            anchor={selected.anchor}
+            info={styleInfo?.anchor === selected.anchor ? styleInfo.value : null}
+            pending={pendingFor(selected)}
+            onChange={(prop, value, shown) => changeStyle(selected, prop, value, shown)}
+          />
+          <Section
+            title={t('Text')}
+            action={
+              editingHere ? (
+                <PanelIconButton label={t('Done')} onClick={() => active && finish(active, false)}>
+                  <Check className="size-3.5" />
+                </PanelIconButton>
+              ) : null
+            }
+          >
             {target === null ? (
-              <div className="grid h-16 place-items-center">
-                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+              <div className="h-0.5 overflow-hidden rounded bg-muted">
+                <div className="h-full w-1/3 animate-pulse bg-foreground/20" />
               </div>
-            ) : target.editable ? (
-              <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-                {active?.anchor === selected.anchor
-                  ? t(
-                      'Editing on the page. Enter keeps the change, Shift+Enter starts a new line, Esc reverts it.',
-                    )
-                  : t(
-                      'Double-click the text on the page, or press Enter, to edit it where it is printed.',
-                    )}
-                {target.parts.some((part) => part.kind === 'markup') &&
-                  ` ${t('Inline markup stays as written.')}`}
-              </p>
             ) : (
-              <p className="mt-1 rounded border border-border bg-muted px-2 py-1.5 text-[11px] text-muted-foreground">
-                {target.reason ? t(target.reason) : t('Not editable here.')}
-              </p>
+              // The words themselves, as the way in: clicking them opens them
+              // on the page. Markup the editor leaves alone reads as a chip.
+              <button
+                type="button"
+                disabled={!target.editable}
+                aria-pressed={editingHere}
+                aria-label={target.editable ? t('Edit on page') : undefined}
+                title={
+                  target.editable
+                    ? `${t('Edit on page')} (Enter)`
+                    : target.reason
+                      ? t(target.reason)
+                      : t('Not editable here.')
+                }
+                onClick={startEdit}
+                className="group relative block max-h-28 w-full overflow-hidden rounded border border-border px-2 py-1.5 pr-7 text-left text-xs leading-relaxed transition-colors hover:border-foreground/40 focus-visible:outline-2 focus-visible:outline-foreground/60 disabled:cursor-not-allowed disabled:text-muted-foreground disabled:hover:border-border aria-pressed:border-foreground/60 aria-pressed:bg-accent/50"
+              >
+                {editingHere && active
+                  ? shownText(active.editor.clone)
+                  : target.parts.map((part, at) =>
+                      part.kind === 'text' ? (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: parts are positional
+                        <span key={at}>{part.value}</span>
+                      ) : (
+                        <span
+                          // biome-ignore lint/suspicious/noArrayIndexKey: parts are positional
+                          key={at}
+                          className="mx-0.5 rounded bg-muted px-1 font-mono text-[10px] text-muted-foreground"
+                        >
+                          {part.label}
+                        </span>
+                      ),
+                    )}
+                <span
+                  aria-hidden
+                  className="absolute top-1.5 right-1.5 flex text-muted-foreground opacity-60 transition-opacity group-hover:opacity-100 group-disabled:opacity-60"
+                >
+                  {target.editable ? <Pencil className="size-3" /> : <Lock className="size-3" />}
+                </span>
+              </button>
             )}
-
-            <span className="mt-4 block text-[10px] text-muted-foreground uppercase tracking-wider">
-              {t('Comment for the agent')}
-            </span>
+          </Section>
+          <CollapsibleSection title={t('Comment for the agent')}>
             <textarea
+              aria-label={t('Comment for the agent')}
               value={note}
               onChange={(e) => setNote(e.target.value)}
               onKeyDown={(e) => {
@@ -1464,20 +1652,26 @@ export function Inspector({
               }}
               rows={3}
               placeholder={t('make this bold, shorten to one line…')}
-              className="mt-1 w-full resize-y rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/60 focus:border-foreground/40"
+              className="w-full resize-y rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/60 focus:border-foreground/40"
             />
             <button
               type="button"
               onClick={saveComment}
               disabled={busy || note.trim() === ''}
-              className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded border border-border px-2 py-1.5 text-xs transition-colors hover:bg-accent disabled:opacity-50"
+              className="flex h-8 w-full items-center justify-center gap-1.5 rounded border border-border px-2 text-xs transition-colors hover:bg-accent disabled:opacity-50"
             >
               <MessageSquarePlus className="size-3" />
               {t('Mark comment')}
             </button>
-
-            {status && <p className="mt-2 text-[11px] text-muted-foreground">{status}</p>}
-          </div>
+          </CollapsibleSection>
+          <CollapsibleSection title={t('Source')} summary={loc}>
+            <dl className="grid grid-cols-[64px_1fr] gap-x-2 gap-y-1.5 text-[11px]">
+              <dt className="text-muted-foreground">{t('Element')}</dt>
+              <dd className="font-mono">&lt;{selected.tag}&gt;</dd>
+              <dt className="text-muted-foreground">{t('Location')}</dt>
+              <dd className="font-mono">{loc}</dd>
+            </dl>
+          </CollapsibleSection>
         </PanelShell>
       )}
     </>

@@ -1,15 +1,24 @@
 import fs from 'node:fs/promises';
 import type { ViteDevServer } from 'vite';
+import type { StyleChanges } from '../../app/lib/inspector/format.ts';
 import { insertMarker, parseMarkers, removeMarker } from '../../editing/comments.ts';
-import { replaceTextAt, resolveTextTarget, type TextSegment } from '../../editing/edit-ops.ts';
+import {
+  replaceTextAt,
+  resolveTextTarget,
+  type TextEdit,
+  type TextSegment,
+} from '../../editing/edit-ops.ts';
+import type { StyleEdit } from '../../editing/style-ops.ts';
 import { validateMutationRequest } from '../../http/request-guard.ts';
 import { OpsError } from '../../ops/documents.ts';
-import { writeTexts } from '../../ops/text.ts';
+import { readStyle, writeEdits, writeTexts } from '../../ops/text.ts';
 import { type ApiContext, json, readBody, resolveDocEntry } from './context.ts';
 
 // GET    /__edit/text?docId=…&locs=12:4,296:10&shown=…&prop=…   resolve what was clicked
 // PUT    /__edit/text   { docId, line, column, text, index?, expected? }
 // PUT    /__edit/texts  { docId, edits: [{ line, column, text, segments?, index?, expected?, shown? }] }
+// GET    /__edit/style?docId=…&line=…&column=…&tag=…   what the element's style sets
+// PUT    /__edit/batch  { docId, texts: [...as /texts], styles: [{ line, column, tag, changes, expected? }] }
 // POST   /__edit/comment                         { docId, line, column, note, hint? }
 // GET    /__comments?docId=…                     list pending markers
 // DELETE /__comments?docId=…&id=…                drop one marker
@@ -37,6 +46,55 @@ function readSegments(value: unknown): TextSegment[] | undefined {
     });
   }
   return segments;
+}
+
+function readTextEdits(docId: string, value: unknown): TextEdit[] | null {
+  if (!Array.isArray(value)) return null;
+  const edits: TextEdit[] = [];
+  for (const raw of value as Record<string, unknown>[]) {
+    const loc = readLoc({ ...raw, docId });
+    if (!loc || typeof raw.text !== 'string') return null;
+    edits.push({
+      line: loc.line,
+      column: loc.column,
+      text: raw.text,
+      segments: readSegments(raw.segments),
+      index: typeof raw.index === 'number' ? raw.index : undefined,
+      prop: typeof raw.prop === 'string' ? raw.prop : undefined,
+      expected: typeof raw.expected === 'string' ? raw.expected : undefined,
+      shown: typeof raw.shown === 'string' ? raw.shown : undefined,
+    });
+  }
+  return edits;
+}
+
+// Keys and values are checked again where they are written; this only makes
+// sure the shapes are what `replaceEditsAt` expects.
+function readStyleEdits(docId: string, value: unknown): StyleEdit[] | null {
+  if (!Array.isArray(value)) return null;
+  const edits: StyleEdit[] = [];
+  for (const raw of value as Record<string, unknown>[]) {
+    const loc = readLoc({ ...raw, docId });
+    const changes = raw.changes as Record<string, unknown> | undefined;
+    if (!loc || typeof raw.tag !== 'string' || typeof changes !== 'object' || !changes) return null;
+    const clean: StyleChanges = {};
+    for (const [key, change] of Object.entries(changes)) {
+      if (change !== null && typeof change !== 'string' && typeof change !== 'number') return null;
+      clean[key as keyof StyleChanges] = change;
+    }
+    const expected =
+      typeof raw.expected === 'object' && raw.expected !== null
+        ? (raw.expected as StyleEdit['expected'])
+        : undefined;
+    edits.push({
+      line: loc.line,
+      column: loc.column,
+      tag: raw.tag,
+      changes: clean,
+      ...(expected ? { expected } : {}),
+    });
+  }
+  return edits;
 }
 
 export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void {
@@ -102,24 +160,38 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         if (typeof body.docId !== 'string' || !Array.isArray(body.edits)) {
           return json(res, 400, { error: 'invalid payload' });
         }
-        const edits = [];
-        for (const raw of body.edits as Record<string, unknown>[]) {
-          const loc = readLoc({ ...raw, docId: body.docId });
-          if (!loc || typeof raw.text !== 'string') {
-            return json(res, 400, { error: 'invalid payload' });
-          }
-          edits.push({
-            line: loc.line,
-            column: loc.column,
-            text: raw.text,
-            segments: readSegments(raw.segments),
-            index: typeof raw.index === 'number' ? raw.index : undefined,
-            prop: typeof raw.prop === 'string' ? raw.prop : undefined,
-            expected: typeof raw.expected === 'string' ? raw.expected : undefined,
-            shown: typeof raw.shown === 'string' ? raw.shown : undefined,
-          });
-        }
+        const edits = readTextEdits(body.docId, body.edits);
+        if (!edits) return json(res, 400, { error: 'invalid payload' });
         return json(res, 200, await writeTexts(ctx, body.docId, edits));
+      }
+
+      if (method === 'GET' && url.pathname === '/style') {
+        const loc = readLoc({
+          docId: url.searchParams.get('docId'),
+          line: Number(url.searchParams.get('line')),
+          column: Number(url.searchParams.get('column')),
+        });
+        const tag = url.searchParams.get('tag') ?? '';
+        if (!loc || !Number.isFinite(loc.line) || !Number.isFinite(loc.column) || tag === '') {
+          return json(res, 400, { error: 'invalid target' });
+        }
+        return json(res, 200, await readStyle(ctx, loc.docId, loc, tag));
+      }
+
+      if (method === 'PUT' && url.pathname === '/batch') {
+        const check = validateMutationRequest(req, { requireJsonBody: true });
+        if (!check.ok) return json(res, check.status, { error: check.error });
+
+        const body = (await readBody(req)) as {
+          docId?: unknown;
+          texts?: unknown;
+          styles?: unknown;
+        };
+        if (typeof body.docId !== 'string') return json(res, 400, { error: 'invalid payload' });
+        const texts = readTextEdits(body.docId, body.texts ?? []);
+        const styles = readStyleEdits(body.docId, body.styles ?? []);
+        if (!texts || !styles) return json(res, 400, { error: 'invalid payload' });
+        return json(res, 200, await writeEdits(ctx, body.docId, texts, styles));
       }
 
       if (method === 'POST' && url.pathname === '/comment') {

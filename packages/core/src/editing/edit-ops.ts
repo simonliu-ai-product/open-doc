@@ -946,20 +946,39 @@ export type TextEditOutcome = { ok: true } | { ok: false; status: number; error:
  * reach the same span — one prop rendered by two elements — must agree, or the
  * later one is refused rather than silently winning.
  */
+export type Splice = { start: number; end: number; text: string };
+
+export const SYNTAX_ERROR = {
+  ok: false as const,
+  status: 422,
+  error: 'the document has a syntax error — fix it in source before editing here',
+};
+
+/** Applies non-overlapping splices, all located against the same source, back to front. */
+export function applySplices(source: string, splices: Splice[]): string {
+  let next = source;
+  for (const splice of [...splices].sort((a, b) => b.start - a.start)) {
+    next = next.slice(0, splice.start) + splice.text + next.slice(splice.end);
+  }
+  return next;
+}
+
 export function replaceTextsAt(
   source: string,
   edits: TextEdit[],
 ): { source: string; results: TextEditOutcome[] } {
   const ast = parseStrict(source);
-  if (!ast) {
-    const error = {
-      ok: false as const,
-      status: 422,
-      error: 'the document has a syntax error — fix it in source before editing here',
-    };
-    return { source, results: edits.map(() => error) };
-  }
+  if (!ast) return { source, results: edits.map(() => SYNTAX_ERROR) };
+  const { splices, results } = planTextEdits(ast, source, edits);
+  return { source: applySplices(source, splices), results };
+}
 
+/** Where each text edit lands in `source`, without writing any of them. */
+export function planTextEdits(
+  ast: AstNode,
+  source: string,
+  edits: TextEdit[],
+): { splices: Splice[]; results: TextEditOutcome[] } {
   const results: TextEditOutcome[] = [];
   const planned: Array<{ slot: Slot; text: string }> = [];
   for (const edit of edits) {
@@ -1010,9 +1029,8 @@ export function replaceTextsAt(
     results.push({ ok: true });
   }
 
-  let next = source;
-  for (const { slot, text } of [...planned].sort((a, b) => b.slot.start - a.slot.start)) {
-    next = next.slice(0, slot.start) + text + next.slice(slot.end);
-  }
-  return { source: next, results };
+  return {
+    splices: planned.map(({ slot, text }) => ({ start: slot.start, end: slot.end, text })),
+    results,
+  };
 }

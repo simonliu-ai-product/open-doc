@@ -84,7 +84,8 @@ test.describe('editing what components print', () => {
   test('a table cell selects the table and names the file behind it', async ({ page }) => {
     await viewer(page).getByRole('cell', { name: 'alpha-api' }).click();
     const panel = page.getByRole('complementary', { name: 'Element' });
-    await expect(panel).toContainText('./data/rows.csv');
+    // The reason sits on the locked text, not in a sentence under it.
+    await expect(panel.getByTitle(/\.\/data\/rows\.csv/)).toBeDisabled();
     expect(await readDocSource('long-form')).toBe(original);
   });
 });

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import type { StyleInfo } from '../app/lib/inspector/format.ts';
 import { insertMarker } from '../editing/comments.ts';
 import {
   replaceTextAt,
@@ -8,6 +9,7 @@ import {
   type TextEditOutcome,
   type TextSegment,
 } from '../editing/edit-ops.ts';
+import { readStyleAt, replaceEditsAt, type StyleEdit } from '../editing/style-ops.ts';
 import type { ApiContext } from '../vite/routes/context.ts';
 import { OpsError, resolveEntry } from './documents.ts';
 
@@ -78,6 +80,35 @@ export async function writeTexts(
   const result = replaceTextsAt(source, edits);
   if (result.source !== source) await fs.writeFile(entry, result.source, 'utf8');
   return { results: result.results };
+}
+
+/** What the element at `loc` sets in its `style`, key by key, for the element panel's Format section. */
+export async function readStyle(
+  ctx: ApiContext,
+  docId: string,
+  loc: Loc,
+  tag: string,
+): Promise<StyleInfo> {
+  const { source } = await sourceOf(ctx, docId);
+  return readStyleAt(source, loc, tag);
+}
+
+/**
+ * One save from the element panel: retyped text and style changes, located
+ * against the same read of the file and written once. Per-edit failures are
+ * reported, not thrown, like `writeTexts`.
+ */
+export async function writeEdits(
+  ctx: ApiContext,
+  docId: string,
+  texts: TextEdit[],
+  styles: StyleEdit[],
+): Promise<{ texts: TextEditOutcome[]; styles: TextEditOutcome[] }> {
+  if (texts.length + styles.length === 0) throw new OpsError(400, 'at least one edit is required');
+  const { entry, source } = await sourceOf(ctx, docId);
+  const result = replaceEditsAt(source, texts, styles);
+  if (result.source !== source) await fs.writeFile(entry, result.source, 'utf8');
+  return { texts: result.texts, styles: result.styles };
 }
 
 /** Leaves a `@doc-comment` marker in the source for a later agent pass to act on. */
