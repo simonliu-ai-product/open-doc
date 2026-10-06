@@ -1,5 +1,11 @@
 # @open-document/core
 
+## 0.11.0
+
+### Minor Changes
+
+- [#64](https://github.com/simonliu-ai-product/open-doc/pull/64) [`a25f0b5`](https://github.com/simonliu-ai-product/open-doc/commit/a25f0b501796819eeb0df09f88cab556a528c07c) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Add a Format section to the element panel: font, size, weight, emphasis, alignment, line height, letter spacing, text and fill colour for the selected element. Each value offers the document's design tokens first and is written into the element's `style` in source, saved together with on-page text edits.
+
 ## 0.10.0
 
 ### Minor Changes

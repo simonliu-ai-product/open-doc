@@ -1,5 +1,12 @@
 # @open-document/mcp
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [[`a25f0b5`](https://github.com/simonliu-ai-product/open-doc/commit/a25f0b501796819eeb0df09f88cab556a528c07c)]:
+  - @open-document/core@0.11.0
+
 ## 0.6.0
 
 ### Minor Changes
