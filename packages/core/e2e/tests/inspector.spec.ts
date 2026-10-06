@@ -68,7 +68,7 @@ test.describe('editing on the page', () => {
     expect(await readDocSource('edit-target')).toBe(original);
 
     const saved = page.waitForResponse(
-      (res) => res.url().includes('/__edit/texts') && res.request().method() === 'PUT',
+      (res) => res.url().includes('/__edit/batch') && res.request().method() === 'PUT',
     );
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     expect((await saved).status()).toBe(200);
@@ -79,6 +79,37 @@ test.describe('editing on the page', () => {
     // What remains on the page is the re-render from source, not the editor.
     await expect(viewer(page).locator('[data-od-editing]')).toHaveCount(0, { timeout: 15_000 });
     await expect(viewer(page).locator('h1')).toHaveText('Rewritten heading');
+  });
+
+  test('a style picked from the design tokens is written as the token', async ({ page }) => {
+    await enterEditMode(page);
+    await viewer(page).getByText('Editable paragraph').click();
+    const panel = page.getByRole('complementary', { name: 'Element' });
+    await panel.getByLabel('Size token').selectOption('token:size-h2');
+    await panel.getByRole('button', { name: 'Align center' }).click();
+    await expect(viewer(page).getByText('Editable paragraph')).toHaveCSS('font-size', '20px');
+    expect(await readDocSource('edit-target')).toBe(original);
+
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect
+      .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
+      .toContain(
+        `<p style={{ fontSize: 'var(--od-size-h2)', textAlign: 'center' }}>Editable paragraph</p>`,
+      );
+  });
+
+  test('an unsaved style is put back by Discard', async ({ page }) => {
+    await enterEditMode(page);
+    await viewer(page).getByText('Editable heading').click();
+    const panel = page.getByRole('complementary', { name: 'Element' });
+    await expect(panel.getByLabel('Size token')).toHaveValue('token:size-h1');
+    await panel.getByLabel('Text color token').selectOption('token:accent');
+    const heading = viewer(page).getByText('Editable heading');
+    await expect(heading).toHaveCSS('color', 'rgb(37, 99, 235)');
+
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(heading).toHaveCSS('color', 'rgb(22, 24, 29)');
+    expect(await readDocSource('edit-target')).toBe(original);
   });
 
   test('edits to several elements land in one write', async ({ page }) => {
@@ -98,7 +129,7 @@ test.describe('editing on the page', () => {
 
     const puts: string[] = [];
     page.on('request', (req) => {
-      if (req.url().includes('/__edit/text') && req.method() === 'PUT') puts.push(req.url());
+      if (req.url().includes('/__edit/') && req.method() === 'PUT') puts.push(req.url());
     });
     await page.keyboard.press('ControlOrMeta+s');
 
@@ -396,6 +427,7 @@ test.describe('editing on the page', () => {
     await enterEditMode(page);
     await viewer(page).getByText('Editable paragraph').click();
 
+    await page.getByRole('button', { name: 'Comment for the agent' }).click();
     await page.getByPlaceholder('make this bold, shorten to one line…').fill('tighten this');
     await page.getByRole('button', { name: 'Mark comment' }).click();
 
@@ -414,6 +446,16 @@ test.describe('editing on the page', () => {
 
     await page.getByRole('button', { name: 'Design', exact: true }).click();
     await expect(page.getByRole('complementary', { name: 'Element' })).toBeVisible();
+  });
+
+  test('picking an element while the design panel is open hands it the dock', async ({ page }) => {
+    await enterEditMode(page);
+    await page.getByRole('button', { name: 'Design', exact: true }).click();
+    await expect(page.getByRole('complementary', { name: 'Design' })).toBeVisible();
+
+    await viewer(page).getByText('Editable paragraph').click();
+    await expect(page.getByRole('complementary', { name: 'Element' })).toBeVisible();
+    await expect(page.getByRole('complementary', { name: 'Design' })).toHaveCount(0);
   });
 
   test('a stale edit is refused rather than overwriting the file', async ({ request }) => {
