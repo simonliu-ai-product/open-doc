@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { Command } from 'commander';
 import prompts from 'prompts';
+import { listDocTemplates } from './doc-templates.ts';
 import { type InitOptions, init, isDirNonEmpty, sanitizeDirName } from './init.ts';
 import { detectPackageManager, PACKAGE_MANAGERS, type PackageManager } from './package-manager.ts';
 
@@ -24,6 +25,7 @@ interface InitCliFlags {
   useBun?: boolean;
   install?: boolean;
   git?: boolean;
+  template?: string;
 }
 
 function onCancel(): never {
@@ -124,6 +126,7 @@ async function runInit(dirArg: string | undefined, flags: InitCliFlags): Promise
     packageManager: packageManager ?? detectPackageManager(),
     install: flags.install !== false,
     git: flags.git !== false,
+    ...(flags.template ? { template: flags.template } : {}),
   };
   await init(opts);
 }
@@ -151,8 +154,26 @@ export async function run(argv: string[]): Promise<void> {
     .option('--use-bun', 'use bun to install dependencies')
     .option('--no-install', 'skip dependency installation')
     .option('--no-git', 'skip git init and initial commit')
+    .option('-t, --template <name>', 'start with a document from a template (see `templates`)')
     .action(async (dir: string | undefined, flags: InitCliFlags) => {
       await runInit(dir, flags);
+    });
+
+  program
+    .command('templates')
+    .description('List the document templates `init --template` takes')
+    .action(async () => {
+      const templates = await listDocTemplates();
+      const width = Math.max(...templates.map((t) => t.name.length), 4);
+      for (const template of templates) {
+        process.stdout.write(
+          `  ${chalk.bold(template.name.padEnd(width))}  ${template.title}\n` +
+            (template.description
+              ? `  ${' '.repeat(width)}  ${chalk.dim(template.description)}\n`
+              : ''),
+        );
+      }
+      process.stdout.write(chalk.dim('\nnpx @open-document/cli init my-docs --template <name>\n'));
     });
 
   await program.parseAsync(argv, { from: 'user' });

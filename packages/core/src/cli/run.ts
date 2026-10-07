@@ -187,6 +187,25 @@ export async function run(argv: string[]): Promise<void> {
     });
 
   program
+    .command('templates')
+    .description('List the templates a new document can start from')
+    .option('--json', 'print them as JSON')
+    .action(async (flags: { json?: boolean }) => {
+      const { printTemplates } = await import('./templates.ts');
+      await printTemplates(flags);
+    });
+
+  program
+    .command('new [docId]')
+    .description('Create a document under docs/ from a template (see `open-doc templates`)')
+    .option('-t, --template <name>', 'template to start from (defaults to blank)')
+    .option('--title <title>', 'title of the new document')
+    .action(async (docId: string | undefined, flags: { template?: string; title?: string }) => {
+      const { newDoc } = await import('./templates.ts');
+      await newDoc(docId, flags);
+    });
+
+  program
     .command('import <file>')
     .description('Turn a Markdown file into a document under docs/')
     .option('--id <id>', 'document id (defaults to a slug of the title)')

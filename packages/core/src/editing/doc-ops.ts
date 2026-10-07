@@ -48,6 +48,11 @@ export function validateDocTitle(v: unknown): string | null {
  * the caller reports that rather than inventing an export.
  */
 export function setMetaTitle(source: string, title: string): string | null {
+  return setMetaString(source, 'title', title);
+}
+
+/** Sets one string field of `export const meta`, adding it first when it is missing. */
+export function setMetaString(source: string, field: string, value: string): string | null {
   const ast = parseStrict(source);
   if (!ast) return null;
   const object = findMetaObject(ast);
@@ -63,15 +68,17 @@ export function setMetaTitle(source: string, title: string): string | null {
     };
     if (p.computed) continue;
     const key = p.key.type === 'Identifier' ? p.key.name : p.key.value;
-    if (key !== 'title') continue;
-    return source.slice(0, p.value.start) + jsString(title) + source.slice(p.value.end);
+    if (key !== field) continue;
+    return source.slice(0, p.value.start) + jsString(value) + source.slice(p.value.end);
   }
 
-  // No `title` yet — insert it as the first property so it reads first.
+  // Not there yet — insert it as the first property so it reads first.
   const open = object.start + 1;
   const rest = source.slice(open, object.end - 1);
   const isEmpty = rest.trim() === '';
-  const inserted = isEmpty ? `\n  title: ${jsString(title)},\n` : `\n  title: ${jsString(title)},`;
+  const inserted = isEmpty
+    ? `\n  ${field}: ${jsString(value)},\n`
+    : `\n  ${field}: ${jsString(value)},`;
   return source.slice(0, open) + inserted + source.slice(open);
 }
 

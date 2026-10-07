@@ -6,6 +6,7 @@ import {
   checkLayout,
   createDocument,
   createFolder,
+  createFromTemplate,
   deleteAsset,
   deleteDocument,
   diffDocument,
@@ -18,6 +19,7 @@ import {
   listAssets,
   listDocuments,
   listFolders,
+  listTemplates,
   listThemes,
   OpsError,
   ORIENTATIONS,
@@ -104,6 +106,42 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
       }),
     },
     ({ docId, source }) => run(() => createDocument(ctx, docId, source)),
+  );
+
+  server.registerTool(
+    'list_templates',
+    {
+      title: 'List templates',
+      description:
+        'Templates a new document can start from — built-in and the workspace’s own templates/<name>/. The `name` is what create_from_template takes.',
+      inputSchema: z.object({}),
+    },
+    () => run(() => listTemplates(ctx)),
+  );
+
+  server.registerTool(
+    'create_from_template',
+    {
+      title: 'Create document from template',
+      description:
+        'Copy a template into docs/<id>/, retitled and dated today. Start here rather than from a blank file when a template fits; call list_templates for the names.',
+      inputSchema: z.object({
+        template: z.string().describe('a name from list_templates'),
+        docId: z
+          .string()
+          .optional()
+          .describe('kebab-case folder name; derived from the title when omitted'),
+        title: z.string().optional().describe('meta.title of the new document'),
+      }),
+    },
+    ({ template, docId, title }) =>
+      run(() =>
+        createFromTemplate(ctx, {
+          template,
+          ...(docId ? { docId } : {}),
+          ...(title ? { title } : {}),
+        }),
+      ),
   );
 
   server.registerTool(

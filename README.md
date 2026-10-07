@@ -173,6 +173,8 @@ Open http://localhost:5273. From there, drive it through your agent — or edit 
 | `open-doc check [ids…]` | Report layout faults; non-zero exit on errors |
 | `open-doc export [ids…]` | Headless PDF / HTML / PNG |
 | `open-doc import <file.md>` | Markdown → a document under `docs/` |
+| `open-doc templates` | List the templates a document can start from |
+| `open-doc new <id> --template <name>` | A new document from a template (`report`, `proposal`, `meeting-notes`, `letter`, `blank`, or your own `templates/<name>/`) |
 
 ## The file contract
 

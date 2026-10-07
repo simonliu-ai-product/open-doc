@@ -13,3 +13,5 @@ test-results
 apps/demo/out
 # `open-doc diff` checks the old version out here while it runs
 .open-doc-diff
+# Mirrored from packages/core/templates when the scaffolder builds
+packages/cli/doc-templates

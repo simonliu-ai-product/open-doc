@@ -29,6 +29,7 @@
     "env.d.ts",
     "src/app",
     "skills",
+    "templates",
     "README.md",
     "README.zh-TW.md"
   ],

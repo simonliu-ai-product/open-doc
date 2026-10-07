@@ -4,6 +4,7 @@ import { cp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
+import { addDocFromTemplate, listDocTemplates } from './doc-templates.ts';
 import { gitInitAndCommit } from './git.ts';
 import type { PackageManager } from './package-manager.ts';
 
@@ -18,6 +19,8 @@ export interface InitOptions {
   packageManager: PackageManager;
   install: boolean;
   git: boolean;
+  /** A document template to start the workspace with, beside the guides. */
+  template?: string;
 }
 
 export function sanitizeDirName(value: string): string {
@@ -88,12 +91,21 @@ async function runInstall(pm: PackageManager, cwd: string): Promise<void> {
 }
 
 export async function init(opts: InitOptions): Promise<void> {
-  const { dir, force, name, packageManager, install, git } = opts;
+  const { dir, force, name, packageManager, install, git, template } = opts;
 
   if (!existsSync(TEMPLATE_DIR)) {
     throw new Error(
       `Template missing at ${TEMPLATE_DIR}. If you are running from source, run \`pnpm --filter @open-document/cli build\` first.`,
     );
+  }
+
+  // Checked before anything is written, so a mistyped name leaves no
+  // half-made workspace behind.
+  if (template) {
+    const names = (await listDocTemplates()).map((entry) => entry.name);
+    if (!names.includes(template)) {
+      throw new Error(`No template named "${template}". Available: ${names.join(', ')}.`);
+    }
   }
 
   const target = resolve(process.cwd(), dir);
@@ -105,6 +117,7 @@ export async function init(opts: InitOptions): Promise<void> {
 
   await cp(TEMPLATE_DIR, target, { recursive: true });
   await materializeTemplateLinks(target);
+  const fromTemplate = template ? await addDocFromTemplate(target, template) : null;
 
   const pkgPath = join(target, 'package.json');
   if (existsSync(pkgPath)) {
@@ -146,6 +159,9 @@ export async function init(opts: InitOptions): Promise<void> {
   process.stdout.write(
     `\n${chalk.green.bold('✔ Created open-doc workspace')} ${chalk.dim(`in ${target}`)}\n`,
   );
+  if (fromTemplate) {
+    process.stdout.write(`${chalk.green('✔')} ${fromTemplate} ${chalk.dim(`from ${template}`)}\n`);
+  }
 
   let installed = false;
   if (install) {

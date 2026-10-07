@@ -63,4 +63,10 @@ export {
   type ThemeSummary,
   writeAsset,
 } from './library.ts';
+export {
+  createFromTemplate,
+  listTemplates,
+  suggestDocId,
+  type TemplateSummary,
+} from './templates.ts';
 export { addComment, type Loc, readText, writeText, writeTexts } from './text.ts';

@@ -23,6 +23,9 @@ open-doc init [dir]
   --use-pnpm         (or --use-npm / --use-yarn / --use-bun)
   --no-install       skip dependency installation
   --no-git           skip git init and the initial commit
+  -t, --template <name>  start with a document from a template
+
+open-doc templates   list the template names --template takes
 ```
 
 MIT

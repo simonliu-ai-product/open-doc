@@ -23,6 +23,9 @@ open-doc init [dir]
   --use-pnpm         （或 --use-npm / --use-yarn / --use-bun）
   --no-install       略過安裝相依套件
   --no-git           略過 git init 與初始 commit
+  -t, --template <name>  從範本建立一份起始文件
+
+open-doc templates   列出 --template 可用的範本名稱
 ```
 
 MIT

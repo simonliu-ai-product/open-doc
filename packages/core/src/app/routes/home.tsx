@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Palette,
   PencilLine,
+  Plus,
   Search,
   Trash2,
 } from 'lucide-react';
@@ -24,6 +25,7 @@ import {
   PageHeader,
   useCardWidth,
 } from '../components/browser/browser-ui';
+import { NewDocumentDialog } from '../components/browser/new-document-dialog';
 import { PageFrame } from '../components/page-frame';
 import { DOC_DND_MIME } from '../components/sidebar/folder-item';
 import { ALL_DOCS_ID, DRAFT_ID } from '../components/sidebar/sidebar';
@@ -92,6 +94,19 @@ export function Home() {
   const [error, setError] = useState<string | null>(null);
   const [sort, setSortState] = useState<SortKey>(readSort);
   const [filter, setFilter] = useState('');
+  const [creating, setCreating] = useState(false);
+  const inFolder =
+    ctx.selectedId !== ALL_DOCS_ID && ctx.selectedId !== DRAFT_ID ? ctx.selectedId : null;
+  const newButton = import.meta.env.DEV && (
+    <button
+      type="button"
+      onClick={() => setCreating(true)}
+      className="flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
+    >
+      <Plus className="size-3.5" />
+      {t('New document')}
+    </button>
+  );
 
   const setSort = (next: SortKey) => {
     setSortState(next);
@@ -134,7 +149,7 @@ export function Home() {
         }
         count={sourceIds.length}
         actions={
-          sourceIds.length > 0 && (
+          sourceIds.length > 0 ? (
             <>
               <Menu
                 placement="bottom-end"
@@ -179,7 +194,10 @@ export function Home() {
                   className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
                 />
               </label>
+              {newButton}
             </>
+          ) : (
+            newButton
           )
         }
       >
@@ -202,6 +220,7 @@ export function Home() {
           {ctx.selectedId === ALL_DOCS_ID
             ? t('Ask your agent to write a document, and it appears here.')
             : t('Drag a document onto this folder, or use Move to on its card.')}
+          {newButton && <div className="mt-4 flex justify-center">{newButton}</div>}
         </EmptyState>
       ) : (
         <div className={CARD_GRID}>
@@ -209,6 +228,9 @@ export function Home() {
             <DocCard key={id} docId={id} ctx={ctx} onError={setError} />
           ))}
         </div>
+      )}
+      {import.meta.env.DEV && (
+        <NewDocumentDialog open={creating} folderId={inFolder} onClose={() => setCreating(false)} />
       )}
     </div>
   );
