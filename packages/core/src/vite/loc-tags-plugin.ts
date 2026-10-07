@@ -11,7 +11,7 @@ import { type AstNode, parseSource, walkJsx } from '../editing/babel-walk.ts';
 // so the inspector can target them like a host element. See `app/lib/source-loc.ts`.
 const FORWARDING_COMPONENTS = new Set(['ImagePlaceholder', 'Figure', 'DataTable', 'Footnote']);
 
-function taggableName(opening: AstNode): string | null {
+export function taggableName(opening: AstNode): string | null {
   const name = opening.name as { type?: string; name?: string } | undefined;
   if (name?.type !== 'JSXIdentifier' || typeof name.name !== 'string') return null;
   if (/^[a-z]/.test(name.name) || FORWARDING_COMPONENTS.has(name.name)) return name.name;

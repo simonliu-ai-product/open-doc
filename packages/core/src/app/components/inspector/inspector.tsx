@@ -66,6 +66,7 @@ import {
 } from '../../lib/inspector/inline-edit';
 import { PROP_ATTR } from '../../lib/source-loc';
 import { useHistory } from '../history-provider';
+import { OverlayFrame } from '../overlay-frame';
 import { CollapsibleSection, Section } from '../panel/fields';
 import { PanelIconButton, PanelShell } from '../panel/panel-shell';
 import { FormatSection } from './format-section';
@@ -192,73 +193,17 @@ function kindOf(tag: string): { label: string; vars?: Record<string, number>; ic
   return { label: 'Box', icon: Square };
 }
 
-type Rect = { left: number; top: number; width: number; height: number };
-
-function sameRect(a: Rect | null, b: Rect) {
-  return (
-    a !== null &&
-    a.left === b.left &&
-    a.top === b.top &&
-    a.width === b.width &&
-    a.height === b.height
-  );
-}
+type FrameVariant = keyof typeof FRAME_STYLE;
 
 function Frame({
-  anchor,
-  container,
   variant,
+  ...rest
 }: {
   anchor: HTMLElement | null;
   container: HTMLElement;
-  variant: 'hover' | 'selected' | 'pending' | 'twin';
+  variant: FrameVariant;
 }) {
-  const [rect, setRect] = useState<Rect | null>(null);
-
-  // Deliberately no dependency array. Opening a side pane re-zooms and re-centres
-  // the pages, which moves the anchor without resizing it — ResizeObserver never
-  // sees that, and the zoom lands a frame after the observer would have fired.
-  // Measuring after every render is what keeps the frame on its element; the
-  // value comparison below stops that from looping.
-  useLayoutEffect(() => {
-    if (!anchor?.isConnected) {
-      setRect(null);
-      return;
-    }
-    // The overlay is absolutely positioned inside the scroller, so its origin
-    // is the content box — frames live in content coordinates and scroll along
-    // with the pages.
-    const measure = () => {
-      const a = anchor.getBoundingClientRect();
-      const c = container.getBoundingClientRect();
-      const next = {
-        left: a.left - c.left + container.scrollLeft,
-        top: a.top - c.top + container.scrollTop,
-        width: a.width,
-        height: a.height,
-      };
-      setRect((prev) => (sameRect(prev, next) ? prev : next));
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(anchor);
-    ro.observe(container);
-    container.addEventListener('scroll', measure, { passive: true });
-    return () => {
-      ro.disconnect();
-      container.removeEventListener('scroll', measure);
-    };
-  });
-
-  if (!rect) return null;
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute rounded-[2px]"
-      style={{ ...rect, ...FRAME_STYLE[variant] }}
-    />
-  );
+  return <OverlayFrame {...rest} style={FRAME_STYLE[variant]} />;
 }
 
 const TOOLBAR_GAP = 6;

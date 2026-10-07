@@ -35,6 +35,11 @@
   --primary: oklch(0.185 0 0);
   --primary-foreground: oklch(0.985 0 0);
   --border: oklch(0.9 0 0);
+  /* Changes since a revision: added, rewritten, taken out. They mark the
+     paper as well as the chrome, so they stay readable on white either way. */
+  --change-added: oklch(0.58 0.15 150);
+  --change-changed: oklch(0.68 0.15 70);
+  --change-removed: oklch(0.58 0.2 25);
 }
 
 .dark {
@@ -49,6 +54,9 @@
   --primary: oklch(0.97 0 0);
   --primary-foreground: oklch(0.16 0 0);
   --border: oklch(0.28 0 0);
+  --change-added: oklch(0.7 0.15 150);
+  --change-changed: oklch(0.78 0.14 75);
+  --change-removed: oklch(0.68 0.19 25);
 }
 
 /* The dock's content arrives from the edge it docks against. Opacity only
