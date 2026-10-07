@@ -18,12 +18,15 @@ export type MeasurableSection = {
   padding?: number;
 };
 
-function metricsFor(el: HTMLElement, height: number, footnoteHeight: number): BlockMetrics {
+export function metricsFor(el: HTMLElement, height: number, footnoteHeight: number): BlockMetrics {
   const inner = el.firstElementChild;
   const tag = inner?.tagName ?? '';
-  const declaredKeepNext = inner?.getAttribute('data-od-keep-with-next');
-  const declaredKeepPrev = inner?.getAttribute('data-od-keep-with-previous');
-  const declaredBreak = inner?.getAttribute('data-od-break-before');
+  // `?? null`: a block that renders nothing has no child, and `undefined`
+  // would pass every `!== null` below — an empty block then broke the page
+  // before it and glued itself to the next.
+  const declaredKeepNext = inner?.getAttribute('data-od-keep-with-next') ?? null;
+  const declaredKeepPrev = inner?.getAttribute('data-od-keep-with-previous') ?? null;
+  const declaredBreak = inner?.getAttribute('data-od-break-before') ?? null;
 
   return {
     height,

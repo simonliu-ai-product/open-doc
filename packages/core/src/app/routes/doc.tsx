@@ -48,6 +48,7 @@ import { PageFrame } from '../components/page-frame';
 import { elementsAtLoc, usePlacement } from '../components/page-placement';
 import { browserItems } from '../components/palette-items';
 import { EditSaveCard } from '../components/panel/edit-save-card';
+import { RecordPicker } from '../components/record-picker';
 import { ThemeToggle } from '../components/theme-toggle';
 import { Menu, MenuItem } from '../components/ui/menu';
 import { useAgentBridge } from '../lib/agent-bridge';
@@ -64,6 +65,7 @@ import {
   resolveSelection,
 } from '../lib/page-range';
 import { nextFrame, waitForFonts } from '../lib/print-ready';
+import { getRecordState, setRecords, useRecordIndex } from '../lib/records';
 import { scanDocument } from '../lib/scan';
 import { pageLang, resolvePageGeometry } from '../lib/sdk';
 import { useDocModule } from '../lib/use-doc-module';
@@ -246,7 +248,18 @@ export function Doc() {
   const jumpedRef = useRef<number | null>(null);
 
   const geometry = useMemo(() => resolvePageGeometry(doc?.meta), [doc?.meta]);
+  // The rows this document prints for. Set before the pages measure, and kept
+  // on the same row across a reload — an edit should not jump the preview
+  // back to the first one. `?record=` opens on a given row.
+  useLayoutEffect(() => {
+    const fromUrl = Number(new URLSearchParams(window.location.search).get('record'));
+    const keep = getRecordState().records.length > 0 ? getRecordState().index : fromUrl - 1;
+    setRecords(doc?.records, Number.isFinite(keep) ? keep : 0);
+  }, [doc]);
+  useEffect(() => () => setRecords(undefined), []);
+
   const { pages, measuring, overflowing } = useDocPages(doc, geometry);
+  const recordIndex = useRecordIndex();
 
   // Read again on every reload of the document, so what an agent just wrote
   // shows up in the count and on the page without being asked for.
@@ -305,7 +318,15 @@ export function Doc() {
   }, []);
   const outline = useDocOutline();
 
-  useAgentBridge({ docId: docId ?? '', doc, pages, geometry, measuring, oversized: overflowing });
+  useAgentBridge({
+    docId: docId ?? '',
+    doc,
+    pages,
+    geometry,
+    measuring,
+    oversized: overflowing,
+    record: recordIndex,
+  });
 
   const clamp = (value: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
   // Every fit is of the unit the mode lays side by side — a sheet, a spread,
@@ -724,6 +745,9 @@ export function Doc() {
           <div className="flex min-w-0 items-center gap-1">
             <HeaderBackLink />
             <h1 className="truncate font-medium text-sm">{doc.meta?.title ?? docId}</h1>
+            {doc.records && doc.records.length > 0 && (
+              <RecordPicker records={doc.records} labelKey={doc.meta?.recordLabel} />
+            )}
           </div>
 
           <div className="hidden items-center gap-2 sm:flex">

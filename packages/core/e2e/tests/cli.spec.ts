@@ -134,4 +134,30 @@ test.describe('open-doc CLI', () => {
     expect(wrong.code).not.toBe(0);
     expect(wrong.stderr + wrong.stdout).toContain('open-doc templates');
   });
+
+  test('export --each writes one copy per record, named from the row', async () => {
+    const dir = prepareScratchProject('cli-each');
+    const made = await runCli(['new', 'awards', '--template', 'certificate'], dir);
+    expect(made.code, made.stderr).toBe(0);
+
+    const each = await runCli(['export', 'awards', '--each', '--out-dir', 'out'], dir);
+    expect(each.code, each.stderr).toBe(0);
+    const files = (await fs.readdir(path.join(dir, 'out'))).sort();
+    expect(files).toEqual([
+      'certificate-Alex Wang.pdf',
+      'certificate-Chen Wei.pdf',
+      'certificate-Lin Mei.pdf',
+    ]);
+
+    const named = await runCli(
+      ['export', 'awards', '--each', '--name', '{#}-{name}', '--out-dir', 'numbered'],
+      dir,
+    );
+    expect(named.code, named.stderr).toBe(0);
+    expect((await fs.readdir(path.join(dir, 'numbered'))).sort()[0]).toBe('1-Lin Mei.pdf');
+
+    const none = await runCli(['export', 'alpha', '--each'], dir);
+    expect(none.code).not.toBe(0);
+    expect(none.stderr + none.stdout).toContain('has no records');
+  });
 });

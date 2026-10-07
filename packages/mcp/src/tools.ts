@@ -420,9 +420,27 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         docId: z.string(),
         format: z.enum(EXPORT_FORMATS).default('pdf'),
         outDir: z.string().optional().describe('relative to the workspace root; defaults to `out`'),
+        each: z
+          .boolean()
+          .optional()
+          .describe('one copy per row of the document’s `records` — certificates, letters, quotes'),
+        name: z
+          .string()
+          .optional()
+          .describe(
+            'with each: file name pattern, `{column}` for a value and `{#}` for the row number',
+          ),
       }),
     },
-    ({ docId, format, outDir }) => run(() => exportDocument(ctx, docId, { format, outDir })),
+    ({ docId, format, outDir, each, name }) =>
+      run(() =>
+        exportDocument(ctx, docId, {
+          format,
+          outDir,
+          ...(each ? { each } : {}),
+          ...(name ? { name } : {}),
+        }),
+      ),
   );
 
   server.registerTool(

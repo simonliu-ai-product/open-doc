@@ -61,4 +61,8 @@ export const DOC: Record<string, string> = {
   'Actual size (100%)': '实际大小 (100%)',
   'Link copied': '已复制链接',
   'Copy link': '复制链接',
+  Record: '数据行',
+  'Previous record': '上一条数据',
+  'Next record': '下一条数据',
+  Certificate: '证书',
 };

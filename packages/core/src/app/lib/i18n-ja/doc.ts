@@ -62,4 +62,8 @@ export const DOC: Record<string, string> = {
   'Actual size (100%)': '実際のサイズ (100%)',
   'Link copied': 'リンクをコピーしました',
   'Copy link': 'リンクをコピー',
+  Record: 'レコード',
+  'Previous record': '前のレコード',
+  'Next record': '次のレコード',
+  Certificate: '修了証',
 };

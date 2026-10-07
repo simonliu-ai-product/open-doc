@@ -62,4 +62,8 @@ export const DOC: Record<string, string> = {
   'Actual size (100%)': '실제 크기 (100%)',
   'Link copied': '링크 복사됨',
   'Copy link': '링크 복사',
+  Record: '레코드',
+  'Previous record': '이전 레코드',
+  'Next record': '다음 레코드',
+  Certificate: '수료증',
 };

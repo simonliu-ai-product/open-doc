@@ -4,6 +4,7 @@ import { buildDocDocx } from './export-docx';
 import { buildDocHtmlBundle } from './export-html';
 import { mountPrintCopy, type PrintCopy } from './export-pdf';
 import { exposeOutline } from './outline';
+import { recordFileName, setRecordIndex } from './records';
 import type { DocModule, PageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
@@ -16,6 +17,10 @@ export type BridgeStatus = {
   ready: boolean;
   pageCount: number;
   geometry: PageGeometry;
+  /** Rows the document prints one copy for (`records`); 0 when it has none. */
+  records: number;
+  /** The row the pages are laid out for right now, 0-based. */
+  record: number;
 };
 
 export type BridgeReport = BridgeStatus & { findings: LayoutFinding[] };
@@ -32,6 +37,12 @@ export type OpenDocBridge = {
   releasePrint(): void;
   htmlBundle(): Promise<BridgeBundle | null>;
   docxBundle(): Promise<BridgeBundle | null>;
+  /**
+   * Lays the document out for one row and names its file — from `pattern`,
+   * else `meta.recordName`, else `<id>-{#}`. Wait for `status()` to report
+   * that row and `ready` before printing.
+   */
+  setRecord(index: number, pattern?: string): { name: string };
 };
 
 type BridgeInput = {
@@ -41,6 +52,8 @@ type BridgeInput = {
   geometry: PageGeometry;
   measuring: boolean;
   oversized: Array<{ section: number; block: number }>;
+  /** The row this render is laid out for — read from the render, never the store, so `ready` and the row agree. */
+  record: number;
 };
 
 type GlobalWithBridge = typeof globalThis & { [BRIDGE_KEY]?: OpenDocBridge };
@@ -70,13 +83,15 @@ export function useAgentBridge(input: BridgeInput): void {
     let held: PrintCopy | null = null;
 
     const status = (): BridgeStatus => {
-      const { docId, doc, pages, geometry, measuring } = latest.current;
+      const { docId, doc, pages, geometry, measuring, record } = latest.current;
       return {
         docId,
         title: doc?.meta?.title ?? docId,
         ready: doc !== null && !measuring && pages.length > 0,
         pageCount: pages.length,
         geometry,
+        records: doc?.records?.length ?? 0,
+        record,
       };
     };
 
@@ -124,6 +139,19 @@ export function useAgentBridge(input: BridgeInput): void {
           filename: bundle.filename,
           mimeType: bundle.mimeType,
           base64: toBase64(bundle.bytes),
+        };
+      },
+      setRecord(index, pattern) {
+        const { docId, doc } = latest.current;
+        const records = doc?.records ?? [];
+        setRecordIndex(index);
+        return {
+          name: recordFileName(
+            pattern ?? doc?.meta?.recordName ?? `${docId}-{#}`,
+            records[index],
+            index,
+            records.length,
+          ),
         };
       },
       async docxBundle() {

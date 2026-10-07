@@ -4,6 +4,7 @@ import type { DesignSystem } from './design';
 import { type DocEntry, type FlowSection, isFlowSection, paginateBlocks } from './flow';
 import { type MeasurableSection, measureFlowSections } from './flow-measure';
 import { extractSectionFootnotes, notesForPage, type PreparedSection } from './footnotes';
+import { useRecordIndex } from './records';
 import { type DocModule, type PageGeometry, pageLang } from './sdk';
 
 export type ExpandedPage = {
@@ -20,9 +21,10 @@ type Plan = {
 const EMPTY_PLAN: Plan = { bySection: [], overflowing: [] };
 
 /** A plan is only current for the sections it was measured from. */
-type Measured = { plan: Plan; sections: FlowSection[] | null };
+/** What was measured: these sections, printed for this record. */
+type Measured = { plan: Plan; sections: FlowSection[] | null; record: number };
 
-const NOT_MEASURED: Measured = { plan: EMPTY_PLAN, sections: null };
+const NOT_MEASURED: Measured = { plan: EMPTY_PLAN, sections: null, record: -1 };
 
 function entriesOf(doc: DocModule | null): DocEntry[] {
   return (doc?.default ?? []) as DocEntry[];
@@ -41,6 +43,9 @@ export function useDocPages(
   const sections = useMemo(() => entries.filter(isFlowSection), [entries]);
   const design = doc?.design as DesignSystem | undefined;
   const lang = pageLang(doc?.meta);
+  // A row's own words wrap differently from the last one's, so a new record
+  // is a new measurement — the same reason a new document is.
+  const record = useRecordIndex();
 
   // Footnotes come out of the blocks before anything is measured: what they
   // cost at the foot of a page is part of that page's budget.
@@ -63,11 +68,11 @@ export function useDocPages(
   // one commit after the document loads, and anything reading the page list in
   // that window — the outline scan, the headless bridge — sees a whole flow
   // section as one unpaginated page.
-  const measuring = sections.length > 0 && state.sections !== sections;
+  const measuring = sections.length > 0 && (state.sections !== sections || state.record !== record);
 
   useEffect(() => {
     if (sections.length === 0) {
-      setState({ plan: EMPTY_PLAN, sections });
+      setState({ plan: EMPTY_PLAN, sections, record });
       return;
     }
     let cancelled = false;
@@ -85,15 +90,15 @@ export function useDocPages(
             overflowing.push({ section: sectionIndex, block });
           }
         });
-        setState({ plan: { bySection, overflowing }, sections });
+        setState({ plan: { bySection, overflowing }, sections, record });
       })
       .catch(() => {
-        if (!cancelled) setState({ plan: EMPTY_PLAN, sections });
+        if (!cancelled) setState({ plan: EMPTY_PLAN, sections, record });
       });
     return () => {
       cancelled = true;
     };
-  }, [sections, measurable, geometry, design, lang]);
+  }, [sections, measurable, geometry, design, lang, record]);
 
   const plan = state.plan;
 
