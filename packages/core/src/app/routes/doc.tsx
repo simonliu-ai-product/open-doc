@@ -674,14 +674,16 @@ export function Doc() {
   // page" from node_modules/.open-doc/current.json. See vite/current-plugin.ts.
   useEffect(() => {
     if (!import.meta.hot) return;
-    if (!docId || !doc || pages.length === 0) return;
+    // Not while the flow sections are still being measured: the page count
+    // then is the unpaginated one, and an agent reading it would act on it.
+    if (!docId || !doc || pages.length === 0 || measuring) return;
     import.meta.hot.send('open-doc:current', {
       docId,
       pageIndex: currentPage - 1,
       totalPages: pages.length,
       docTitle: doc.meta?.title ?? docId,
     });
-  }, [docId, doc, currentPage, pages.length]);
+  }, [docId, doc, currentPage, pages.length, measuring]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
