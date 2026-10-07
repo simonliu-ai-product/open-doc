@@ -1,4 +1,5 @@
 import { createElement, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { FLOW_BLOCK_ATTR, FlowBlock } from '../components/flow-page';
 import { FOOTNOTE_AREA_MARGIN_TOP, FOOTNOTE_ROW_ATTR, Footnotes } from '../components/footnote';
@@ -118,16 +119,23 @@ export async function measureFlowSections(
   };
 
   try {
+    // Out of the effect that called us, so `flushSync` below may commit.
+    await Promise.resolve();
     for (const section of sections) {
       const width = opts.geometry.width - paddingOf(section) * 2;
 
       const blocks = makeContainer(width);
       blockContainers.push(blocks);
       const blockRoot = createRoot(blocks);
-      blockRoot.render(
-        section.blocks.map((block, index) =>
-          createElement(FlowBlock, { key: index }, block),
-        ) as unknown as Parameters<typeof blockRoot.render>[0],
+      // Committed now, not on React's schedule: on a slow machine a render
+      // left to finish on its own was still empty when the frames below had
+      // passed, the section measured as no blocks, and it printed as no pages.
+      flushSync(() =>
+        blockRoot.render(
+          section.blocks.map((block, index) =>
+            createElement(FlowBlock, { key: index }, block),
+          ) as unknown as Parameters<typeof blockRoot.render>[0],
+        ),
       );
       roots.push(blockRoot);
 
@@ -139,13 +147,24 @@ export async function measureFlowSections(
       const notes = makeContainer(width);
       noteContainers.push(notes);
       const noteRoot = createRoot(notes);
-      noteRoot.render(createElement(Footnotes, { notes: allNotes }));
+      flushSync(() => noteRoot.render(createElement(Footnotes, { notes: allNotes })));
       roots.push(noteRoot);
     }
 
     await nextFrame();
     await waitForFonts();
     await nextFrame();
+    // Every block has its wrapper before anything is read: a short count would
+    // be packed as a short section.
+    for (let frame = 0; frame < 60; frame++) {
+      const complete = sections.every(
+        (section, index) =>
+          (blockContainers[index]?.querySelectorAll(`:scope > [${FLOW_BLOCK_ATTR}]`).length ?? 0) >=
+          section.blocks.length,
+      );
+      if (complete) break;
+      await nextFrame();
+    }
 
     return sections.map((section, sectionIndex) => {
       const padding = paddingOf(section);
