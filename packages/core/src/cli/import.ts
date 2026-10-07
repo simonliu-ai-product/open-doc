@@ -7,6 +7,7 @@ export interface ImportOptions {
   id?: string;
   title?: string;
   subtitle?: string;
+  lang?: string;
   author?: string;
   theme?: string;
   pageSize?: string;
@@ -24,6 +25,7 @@ export async function importDoc(file: string, opts: ImportOptions = {}): Promise
     ...(opts.id !== undefined ? { docId: opts.id } : {}),
     ...(opts.title !== undefined ? { title: opts.title } : {}),
     ...(opts.subtitle !== undefined ? { subtitle: opts.subtitle } : {}),
+    ...(opts.lang !== undefined ? { lang: opts.lang } : {}),
     ...(opts.author !== undefined ? { author: opts.author } : {}),
     ...(opts.theme !== undefined ? { theme: opts.theme } : {}),
     ...(opts.pageSize !== undefined ? { pageSize: opts.pageSize } : {}),

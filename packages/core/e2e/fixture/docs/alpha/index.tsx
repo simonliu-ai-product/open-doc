@@ -2,6 +2,7 @@ import type { DocMeta, DocPage } from '@open-document/core';
 import type { CSSProperties } from 'react';
 
 export const meta: DocMeta = {
+  lang: 'en-GB',
   title: 'Alpha Report',
   subtitle: 'Fixture document one',
   theme: 'plain',

@@ -73,7 +73,7 @@ function stackedHeights(container: HTMLElement, selector: string): number[] {
  */
 export async function measureFlowSections(
   sections: MeasurableSection[],
-  opts: { geometry: PageGeometry; design?: DesignSystem },
+  opts: { geometry: PageGeometry; design?: DesignSystem; lang?: string },
 ): Promise<FlowMeasurement[]> {
   if (sections.length === 0) return [];
 
@@ -82,6 +82,9 @@ export async function measureFlowSections(
   // The sheet's own element styles (styles.css) apply here too, so a block
   // measures as it will print.
   host.setAttribute('data-od-measure', '');
+  // Where a line breaks depends on the language, so it is measured in the one
+  // it prints in.
+  host.setAttribute('lang', opts.lang ?? 'en');
   Object.assign(host.style, {
     position: 'fixed',
     left: '-99999px',

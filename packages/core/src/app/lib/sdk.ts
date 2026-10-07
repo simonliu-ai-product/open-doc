@@ -86,7 +86,23 @@ export type DocMeta = {
   createdAt?: string;
   /** What numbered items are called — `圖`/`表` instead of `Figure`/`Table`. */
   labels?: Partial<LabelVocabulary>;
+  /**
+   * The language the document is written in, as a BCP 47 tag — `zh-Hant-TW`,
+   * `ja`, `ko`, `en-GB`. It decides glyph shapes for shared Han characters,
+   * which line-breaking rules apply, and the language an exported file
+   * declares. English when unset.
+   */
+  lang?: string;
 };
+
+/**
+ * The `lang` every sheet carries. Always set, never inherited: a sheet that
+ * took its language from the viewer would break lines and pick glyphs by the
+ * reader's interface language, and print differently for each reader.
+ */
+export function pageLang(meta?: DocMeta): string {
+  return meta?.lang?.trim() || 'en';
+}
 
 export type FolderIcon = { type: 'emoji'; value: string } | { type: 'color'; value: string };
 

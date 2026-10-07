@@ -18,6 +18,8 @@ export type GenerateOptions = {
   theme?: string;
   pageSize?: string;
   orientation?: string;
+  /** BCP 47 language tag for `meta.lang`. */
+  lang?: string;
   /** ISO 8601, written as a plain string literal — the framework reads it with a regex. */
   createdAt: string;
   /** Open with a title page. */
@@ -380,6 +382,7 @@ export function generateDocumentSource(
   const theme = opts.theme ?? parsed.frontmatter.theme;
   const pageSize = opts.pageSize ?? parsed.frontmatter.pageSize;
   const orientation = opts.orientation ?? parsed.frontmatter.orientation;
+  const lang = opts.lang ?? parsed.frontmatter.lang;
   const cover = opts.cover !== false;
 
   let blocks = parsed.blocks;
@@ -458,6 +461,7 @@ ${blocks.map((block) => renderBlock(block, images, '    ')).join('\n')}
     ...(pageSize ? [`  pageSize: ${jsString(pageSize)},`] : []),
     ...(orientation ? [`  orientation: ${jsString(orientation)},`] : []),
     ...(theme ? [`  theme: ${jsString(theme)},`] : []),
+    ...(lang ? [`  lang: ${jsString(lang)},`] : []),
     `  createdAt: ${jsString(opts.createdAt)},`,
   ];
 

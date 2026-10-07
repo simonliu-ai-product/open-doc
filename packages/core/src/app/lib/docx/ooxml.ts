@@ -169,7 +169,33 @@ export type DocxModel = {
   images: ImagePart[];
   /** One entry per list; ordered lists restart at 1 each. */
   lists: Array<'bullet' | 'decimal'>;
+  /** The document's language as a BCP 47 tag — see `pageLang`. */
+  lang?: string;
 };
+
+/**
+ * The document's language the way Word files it. Word keeps Latin and East
+ * Asian text apart: a Chinese document still has Latin runs, and its
+ * proofing, line-breaking (kinsoku) and fallback fonts follow the East Asian
+ * language, so that one goes in `eastAsia`.
+ */
+export function wordLang(lang = 'en'): string {
+  const tag = lang.toLowerCase();
+  const eastAsia = tag.startsWith('zh')
+    ? /hant|-tw|-hk|-mo/.test(tag)
+      ? tag.includes('-hk')
+        ? 'zh-HK'
+        : 'zh-TW'
+      : 'zh-CN'
+    : tag.startsWith('ja')
+      ? 'ja-JP'
+      : tag.startsWith('ko')
+        ? 'ko-KR'
+        : null;
+  if (eastAsia) return `<w:lang w:val="en-US" w:eastAsia="${eastAsia}"/>`;
+  const latin = tag === 'en' ? 'en-US' : lang.replace(/[^A-Za-z0-9-]/g, '');
+  return `<w:lang w:val="${latin}"/>`;
+}
 
 export const PX_TO_TWIPS = 15;
 export const PX_TO_EMU = 9525;
@@ -546,7 +572,7 @@ function stylesXml(model: DocxModel): string {
     `<w:style w:type="paragraph" w:styleId="TOC${level}"><w:name w:val="toc ${level}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="39"/><w:pPr><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${textWidth}"/></w:tabs><w:spacing w:after="60"/><w:ind w:left="${(level - 1) * 240}"/></w:pPr></w:style>`;
   return (
     `${XML_HEAD}<w:styles ${NS}>` +
-    `<w:docDefaults><w:rPrDefault><w:rPr>${fontsXml(fonts.body)}<w:color w:val="${colors.text}"/><w:sz w:val="${sizes.body}"/><w:szCs w:val="${sizes.body}"/></w:rPr></w:rPrDefault>` +
+    `<w:docDefaults><w:rPrDefault><w:rPr>${fontsXml(fonts.body)}<w:color w:val="${colors.text}"/><w:sz w:val="${sizes.body}"/><w:szCs w:val="${sizes.body}"/>${wordLang(model.lang)}</w:rPr></w:rPrDefault>` +
     `<w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="${Math.round(model.line)}" w:lineRule="atLeast"/></w:pPr></w:pPrDefault></w:docDefaults>` +
     '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
     '<w:style w:type="character" w:default="1" w:styleId="DefaultParagraphFont"><w:name w:val="Default Paragraph Font"/><w:uiPriority w:val="1"/><w:semiHidden/></w:style>' +

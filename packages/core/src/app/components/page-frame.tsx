@@ -11,6 +11,8 @@ type Props = {
   geometry: PageGeometry;
   scale: number;
   design?: DesignSystem;
+  /** The document's language — see `pageLang`. */
+  lang?: string;
   flat?: boolean;
   className?: string;
   children: ReactNode;
@@ -27,6 +29,7 @@ export function PageFrame({
   geometry,
   scale,
   design,
+  lang = 'en',
   flat = false,
   className,
   children,
@@ -44,6 +47,7 @@ export function PageFrame({
     >
       <div
         {...{ [PAGE_ATTR]: '', [PAGE_INDEX_ATTR]: index }}
+        lang={lang}
         style={
           {
             width: geometry.width,

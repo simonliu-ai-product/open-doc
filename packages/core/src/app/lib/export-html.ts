@@ -12,7 +12,7 @@ import {
   uniqueAssetName,
 } from './export-dom';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
-import { type DocModule, type PageGeometry, resolvePageGeometry } from './sdk';
+import { type DocModule, type PageGeometry, pageLang, resolvePageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
 type AssetEntry = { name: string; bytes: Uint8Array };
@@ -61,6 +61,7 @@ export async function buildDocHtmlBundle(
 
   const html = buildHtml({
     title,
+    lang: pageLang(doc.meta),
     geometry,
     design: doc.design,
     pagesHtml: pagesHtml.map((page) => rewriteUrls(page, assets, 'html')),
@@ -112,6 +113,7 @@ function rewriteUrls(
 
 function buildHtml(opts: {
   title: string;
+  lang: string;
   geometry: PageGeometry;
   design: DocModule['design'];
   pagesHtml: string[];
@@ -133,7 +135,7 @@ function buildHtml(opts: {
     .join('\n');
 
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeAttr(opts.lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

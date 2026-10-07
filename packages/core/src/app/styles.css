@@ -134,6 +134,18 @@
     font-size: var(--od-size-body, 14px);
     line-height: var(--od-leading, 1.55);
     color: var(--od-text, #16181d);
+    /* Chinese, Japanese and Korean set as they are meant to be: no closing
+     * punctuation or small kana at the start of a line (kinsoku), and an
+     * eighth of an em between a CJK character and a Latin letter or digit
+     * where the author left no space. Both do nothing to text in other
+     * scripts. They need the sheet's `lang` (meta.lang) to pick the right
+     * rules and glyphs. */
+    line-break: strict;
+    text-autospace: normal;
+  }
+  /* Japanese headings break between phrases, not inside a word. */
+  :is([data-od-page], [data-od-measure]) :where(h1, h2, h3, h4, h5, h6):lang(ja) {
+    word-break: auto-phrase;
   }
   :is([data-od-page], [data-od-measure]) :where(h1, h2, h3, h4, h5, h6) {
     font-family: var(

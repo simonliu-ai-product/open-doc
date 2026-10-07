@@ -33,7 +33,7 @@ import { Menu, MenuItem, MenuSeparator } from '../components/ui/menu';
 import { coverContent } from '../lib/doc-preview';
 import { docCreatedAt, docIds, docThemes, docTitles } from '../lib/docs';
 import { type Translate, useLocale, useT } from '../lib/i18n';
-import { resolvePageGeometry } from '../lib/sdk';
+import { pageLang, resolvePageGeometry } from '../lib/sdk';
 import { findTheme } from '../lib/themes';
 import { useDocModule } from '../lib/use-doc-module';
 import type { HomeOutletContext } from './home-shell';
@@ -291,6 +291,7 @@ function DocCard({
               geometry={geometry}
               scale={scale}
               design={doc?.design}
+              lang={pageLang(doc?.meta)}
               flat
             >
               {cover}

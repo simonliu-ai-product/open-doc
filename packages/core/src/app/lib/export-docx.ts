@@ -27,7 +27,7 @@ import { downloadBlob, withRenderedPages } from './export-dom';
 import { type DocEntry, type FlowSection, isFlowSection } from './flow';
 import { DocPageProvider } from './page-context';
 import { nextFrame, waitForFonts } from './print-ready';
-import { type DocModule, resolvePageGeometry } from './sdk';
+import { type DocModule, pageLang, resolvePageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
 export type DocxBundle = { filename: string; mimeType: string; bytes: Uint8Array };
@@ -108,6 +108,7 @@ async function runningLineOf(
   host.setAttribute('aria-hidden', 'true');
   // The sheet's base styles (styles.css), so the line reads as it prints.
   host.setAttribute('data-od-measure', '');
+  host.setAttribute('lang', pageLang(doc.meta));
   Object.assign(host.style, { position: 'fixed', left: '-99999px', top: '0', width: `${width}px` });
   for (const [name, value] of Object.entries(designToCssVars(design))) {
     host.style.setProperty(name, value);
@@ -178,6 +179,7 @@ export async function buildDocDocx(
   const size = (px: number) => Math.round(px * PX_TO_HALF_POINTS);
   const text = hexColor(design.palette.text) ?? '000000';
   const model: DocxModel = {
+    lang: pageLang(doc.meta),
     title: doc.meta?.title ?? docId,
     ...(doc.meta?.author ? { author: doc.meta.author } : {}),
     page: {

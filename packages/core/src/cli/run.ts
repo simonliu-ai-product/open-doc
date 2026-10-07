@@ -53,6 +53,7 @@ interface ImportFlags {
   id?: string;
   title?: string;
   subtitle?: string;
+  lang?: string;
   author?: string;
   theme?: string;
   pageSize?: string;
@@ -211,6 +212,7 @@ export async function run(argv: string[]): Promise<void> {
     .option('--id <id>', 'document id (defaults to a slug of the title)')
     .option('--title <title>', 'override the title')
     .option('--subtitle <subtitle>', 'subtitle, also used as the cover eyebrow')
+    .option('--lang <tag>', 'language of the text, e.g. zh-Hant-TW (detected for CJK when omitted)')
     .option('--author <author>', 'author line on the cover')
     .option('--theme <theme>', 'theme id to back-link from meta.theme')
     .addOption(new Option('--page-size <size>', 'page size').choices(PAGE_SIZE_NAMES))

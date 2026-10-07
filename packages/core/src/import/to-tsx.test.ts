@@ -22,6 +22,12 @@ describe('generateDocumentSource', () => {
     expect(source).toContain('export default [Cover, Body] satisfies DocEntry[];');
   });
 
+  it('writes the language from the front matter, or the one it was given', () => {
+    expect(generate('---\nlang: ja\n---\n# 報告\n').source).toContain(`lang: 'ja',`);
+    expect(generate('# 報告\n', { lang: 'zh-Hant-TW' }).source).toContain(`lang: 'zh-Hant-TW',`);
+    expect(generate('# Report\n').source).not.toContain('lang:');
+  });
+
   it('takes the title from the first h1 and does not repeat it in the body', () => {
     const { source, title } = generate('# Q3 Review\n\nBody.\n');
     expect(title).toBe('Q3 Review');

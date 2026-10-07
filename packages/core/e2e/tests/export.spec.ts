@@ -60,6 +60,8 @@ test.describe('export', () => {
     expect(html).toContain('Alpha page one');
     expect(html).toContain('Alpha page three');
     expect(html).not.toContain('/@vite/client');
+    // The document's language, not the viewer's.
+    expect(html).toContain('<html lang="en-GB">');
   });
 
   test('a flow document exports every packed page', async ({ page }) => {

@@ -20,7 +20,7 @@ import {
   toAbsolute,
 } from './export-dom';
 import { PAGE_ATTR } from './outline';
-import { type DocModule, type PageGeometry, resolvePageGeometry } from './sdk';
+import { type DocModule, type PageGeometry, pageLang, resolvePageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
 
 export type ImageFormat = 'png' | 'svg';
@@ -186,6 +186,7 @@ function buildSvg(pageHtml: string, css: string, geometry: Box, doc: DocModule):
   const content = document.createElementNS(XHTML_NS, 'div');
   content.setAttribute('style', 'width:100%;height:100%');
   content.setAttribute(PAGE_ATTR, '');
+  content.setAttribute('lang', pageLang(doc.meta));
   content.innerHTML = pageHtml;
   wrapper.appendChild(content);
 

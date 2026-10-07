@@ -17,6 +17,8 @@ type Props = {
   pages: ExpandedPage[];
   geometry: PageGeometry;
   design?: DesignSystem;
+  /** The document's language, for the thumbnails — see `pageLang`. */
+  lang?: string;
   currentPage: number;
   entries: OutlineEntry[];
   activeId: string | null;
@@ -33,6 +35,7 @@ export function DocSidebar({
   pages,
   geometry,
   design,
+  lang,
   currentPage,
   entries,
   activeId,
@@ -150,6 +153,7 @@ export function DocSidebar({
                       geometry={geometry}
                       scale={THUMB_WIDTH / geometry.width}
                       design={design}
+                      lang={lang}
                       flat
                     >
                       {entry.content}
