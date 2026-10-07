@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { readDocSource, viewer } from './helpers.ts';
+import { openDoc, readDocSource, viewer } from './helpers.ts';
 
 test.describe('new document from a template', () => {
   test.afterEach(async ({ request }) => {
@@ -20,6 +20,8 @@ test.describe('new document from a template', () => {
     await dialog.getByRole('button', { name: 'Create' }).click();
 
     await expect(page).toHaveURL(/\/d\/quarterly-review$/);
+    // The document is new to the dev server too; openDoc waits for its sheets.
+    await openDoc(page, 'quarterly-review');
     await expect(
       viewer(page).getByRole('heading', { name: 'Quarterly review' }).first(),
     ).toBeVisible({

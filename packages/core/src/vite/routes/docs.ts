@@ -7,6 +7,7 @@ import {
   renameDocument,
 } from '../../ops/documents.ts';
 import { type ApiContext, json, readBody } from './context.ts';
+import { announceDocument } from './templates.ts';
 
 // PATCH  /__docs/:id            rename the document's meta.title { title }
 // POST   /__docs/:id/duplicate  copy the folder to a fresh id { newId? }
@@ -31,6 +32,7 @@ export function registerDocRoutes(server: ViteDevServer, ctx: ApiContext): void 
         const body = (await readBody(req).catch(() => ({}))) as { newId?: unknown };
         const newId = typeof body.newId === 'string' && body.newId !== '' ? body.newId : undefined;
         const result = await duplicateDocument(ctx, docId, newId);
+        announceDocument(server, ctx, result.id);
         return json(res, 200, { ok: true, docId: result.id });
       }
 
