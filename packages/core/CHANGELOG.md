@@ -1,5 +1,34 @@
 # @open-document/core
 
+## 0.12.0
+
+### Minor Changes
+
+- [#66](https://github.com/simonliu-ai-product/open-doc/pull/66) [`8a51291`](https://github.com/simonliu-ai-product/open-doc/commit/8a51291b525c7abda3d2646f9220d155e87461a7) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Add a Changes panel to the viewer (`C`, or the Changes button in the header). It lists what changed in the document's folder since the last commit, or an earlier commit you pick: each change in the document's own source is marked on the page where it prints (added, rewritten, or removed), changed pages get a dot in the page rail, and each change can be reverted in source on its own. The header shows how many changes there are, and the list follows the file as an agent writes it.
+
+- [#69](https://github.com/simonliu-ai-product/open-doc/pull/69) [`35d4fad`](https://github.com/simonliu-ai-product/open-doc/commit/35d4fad0bb8d2310cc743bbab87e346b45c97568) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Set Chinese, Japanese and Korean properly. A document declares its language with `meta.lang` (`'zh-Hant-TW'`, `'ja'`…), and every sheet — in the viewer, the thumbnails, the flow measurement and the PDF, HTML, PNG and Word exports — carries it, so glyphs and line-breaking follow the document rather than the reader's interface language (which used to leak into the page). The sheet's base style adds strict kinsoku and an eighth-em gap where CJK meets Latin letters or digits, and phrase-aware breaks in Japanese headings. HTML exports declare the document's language instead of always `en`, and Word files set the East Asian language. Markdown import takes `--lang` (and `lang` in front matter or over MCP), and detects Traditional or Simplified Chinese, Japanese and Korean when it is not given.
+
+- [#70](https://github.com/simonliu-ai-product/open-doc/pull/70) [`1c4b665`](https://github.com/simonliu-ai-product/open-doc/commit/1c4b665963a79d058ff7b1f2988d8499be7117f6) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Print one document per row of data. A document that does `export const records = rows` (an imported `.csv`) is laid out once per row: pages read the row with `useRecord()` or print a value with `<Field name="…" />`, the viewer gets a record picker (and `?record=` to open on a row), and `open-doc export <id> --each` writes one file per row, named by `meta.recordName` (`'certificate-{name}'`, `{#}` for the row number) or `--name`. MCP's `export_document` takes `each` and `name`. A `certificate` template shows the whole thing.
+  
+  Also fixes a flow-layout bug: a block that rendered nothing was measured as a page break glued to the next block, so a conditional block could push everything after it onto a new page.
+  
+  Also fixes a race in flow measurement: the offscreen render was left to React's schedule, and on a slow machine it could still be empty when it was measured, so a flow section packed as no pages. The measuring render now commits synchronously and is checked for every block before it is read. And when the viewer is sent to a document the dev server's watcher has not noticed yet, it rescans the docs folder instead of reporting it missing.
+
+- [#68](https://github.com/simonliu-ai-product/open-doc/pull/68) [`19634aa`](https://github.com/simonliu-ai-product/open-doc/commit/19634aaa32f311319f6f5663a5993f67bd5aecfd) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Start documents from templates. open-doc ships `report`, `proposal`, `meeting-notes`, `letter` and `blank`, and a workspace can add its own under `templates/<name>/` (an `index.tsx`, plus an optional `template.json` with a title, description, category and the placeholder title to replace).
+  
+  - `open-doc templates` lists every template with the name to use; `open-doc new <id> --template <name> --title "…"` creates a document from one, retitled where the title prints and dated today.
+  - The document browser has a **New document** button: a gallery of the templates, each showing its name, and a title field. A document created inside a folder view is filed into that folder.
+  - `npx @open-document/cli templates` lists them, and `init --template <name>` starts the workspace with that document.
+  - MCP: `list_templates` and `create_from_template`.
+
+- [#67](https://github.com/simonliu-ai-product/open-doc/pull/67) [`6dca67e`](https://github.com/simonliu-ai-product/open-doc/commit/6dca67e853dfc5b2ee38dc43d00c608fc06ddc24) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Add a Comments panel to the viewer (`M`, or the Comments button in the header). Review notes left on the document are listed in order with the words of the element each is about, pinned on the page with a number, and marked in the page rail; clicking one goes to it, Resolve takes its marker out of the source, and New comment goes straight to picking an element with the note open. "Copy request for the agent" copies `/apply-comments docs/<id>`, and the agent's edits then show under Changes, which no longer counts the comment markers themselves.
+
+### Patch Changes
+
+- [#72](https://github.com/simonliu-ai-product/open-doc/pull/72) [`dc4cb10`](https://github.com/simonliu-ai-product/open-doc/commit/dc4cb10c1a3aaab5c0aebd33dec5e6fccd57edf1) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Selecting a value a document prints from its `records` (`<Field>`) now shows where it comes from — the data file, the row shown, and each column with its value for that row — instead of "element has no text of its own", so it is clear the cell is what to edit. The status line no longer offers double-click editing on an element that cannot be edited.
+
+- [#71](https://github.com/simonliu-ai-product/open-doc/pull/71) [`df270dc`](https://github.com/simonliu-ai-product/open-doc/commit/df270dcb160fcc4b54cd439dcafde67d8f6060ff) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Document and theme cards preview in one box size, so titles line up along a row: each sheet is scaled to fit a portrait-A4 frame whole and centred, and a landscape page is letterboxed on the canvas colour instead of making a shorter card. New comment now shows that it is waiting for an element — the Comments panel stays open with the button pressed, the pointer is a crosshair over the page, and Esc or pressing it again cancels — instead of closing the panel with no sign of what to do next.
+
 ## 0.11.0
 
 ### Minor Changes
