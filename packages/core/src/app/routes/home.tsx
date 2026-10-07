@@ -22,6 +22,7 @@ import {
   CARD_GRID,
   CardText,
   EmptyState,
+  fitInCard,
   PageHeader,
   useCardWidth,
 } from '../components/browser/browser-ui';
@@ -252,7 +253,7 @@ function DocCard({
   const state = useDocModule(docId);
   const doc = state.doc;
   const geometry = resolvePageGeometry(doc?.meta);
-  const scale = cardWidth / geometry.width;
+  const { frameHeight, scale } = fitInCard(cardWidth, geometry);
   const cover = coverContent(doc);
   const theme = findTheme(docThemes[docId]);
   const title = doc?.meta?.title ?? docId;
@@ -281,8 +282,9 @@ function DocCard({
     >
       <Link to={`/d/${docId}`}>
         <div
-          className="overflow-hidden rounded-md ring-1 ring-border transition-shadow group-hover:shadow-lg"
-          style={{ width: cardWidth, height: geometry.height * scale }}
+          data-od-card-frame
+          className="flex items-center justify-center overflow-hidden rounded-md bg-canvas ring-1 ring-border transition-shadow group-hover:shadow-lg"
+          style={{ width: cardWidth, height: frameHeight }}
         >
           {cover ? (
             <PageFrame

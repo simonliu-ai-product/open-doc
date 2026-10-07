@@ -516,6 +516,9 @@ type Props = {
   onPick: () => void;
   /** The reader came here to leave a comment: the element panel opens on the note. */
   commentFirst?: boolean;
+  /** Waiting for the element a new comment is about. */
+  picking?: boolean;
+  onCancelPick?: () => void;
   /** The save card is showing, so the hint underneath it steps aside. */
   quiet: boolean;
   onExit: () => void;
@@ -531,6 +534,8 @@ export function Inspector({
   panelHidden,
   onPick,
   commentFirst = false,
+  picking = false,
+  onCancelPick,
   quiet,
   onExit,
   exitRef,
@@ -1134,6 +1139,10 @@ export function Inspector({
           finish(active, true);
           return;
         }
+        if (picking && onCancelPick) {
+          onCancelPick();
+          return;
+        }
         if (selected) {
           setSelected(null);
           return;
@@ -1164,7 +1173,27 @@ export function Inspector({
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [container, insideChrome, entryAt, active, selected, begin, finish, leave]);
+  }, [
+    container,
+    insideChrome,
+    entryAt,
+    active,
+    selected,
+    begin,
+    finish,
+    leave,
+    picking,
+    onCancelPick,
+  ]);
+
+  // While a comment waits for its element, the page says so under the pointer.
+  useEffect(() => {
+    if (!container || !picking) return;
+    container.style.cursor = 'crosshair';
+    return () => {
+      container.style.cursor = '';
+    };
+  }, [container, picking]);
 
   // Typing is applied by hand to the run under the caret — see inline-edit.ts
   // for why the browser is not allowed to. IME composition is the exception:
@@ -1439,9 +1468,11 @@ export function Inspector({
   const selectedEl = visible(selected?.anchor);
   const hint = active
     ? t('Enter to keep · Shift+Enter for a new line · Esc to revert')
-    : selected
-      ? t('Double-click or Enter to edit text · Esc to deselect')
-      : t('Click to select · double-click to edit · Esc to leave');
+    : picking
+      ? t('Click the element to comment on · Esc to cancel')
+      : selected
+        ? t('Double-click or Enter to edit text · Esc to deselect')
+        : t('Click to select · double-click to edit · Esc to leave');
 
   const overlay = container
     ? createPortal(

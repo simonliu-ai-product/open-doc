@@ -179,4 +179,6 @@ export const PANELS: Record<string, string> = {
   'p.{page}': '{page}쪽',
   'Page {page}, with comments': '{page}페이지, 댓글 있음',
   'Could not resolve the comment': '해결됨으로 표시할 수 없습니다',
+  'Pick an element on the page': '페이지에서 요소 선택',
+  'Click the element to comment on · Esc to cancel': '댓글을 남길 요소를 클릭 · Esc로 취소',
 };

@@ -174,4 +174,6 @@ export const PANELS: Record<string, string> = {
   'p.{page}': '第 {page} 頁',
   'Page {page}, with comments': '第 {page} 頁，有留言',
   'Could not resolve the comment': '無法標為已解決',
+  'Pick an element on the page': '在頁面上點選元素',
+  'Click the element to comment on · Esc to cancel': '點選要留言的元素 · Esc 取消',
 };

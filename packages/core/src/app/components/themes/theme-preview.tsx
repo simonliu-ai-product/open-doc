@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { type DocPage, isPageSizeName, resolvePageGeometry } from '../../lib/sdk';
 import { loadThemeDemo, type ThemeDemoModule, type ThemeMeta } from '../../lib/themes';
+import { fitInCard } from '../browser/browser-ui';
 import { PageFrame } from '../page-frame';
 
 type Props = {
@@ -31,7 +32,7 @@ export function ThemePreview({ theme, width, all = false }: Props) {
   const geometry = resolvePageGeometry(
     isPageSizeName(theme.pageSize) ? { pageSize: theme.pageSize } : undefined,
   );
-  const scale = width / geometry.width;
+  const { frameHeight, scale } = fitInCard(width, geometry);
   const pages = (demo?.default ?? []).filter(
     (entry): entry is DocPage => typeof entry === 'function',
   );
@@ -41,7 +42,7 @@ export function ThemePreview({ theme, width, all = false }: Props) {
     return (
       <div
         className="grid place-items-center rounded-md border border-border border-dashed bg-muted text-[11px] text-muted-foreground"
-        style={{ width, height: geometry.height * scale }}
+        style={{ width, height: frameHeight }}
       >
         {theme.hasDemo ? 'Loading…' : 'No demo'}
       </div>
@@ -54,8 +55,8 @@ export function ThemePreview({ theme, width, all = false }: Props) {
         <div
           // biome-ignore lint/suspicious/noArrayIndexKey: page order is the identity
           key={index}
-          className="overflow-hidden rounded-md ring-1 ring-border"
-          style={{ width, height: geometry.height * scale }}
+          className="flex items-center justify-center overflow-hidden rounded-md bg-canvas ring-1 ring-border"
+          style={{ width, height: frameHeight }}
         >
           <PageFrame
             index={index}

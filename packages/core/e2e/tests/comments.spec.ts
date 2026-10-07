@@ -41,11 +41,13 @@ test.describe('review comments', () => {
   test('New comment goes to picking an element, with the note open', async ({ page }) => {
     await openDoc(page, 'edit-target');
     await page.getByRole('button', { name: 'Comments', exact: true }).click();
-    await page
-      .getByRole('complementary', { name: 'Comments' })
-      .getByRole('button', { name: 'New comment' })
-      .first()
-      .click();
+    const panel = page.getByRole('complementary', { name: 'Comments' });
+    await panel.getByRole('button', { name: 'New comment' }).first().click();
+    // The panel stays and shows that the page is waiting for an element.
+    await expect(panel.getByRole('button', { name: /Pick an element/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
 
     await viewer(page).getByText('Editable paragraph').click();
     const note = page.getByRole('textbox', { name: 'Comment for the agent' });
@@ -57,5 +59,17 @@ test.describe('review comments', () => {
       .poll(async () => await readDocSource('edit-target'), { timeout: 10_000 })
       .toContain('@doc-comment');
     await expect(page.getByRole('button', { name: 'Comments (1)' })).toBeVisible();
+  });
+
+  test('Esc stops picking and leaves the panel as it was', async ({ page }) => {
+    await openDoc(page, 'edit-target');
+    await page.getByRole('button', { name: 'Comments', exact: true }).click();
+    const panel = page.getByRole('complementary', { name: 'Comments' });
+    await panel.getByRole('button', { name: 'New comment' }).first().click();
+    await expect(panel.getByRole('button', { name: /Pick an element/ })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(panel.getByRole('button', { name: /Pick an element/ })).toHaveCount(0);
+    await expect(panel).toBeVisible();
   });
 });

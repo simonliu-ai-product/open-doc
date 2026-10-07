@@ -19,6 +19,27 @@ export const CARD_GRID =
  * card has to know how wide its column came out. Starts at the narrowest width
  * so the first paint already has the right shape.
  */
+/** Every card's preview box: a portrait A4, the sheet most documents print on. */
+const FRAME_RATIO = 297 / 210;
+
+/**
+ * How a sheet sits in a card's preview box. The box is the same for every
+ * card, so titles line up along a row; the sheet is scaled to fit inside it
+ * whole and centred — a landscape page is letterboxed on the canvas colour,
+ * never cropped, since a preview that hides part of the page misreports it.
+ */
+export function fitInCard(
+  cardWidth: number,
+  sheet: { width: number; height: number },
+): { frameHeight: number; scale: number } {
+  const frameHeight = cardWidth * FRAME_RATIO;
+  const scale =
+    sheet.width > 0 && sheet.height > 0
+      ? Math.min(cardWidth / sheet.width, frameHeight / sheet.height)
+      : 0;
+  return { frameHeight, scale };
+}
+
 export function useCardWidth<T extends HTMLElement>(): [RefObject<T>, number] {
   const ref = useRef<T>(null);
   const [width, setWidth] = useState(CARD_WIDTH);
