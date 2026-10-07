@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildDocxParts, type DocxModel, escapeXml, fontsFor, hexColor } from './ooxml.ts';
+import {
+  buildDocxParts,
+  type DocxModel,
+  escapeXml,
+  fontsFor,
+  hexColor,
+  wordLang,
+} from './ooxml.ts';
 
 describe('fontsFor', () => {
   it('skips system aliases for the first real family', () => {
@@ -311,5 +318,21 @@ describe('buildDocxParts', () => {
     const numbering = text('word/numbering.xml');
     expect(numbering).toContain('<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>');
     expect(numbering).toContain('<w:num w:numId="2"><w:abstractNumId w:val="1"/><w:lvlOverride');
+  });
+});
+
+describe('wordLang', () => {
+  it('files Chinese, Japanese and Korean as the East Asian language', () => {
+    expect(wordLang('zh-Hant-TW')).toBe('<w:lang w:val="en-US" w:eastAsia="zh-TW"/>');
+    expect(wordLang('zh-Hans')).toBe('<w:lang w:val="en-US" w:eastAsia="zh-CN"/>');
+    expect(wordLang('zh-HK')).toBe('<w:lang w:val="en-US" w:eastAsia="zh-HK"/>');
+    expect(wordLang('ja')).toBe('<w:lang w:val="en-US" w:eastAsia="ja-JP"/>');
+    expect(wordLang('ko-KR')).toBe('<w:lang w:val="en-US" w:eastAsia="ko-KR"/>');
+  });
+
+  it('files anything else as the Latin language', () => {
+    expect(wordLang()).toBe('<w:lang w:val="en-US"/>');
+    expect(wordLang('en-GB')).toBe('<w:lang w:val="en-GB"/>');
+    expect(wordLang('de"x')).toBe('<w:lang w:val="dex"/>');
   });
 });

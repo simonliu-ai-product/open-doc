@@ -65,7 +65,7 @@ import {
 } from '../lib/page-range';
 import { nextFrame, waitForFonts } from '../lib/print-ready';
 import { scanDocument } from '../lib/scan';
-import { resolvePageGeometry } from '../lib/sdk';
+import { pageLang, resolvePageGeometry } from '../lib/sdk';
 import { useDocModule } from '../lib/use-doc-module';
 import { useDocPages } from '../lib/use-doc-pages';
 import { cn } from '../lib/utils';
@@ -955,6 +955,7 @@ export function Doc() {
             pages={pages}
             geometry={geometry}
             design={doc.design}
+            lang={pageLang(doc.meta)}
             currentPage={currentPage}
             entries={outline}
             activeId={activeOutlineId}
@@ -999,6 +1000,7 @@ export function Doc() {
                     geometry={geometry}
                     scale={scale}
                     design={doc.design}
+                    lang={pageLang(doc.meta)}
                   >
                     {page.content}
                   </PageFrame>

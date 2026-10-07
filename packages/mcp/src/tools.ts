@@ -457,6 +457,12 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         file: z.string().optional().describe('path to a .md file inside the workspace'),
         docId: z.string().optional().describe('defaults to a slug of the title'),
         title: z.string().optional(),
+        lang: z
+          .string()
+          .optional()
+          .describe(
+            'BCP 47 tag, e.g. zh-Hant-TW; detected for Chinese, Japanese and Korean when omitted',
+          ),
         subtitle: z.string().optional(),
         author: z.string().optional(),
         theme: z.string().optional(),

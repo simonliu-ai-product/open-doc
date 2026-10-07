@@ -26,6 +26,7 @@ export const meta: DocMeta = {
   author: 'open-doc',
   createdAt: '2026-10-01T00:00:00.000Z',
   labels: { figure: '圖', table: '表' },
+  lang: 'zh-Hant-TW',
 };
 
 export const design: DesignSystem = {

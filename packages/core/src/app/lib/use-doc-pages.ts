@@ -4,7 +4,7 @@ import type { DesignSystem } from './design';
 import { type DocEntry, type FlowSection, isFlowSection, paginateBlocks } from './flow';
 import { type MeasurableSection, measureFlowSections } from './flow-measure';
 import { extractSectionFootnotes, notesForPage, type PreparedSection } from './footnotes';
-import type { DocModule, PageGeometry } from './sdk';
+import { type DocModule, type PageGeometry, pageLang } from './sdk';
 
 export type ExpandedPage = {
   key: string;
@@ -40,6 +40,7 @@ export function useDocPages(
   const entries = useMemo(() => entriesOf(doc), [doc]);
   const sections = useMemo(() => entries.filter(isFlowSection), [entries]);
   const design = doc?.design as DesignSystem | undefined;
+  const lang = pageLang(doc?.meta);
 
   // Footnotes come out of the blocks before anything is measured: what they
   // cost at the foot of a page is part of that page's budget.
@@ -70,7 +71,7 @@ export function useDocPages(
       return;
     }
     let cancelled = false;
-    measureFlowSections(measurable, { geometry, design })
+    measureFlowSections(measurable, { geometry, design, lang })
       .then((measurements) => {
         if (cancelled) return;
         const bySection: number[][][] = [];
@@ -92,7 +93,7 @@ export function useDocPages(
     return () => {
       cancelled = true;
     };
-  }, [sections, measurable, geometry, design]);
+  }, [sections, measurable, geometry, design, lang]);
 
   const plan = state.plan;
 

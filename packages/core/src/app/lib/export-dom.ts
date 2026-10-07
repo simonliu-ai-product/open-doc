@@ -11,7 +11,7 @@ import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
 import { nextFrame, waitForFonts, waitForImages } from './print-ready';
 import { captureScan, restoreScan, scanDocument } from './scan';
-import type { DocModule, PageGeometry } from './sdk';
+import { type DocModule, type PageGeometry, pageLang } from './sdk';
 import { scopeSvgIds } from './svg-ids';
 import type { ExpandedPage } from './use-doc-pages';
 
@@ -52,6 +52,7 @@ export async function withRenderedPages<T>(
       const host = document.createElement('div');
       host.setAttribute(PAGE_ATTR, '');
       host.setAttribute(PAGE_INDEX_ATTR, String(i));
+      host.setAttribute('lang', pageLang(doc.meta));
       host.style.width = `${geometry.width}px`;
       host.style.height = `${geometry.height}px`;
       if (designVars) {

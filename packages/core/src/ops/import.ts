@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isOrientation, isPageSizeName, ORIENTATIONS, PAGE_SIZE_NAMES } from '../app/lib/sdk.ts';
 import { validateAssetName } from '../files/assets.ts';
+import { detectLang } from '../import/lang.ts';
 import { parseMarkdown } from '../import/markdown.ts';
 import { collectImageSources, generateDocumentSource, type ImportImage } from '../import/to-tsx.ts';
 import { DOC_ID_RE } from '../vite/open-doc-plugin.ts';
@@ -21,6 +22,8 @@ export type ImportMarkdownOptions = {
   theme?: string;
   pageSize?: string;
   orientation?: string;
+  /** BCP 47 tag; read from the front matter, else detected for Chinese, Japanese and Korean. */
+  lang?: string;
   /** Open with a title page. Defaults to true. */
   cover?: boolean;
   /** Insert a self-filling contents page. Defaults to false. */
@@ -92,6 +95,10 @@ export async function importMarkdown(
   if (markdown.trim() === '') throw new OpsError(422, 'the markdown is empty');
 
   const parsed = parseMarkdown(markdown);
+  // Front matter wins inside the generator; this is the fallback for a file
+  // that does not say — a Chinese file left at English breaks lines and picks
+  // glyphs as English.
+  const language = opts.lang ?? (parsed.frontmatter.lang ? undefined : detectLang(markdown));
 
   const pageSize = opts.pageSize ?? parsed.frontmatter.pageSize;
   if (pageSize !== undefined && !isPageSizeName(pageSize)) {
@@ -147,6 +154,7 @@ export async function importMarkdown(
     ...(opts.theme !== undefined ? { theme: opts.theme } : {}),
     ...(opts.pageSize !== undefined ? { pageSize: opts.pageSize } : {}),
     ...(opts.orientation !== undefined ? { orientation: opts.orientation } : {}),
+    ...(language ? { lang: language } : {}),
     ...(opts.cover !== undefined ? { cover: opts.cover } : {}),
     ...(opts.contents !== undefined ? { contents: opts.contents } : {}),
     createdAt: new Date().toISOString(),
