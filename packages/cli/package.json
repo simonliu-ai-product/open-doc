@@ -9,11 +9,12 @@
   "files": [
     "dist",
     "template",
+    "doc-templates",
     "README.md",
     "README.zh-TW.md"
   ],
   "scripts": {
-    "build": "node scripts/sync-template-skills.mjs && tsdown",
+    "build": "node scripts/sync-template-skills.mjs && node scripts/sync-doc-templates.mjs && tsdown",
     "typecheck": "tsc --noEmit",
     "sync:template-skills": "node scripts/sync-template-skills.mjs",
     "prepack": "pnpm build"

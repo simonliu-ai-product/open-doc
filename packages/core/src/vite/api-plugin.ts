@@ -5,6 +5,7 @@ import { type ApiPluginOptions, makeContext } from './routes/context.ts';
 import { registerDocRoutes } from './routes/docs.ts';
 import { registerEditRoutes } from './routes/edit.ts';
 import { registerFolderRoutes } from './routes/folders.ts';
+import { registerTemplateRoutes } from './routes/templates.ts';
 
 export type { ApiPluginOptions };
 
@@ -21,6 +22,7 @@ export function apiPlugin(opts: ApiPluginOptions): Plugin {
       registerDocRoutes(server, ctx);
       registerEditRoutes(server, ctx);
       registerChangesRoutes(server, ctx);
+      registerTemplateRoutes(server, ctx);
     },
   };
 }

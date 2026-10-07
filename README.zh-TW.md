@@ -173,6 +173,8 @@ pnpm dev
 | `open-doc check [ids…]` | 回報版面問題，有錯誤時以非零狀態碼結束 |
 | `open-doc export [ids…]` | 無頭產出 PDF / HTML / PNG |
 | `open-doc import <file.md>` | Markdown → `docs/` 下的一份文件 |
+| `open-doc templates` | 列出新文件可以使用的範本 |
+| `open-doc new <id> --template <name>` | 用範本建立新文件（`report`、`proposal`、`meeting-notes`、`letter`、`blank`，或你自己的 `templates/<name>/`） |
 
 ## 檔案契約
 

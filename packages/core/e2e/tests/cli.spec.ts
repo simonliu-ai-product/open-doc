@@ -8,7 +8,17 @@ test.describe('open-doc CLI', () => {
   test('--help lists the commands the docs promise', async () => {
     const res = await runCli(['--help'], prepareScratchProject('cli'));
     expect(res.code).toBe(0);
-    for (const command of ['dev', 'build', 'preview', 'export', 'check', 'import', 'sync:skills']) {
+    for (const command of [
+      'dev',
+      'build',
+      'preview',
+      'export',
+      'check',
+      'import',
+      'templates',
+      'new',
+      'sync:skills',
+    ]) {
       expect(res.stdout).toContain(command);
     }
   });
@@ -102,5 +112,26 @@ test.describe('open-doc CLI', () => {
     const checked = await runCli(['check', 'alpha'], dir);
     expect(checked.code, checked.stderr).toBe(0);
     expect(checked.stdout).toContain('clean');
+  });
+
+  test('every template is listed, makes a document, and lays out clean', async () => {
+    const dir = prepareScratchProject('cli-templates');
+    const listed = await runCli(['templates', '--json'], dir);
+    expect(listed.code, listed.stderr).toBe(0);
+    const names = (JSON.parse(listed.stdout) as { name: string }[]).map((t) => t.name);
+    expect(names).toEqual(
+      expect.arrayContaining(['report', 'proposal', 'meeting-notes', 'letter', 'blank']),
+    );
+
+    for (const name of names) {
+      const made = await runCli(['new', `from-${name}`, '--template', name], dir);
+      expect(made.code, made.stderr).toBe(0);
+    }
+    const checked = await runCli(['check', ...names.map((name) => `from-${name}`)], dir);
+    expect(checked.code, checked.stdout + checked.stderr).toBe(0);
+
+    const wrong = await runCli(['new', 'x', '--template', 'nope'], dir);
+    expect(wrong.code).not.toBe(0);
+    expect(wrong.stderr + wrong.stdout).toContain('open-doc templates');
   });
 });
