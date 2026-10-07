@@ -24,6 +24,8 @@ type Props = {
   onSelectEntry: (entry: OutlineEntry) => void;
   /** Pages carrying a change since the compared revision, while the changes panel is open. */
   changedPages?: ReadonlySet<number>;
+  /** Pages carrying a review comment, while the comments panel is open. */
+  commentPages?: ReadonlySet<number>;
 };
 
 export function DocSidebar({
@@ -37,6 +39,7 @@ export function DocSidebar({
   onSelectPage,
   onSelectEntry,
   changedPages,
+  commentPages,
 }: Props) {
   const t = useT();
   const [tab, setTab] = useState<Tab>('pages');
@@ -97,7 +100,9 @@ export function DocSidebar({
                   aria-label={
                     changedPages?.has(page)
                       ? t('Page {page}, changed', { page })
-                      : t('Page {page}', { page })
+                      : commentPages?.has(page)
+                        ? t('Page {page}, with comments', { page })
+                        : t('Page {page}', { page })
                   }
                   aria-current={page === currentPage ? 'page' : undefined}
                   className={cn(
@@ -117,6 +122,13 @@ export function DocSidebar({
                         aria-hidden
                         className="size-1.5 rounded-full"
                         style={{ background: 'var(--change-changed)' }}
+                      />
+                    )}
+                    {commentPages?.has(page) && (
+                      <span
+                        aria-hidden
+                        className="size-1.5 rounded-full"
+                        style={{ background: 'var(--comment-pin)' }}
                       />
                     )}
                   </span>

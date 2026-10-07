@@ -40,6 +40,8 @@
   --change-added: oklch(0.58 0.15 150);
   --change-changed: oklch(0.68 0.15 70);
   --change-removed: oklch(0.58 0.2 25);
+  /* A reviewer's note pinned to the page. */
+  --comment-pin: oklch(0.55 0.19 265);
 }
 
 .dark {
@@ -57,6 +59,7 @@
   --change-added: oklch(0.7 0.15 150);
   --change-changed: oklch(0.78 0.14 75);
   --change-removed: oklch(0.68 0.19 25);
+  --comment-pin: oklch(0.68 0.16 265);
 }
 
 /* The dock's content arrives from the edge it docks against. Opacity only
