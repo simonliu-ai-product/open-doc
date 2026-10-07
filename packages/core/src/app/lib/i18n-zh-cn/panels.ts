@@ -175,4 +175,7 @@ export const PANELS: Record<string, string> = {
   'Could not resolve the comment': '无法标为已解决',
   'Pick an element on the page': '在页面上点选元素',
   'Click the element to comment on · Esc to cancel': '点选要评论的元素 · Esc 取消',
+  Records: '数据',
+  'Row {row} of {count}': '第 {row} 行，共 {count} 行',
+  'Esc to deselect': 'Esc 取消选取',
 };

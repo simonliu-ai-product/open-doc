@@ -89,6 +89,24 @@ test.describe('a document printed once per record', () => {
     }
   });
 
+  test('a value from the data names its file, column and row', async ({ page }) => {
+    await openDoc(page, 'awards');
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await viewer(page).getByText('Lin Mei').click();
+
+    const panel = page.getByRole('complementary', { name: 'Element' });
+    await expect(panel).toContainText('data/recipients.csv');
+    await expect(panel).toContainText('Row 1 of 3');
+    await expect(panel.getByRole('definition')).toHaveText('Lin Mei');
+
+    await page
+      .getByRole('group', { name: 'Record' })
+      .getByRole('button', { name: 'Next record' })
+      .click();
+    await expect(panel).toContainText('Row 2 of 3');
+    await expect(panel.getByRole('definition')).toHaveText('Chen Wei');
+  });
+
   test('?record= opens on a given row', async ({ page }) => {
     await openDoc(page, 'awards', '?record=3');
     await expect(viewer(page).getByText('Alex Wang')).toBeVisible();

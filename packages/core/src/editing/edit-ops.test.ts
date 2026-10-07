@@ -758,3 +758,36 @@ describe('locateMarkers', () => {
     ]);
   });
 });
+
+describe('fields printed from records', () => {
+  const SOURCE_WITH_RECORDS = `import { Field } from '@open-document/core';
+import rows from './data/recipients.csv';
+
+export const records = rows;
+
+const Page = () => (
+  <div>
+    <p>
+      <Field name="name" />
+    </p>
+    <p>
+      has completed <Field name="course" />, <Field name="hours" /> hours.
+    </p>
+  </div>
+);
+`;
+
+  it('names the column and the file behind a value', () => {
+    expect(readTextAt(SOURCE_WITH_RECORDS, { line: 8, column: 4 })).toMatchObject({
+      editable: false,
+      fields: { names: ['name'], file: './data/recipients.csv' },
+    });
+  });
+
+  it('keeps the words around fields editable, and still lists the fields', () => {
+    expect(readTextAt(SOURCE_WITH_RECORDS, { line: 11, column: 4 })).toMatchObject({
+      editable: true,
+      fields: { names: ['course', 'hours'], file: './data/recipients.csv' },
+    });
+  });
+});

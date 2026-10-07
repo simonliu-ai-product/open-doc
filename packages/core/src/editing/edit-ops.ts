@@ -55,6 +55,11 @@ export type TextTargetInfo = {
   text: string;
   parts: TextPart[];
   reason?: string;
+  /**
+   * Values printed by `<Field>` from the document's `records`: which columns,
+   * and the file the rows come from — what to edit to change them.
+   */
+  fields?: { names: string[]; file: string | null };
 };
 
 function isAstNode(value: unknown): value is AstNode {
@@ -749,7 +754,66 @@ function dataSource(element: AstNode, ast: AstNode): string | null {
   return found;
 }
 
+/** The data file behind `export const records = <name>`, when it is an import. */
+function recordsSource(ast: AstNode): string | null {
+  let local: string | null = null;
+  walkAst(ast, (node) => {
+    if (local || node.type !== 'VariableDeclarator') return;
+    const id = node.id as AstNode;
+    const init = node.init as AstNode | null;
+    if (id.type === 'Identifier' && id.name === 'records' && init?.type === 'Identifier') {
+      local = init.name as string;
+    }
+  });
+  if (!local) return null;
+  let found: string | null = null;
+  walkAst(ast, (node) => {
+    if (found || node.type !== 'ImportDeclaration') return;
+    const specifiers = (node.specifiers ?? []) as AstNode[];
+    if (specifiers.some((specifier) => (specifier.local as AstNode).name === local)) {
+      found = (node.source as AstNode).value as string;
+    }
+  });
+  return found;
+}
+
+/** The columns `<Field name="…">` prints anywhere inside the element. */
+function fieldNames(element: AstNode): string[] {
+  const names: string[] = [];
+  walkJsx(element, (node) => {
+    const opening = node.openingElement as AstNode;
+    if ((opening.name as AstNode).name !== 'Field') return;
+    for (const attribute of (opening.attributes ?? []) as AstNode[]) {
+      if (attribute.type !== 'JSXAttribute' || (attribute.name as AstNode).name !== 'name')
+        continue;
+      const value = attribute.value as AstNode | null;
+      if (value?.type === 'StringLiteral' && !names.includes(value.value as string)) {
+        names.push(value.value as string);
+      }
+    }
+  });
+  return names;
+}
+
 function describe(element: AstNode, ctx?: Context): TextTargetInfo {
+  const info = describeText(element, ctx);
+  const names = fieldNames(element);
+  if (names.length === 0) return info;
+  const file = ctx ? recordsSource(ctx.ast) : null;
+  return {
+    ...info,
+    fields: { names, file },
+    ...(info.editable
+      ? {}
+      : {
+          reason: file
+            ? `the values come from ${file} — edit that file, or leave a comment for the agent`
+            : 'the values come from the document’s records',
+        }),
+  };
+}
+
+function describeText(element: AstNode, ctx?: Context): TextTargetInfo {
   const { parts } = resolve(element, ctx);
   const texts = parts.filter(
     (part): part is Extract<TextPart, { kind: 'text' }> => part.kind === 'text',
