@@ -182,4 +182,7 @@ export const PANELS: Record<string, string> = {
   'p.{page}': '{page} ページ',
   'Page {page}, with comments': '{page} ページ（コメントあり）',
   'Could not resolve the comment': '解決済みにできませんでした',
+  'Pick an element on the page': 'ページ上の要素を選択',
+  'Click the element to comment on · Esc to cancel':
+    'コメントする要素をクリック · Esc でキャンセル',
 };

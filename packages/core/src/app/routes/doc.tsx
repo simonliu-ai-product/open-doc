@@ -298,16 +298,30 @@ export function Doc() {
     const first = container && comment.loc ? elementsAtLoc(container, comment.loc)[0] : undefined;
     first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, []);
-  // "New comment" goes straight to picking an element, with the note open
-  // and focused when the element panel comes up.
+  // "New comment" is a picking state: the panel stays, the page waits for an
+  // element, and the element panel then opens on the note, focused. Pressing
+  // it again, or Esc, cancels.
   const [commentFirst, setCommentFirst] = useState(false);
+  const [picking, setPicking] = useState(false);
   const startComment = useCallback(() => {
-    setDock(null);
+    if (picking) {
+      setPicking(false);
+      return;
+    }
     setCommentFirst(true);
+    setPicking(true);
     setEditing(true);
-  }, [setEditing]);
+  }, [picking, setEditing]);
+  const pickElement = useCallback(() => {
+    setDock(null);
+    setPicking(false);
+  }, []);
+  const cancelPick = useCallback(() => setPicking(false), []);
   useEffect(() => {
-    if (!editing) setCommentFirst(false);
+    if (!editing) {
+      setCommentFirst(false);
+      setPicking(false);
+    }
   }, [editing]);
   const [activeChange, setActiveChange] = useState<string | null>(null);
   const selectChange = useCallback((item: ChangeItem) => {
@@ -1064,8 +1078,10 @@ export function Doc() {
               docId={docId}
               containerRef={scrollRef}
               panelHidden={dock !== null}
-              onPick={closeDock}
+              onPick={pickElement}
               commentFirst={commentFirst}
+              picking={picking}
+              onCancelPick={cancelPick}
               quiet={cardShown}
               onExit={() => setEditing(false)}
               exitRef={leaveEditRef}
@@ -1095,6 +1111,7 @@ export function Doc() {
               onSelect={selectComment}
               onResolve={comments.resolve}
               onNew={startComment}
+              picking={picking}
               onClose={closeDock}
             />
           )}

@@ -1,4 +1,4 @@
-import { Check, ClipboardCopy, MessageSquare, MessageSquarePlus, X } from 'lucide-react';
+import { Check, ClipboardCopy, Crosshair, MessageSquare, MessageSquarePlus, X } from 'lucide-react';
 import { useState } from 'react';
 import { useLocale, useT } from '../../lib/i18n';
 import { PanelIconButton, PanelShell } from '../panel/panel-shell';
@@ -105,6 +105,37 @@ function Card({
   );
 }
 
+/**
+ * Starting a comment, and the state it leaves the page in: pressed while the
+ * page waits for an element, pressed again to stop.
+ */
+function PickButton({ picking, onClick }: { picking: boolean; onClick: () => void }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      aria-pressed={picking}
+      onClick={onClick}
+      className="flex h-8 w-full items-center justify-center gap-1.5 rounded border border-border px-3 text-foreground text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-foreground/60 aria-pressed:border-[var(--comment-pin)] aria-pressed:bg-accent"
+    >
+      {picking ? (
+        <>
+          <Crosshair className="size-3.5" style={{ color: 'var(--comment-pin)' }} />
+          {t('Pick an element on the page')}
+          <kbd className="ml-1 rounded bg-foreground/10 px-1 font-mono text-[10px] text-muted-foreground">
+            Esc
+          </kbd>
+        </>
+      ) : (
+        <>
+          <MessageSquarePlus className="size-3.5" />
+          {t('New comment')}
+        </>
+      )}
+    </button>
+  );
+}
+
 export type CommentsPanelProps = {
   docId: string;
   state: CommentsState;
@@ -114,8 +145,10 @@ export type CommentsPanelProps = {
   activeId: string | null;
   onSelect: (comment: DocComment) => void;
   onResolve: (comment: DocComment) => Promise<string | null>;
-  /** Pick an element on the page to comment on. */
+  /** Pick an element on the page to comment on; again to stop. */
   onNew: () => void;
+  /** Waiting for that element. */
+  picking: boolean;
   onClose: () => void;
 };
 
@@ -134,6 +167,7 @@ export function CommentsPanel({
   onSelect,
   onResolve,
   onNew,
+  picking,
   onClose,
 }: CommentsPanelProps) {
   const t = useT();
@@ -164,31 +198,44 @@ export function CommentsPanel({
       }
       actions={
         <>
-          <PanelIconButton label={t('New comment')} onClick={onNew}>
+          <button
+            type="button"
+            aria-label={t('New comment')}
+            title={t('New comment')}
+            aria-pressed={picking}
+            onClick={onNew}
+            className="flex size-8 items-center justify-center rounded text-foreground/70 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground/60 aria-pressed:bg-accent aria-pressed:text-foreground"
+          >
             <MessageSquarePlus className="size-3.5" />
-          </PanelIconButton>
+          </button>
           <PanelIconButton label={t('Close')} onClick={onClose}>
             <X className="size-3.5" />
           </PanelIconButton>
         </>
       }
       banner={
-        comments.length > 0 && (
+        picking ? (
           <div className="border-border border-b px-3 py-2">
-            <button
-              type="button"
-              onClick={copy}
-              title="/apply-comments"
-              className="flex h-8 w-full items-center justify-center gap-1.5 rounded border border-border text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-foreground/60"
-            >
-              {copied ? (
-                <Check className="size-3.5" style={{ color: 'var(--change-added)' }} />
-              ) : (
-                <ClipboardCopy className="size-3.5" />
-              )}
-              {copied ? t('Copied') : t('Copy request for the agent')}
-            </button>
+            <PickButton picking onClick={onNew} />
           </div>
+        ) : (
+          comments.length > 0 && (
+            <div className="border-border border-b px-3 py-2">
+              <button
+                type="button"
+                onClick={copy}
+                title="/apply-comments"
+                className="flex h-8 w-full items-center justify-center gap-1.5 rounded border border-border text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-foreground/60"
+              >
+                {copied ? (
+                  <Check className="size-3.5" style={{ color: 'var(--change-added)' }} />
+                ) : (
+                  <ClipboardCopy className="size-3.5" />
+                )}
+                {copied ? t('Copied') : t('Copy request for the agent')}
+              </button>
+            </div>
+          )
         )
       }
     >
@@ -202,14 +249,7 @@ export function CommentsPanel({
         <div className="flex flex-col items-center gap-3 px-6 py-12 text-center text-muted-foreground text-xs">
           <MessageSquare className="size-5" />
           {t('No comments')}
-          <button
-            type="button"
-            onClick={onNew}
-            className="flex h-8 items-center gap-1.5 rounded border border-border px-3 text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-foreground/60"
-          >
-            <MessageSquarePlus className="size-3.5" />
-            {t('New comment')}
-          </button>
+          {!picking && <PickButton picking={false} onClick={onNew} />}
         </div>
       ) : (
         <ul className="flex flex-col p-2">
