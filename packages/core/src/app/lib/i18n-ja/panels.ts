@@ -185,4 +185,7 @@ export const PANELS: Record<string, string> = {
   'Pick an element on the page': 'ページ上の要素を選択',
   'Click the element to comment on · Esc to cancel':
     'コメントする要素をクリック · Esc でキャンセル',
+  Records: 'レコード',
+  'Row {row} of {count}': '{count} 行中 {row} 行目',
+  'Esc to deselect': 'Esc で選択解除',
 };

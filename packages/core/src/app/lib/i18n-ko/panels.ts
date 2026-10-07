@@ -181,4 +181,7 @@ export const PANELS: Record<string, string> = {
   'Could not resolve the comment': '해결됨으로 표시할 수 없습니다',
   'Pick an element on the page': '페이지에서 요소 선택',
   'Click the element to comment on · Esc to cancel': '댓글을 남길 요소를 클릭 · Esc로 취소',
+  Records: '레코드',
+  'Row {row} of {count}': '{count}행 중 {row}행',
+  'Esc to deselect': 'Esc로 선택 해제',
 };

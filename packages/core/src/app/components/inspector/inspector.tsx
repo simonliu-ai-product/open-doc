@@ -69,6 +69,7 @@ import { useHistory } from '../history-provider';
 import { OverlayFrame } from '../overlay-frame';
 import { CollapsibleSection, Section } from '../panel/fields';
 import { PanelIconButton, PanelShell } from '../panel/panel-shell';
+import { FieldSource } from './field-source';
 import { FormatSection } from './format-section';
 import { elementsAt, styleKey, useStyleEdits } from './use-style-edits';
 
@@ -83,6 +84,8 @@ type ResolvedTarget = {
   text: string;
   parts: TextPart[];
   reason?: string;
+  /** Values `<Field>` prints from the document's records. */
+  fields?: { names: string[]; file: string | null };
 };
 
 export const LOC_ATTR = 'data-od-loc';
@@ -1470,9 +1473,11 @@ export function Inspector({
     ? t('Enter to keep · Shift+Enter for a new line · Esc to revert')
     : picking
       ? t('Click the element to comment on · Esc to cancel')
-      : selected
-        ? t('Double-click or Enter to edit text · Esc to deselect')
-        : t('Click to select · double-click to edit · Esc to leave');
+      : selected && target && !target.editable
+        ? t('Esc to deselect')
+        : selected
+          ? t('Double-click or Enter to edit text · Esc to deselect')
+          : t('Click to select · double-click to edit · Esc to leave');
 
   const overlay = container
     ? createPortal(
@@ -1578,6 +1583,10 @@ export function Inspector({
               <div className="h-0.5 overflow-hidden rounded bg-muted">
                 <div className="h-full w-1/3 animate-pulse bg-foreground/20" />
               </div>
+            ) : target.fields && !target.editable ? (
+              // Data, not words in the source: the place to change it is the
+              // cell, so that is what the panel shows.
+              <FieldSource names={target.fields.names} file={target.fields.file} />
             ) : (
               // The words themselves, as the way in: clicking them opens them
               // on the page. Markup the editor leaves alone reads as a chip.
@@ -1619,6 +1628,9 @@ export function Inspector({
                   {target.editable ? <Pencil className="size-3" /> : <Lock className="size-3" />}
                 </span>
               </button>
+            )}
+            {target?.fields && target.editable && (
+              <FieldSource names={target.fields.names} file={target.fields.file} />
             )}
           </Section>
           <CollapsibleSection

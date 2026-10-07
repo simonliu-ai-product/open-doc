@@ -176,4 +176,7 @@ export const PANELS: Record<string, string> = {
   'Could not resolve the comment': '無法標為已解決',
   'Pick an element on the page': '在頁面上點選元素',
   'Click the element to comment on · Esc to cancel': '點選要留言的元素 · Esc 取消',
+  Records: '資料',
+  'Row {row} of {count}': '第 {row} 列，共 {count} 列',
+  'Esc to deselect': 'Esc 取消選取',
 };
