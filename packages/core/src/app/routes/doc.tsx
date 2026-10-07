@@ -11,6 +11,7 @@ import {
   FileImage,
   FileText,
   FileType2,
+  GitCompare,
   Hash,
   Image,
   LayoutGrid,
@@ -29,6 +30,9 @@ import {
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ChangesOverlay, elementsOf, usePlacement } from '../components/changes/changes-overlay';
+import { ChangesPanel } from '../components/changes/changes-panel';
+import { type ChangeItem, itemsOf, useChanges } from '../components/changes/use-changes';
 import { CommandPaletteProvider, type PaletteItem } from '../components/command-palette';
 import { DesignPanel } from '../components/design-panel/design-panel';
 import { DesignProvider } from '../components/design-panel/design-provider';
@@ -203,8 +207,16 @@ export function Doc() {
   const [downloaded, setDownloaded] = useState<DownloadFormat | null>(null);
   const [selection, setSelection] = useState<PageSelection>({ kind: 'all' });
   const [customRange, setCustomRange] = useState('');
-  const [designOpen, setDesignOpen] = useState(false);
-  const closeDesign = useCallback(() => setDesignOpen(false), []);
+  // One dock on the right, one panel in it at a time; the element panel takes
+  // it back whenever an element is picked.
+  const [dock, setDock] = useState<'design' | 'changes' | null>(null);
+  const designOpen = dock === 'design';
+  const changesOpen = dock === 'changes';
+  const toggleDock = useCallback(
+    (panel: 'design' | 'changes') => setDock((open) => (open === panel ? null : panel)),
+    [],
+  );
+  const closeDock = useCallback(() => setDock(null), []);
   const [editing, setEditingState] = useState(readEditing);
   // The dev server reloads every open viewer when a document is added or
   // removed anywhere in the workspace. Edit mode is per tab and survives that.
@@ -228,6 +240,20 @@ export function Doc() {
 
   const geometry = useMemo(() => resolvePageGeometry(doc?.meta), [doc?.meta]);
   const { pages, measuring, overflowing } = useDocPages(doc, geometry);
+
+  // Read again on every reload of the document, so what an agent just wrote
+  // shows up in the count and on the page without being asked for.
+  const changes = useChanges(docId, doc, import.meta.env.DEV);
+  const changeItems = useMemo(() => itemsOf(changes.state), [changes.state]);
+  const placement = usePlacement(changesOpen ? scrollRef.current : null, changeItems);
+  const changedPages = useMemo(() => new Set([...placement.values()].flat()), [placement]);
+  const [activeChange, setActiveChange] = useState<string | null>(null);
+  const selectChange = useCallback((item: ChangeItem) => {
+    setActiveChange(item.hunk.id);
+    const container = scrollRef.current;
+    const first = container ? elementsOf(container, item)[0]?.el : undefined;
+    first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, []);
   const outline = useDocOutline();
 
   useAgentBridge({ docId: docId ?? '', doc, pages, geometry, measuring, oversized: overflowing });
@@ -538,7 +564,18 @@ export function Doc() {
           hint: 'D',
           keywords: 'design colours fonts',
           icon: Palette,
-          run: () => setDesignOpen((open) => !open),
+          run: () => toggleDock('design'),
+        },
+        {
+          id: 'changes',
+          group: t('Actions'),
+          label: changesOpen
+            ? t('Close the changes panel')
+            : t('Show changes since the last commit'),
+          hint: 'C',
+          keywords: 'changes diff git review agent revert',
+          icon: GitCompare,
+          run: () => toggleDock('changes'),
         },
       );
     }
@@ -577,12 +614,15 @@ export function Doc() {
         toggleFullscreen();
       } else if (import.meta.env.DEV && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
-        setDesignOpen((open) => !open);
+        toggleDock('design');
+      } else if (import.meta.env.DEV && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        toggleDock('changes');
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [toggleFullscreen]);
+  }, [toggleFullscreen, toggleDock]);
 
   if (state.status === 'error') {
     return (
@@ -697,7 +737,7 @@ export function Doc() {
                 aria-label={t('Design')}
                 aria-keyshortcuts="D"
                 title={t('Design tokens (D)')}
-                onClick={() => setDesignOpen((open) => !open)}
+                onClick={() => toggleDock('design')}
                 className={cn(
                   'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
                   designOpen && 'bg-accent',
@@ -711,6 +751,36 @@ export function Doc() {
                 >
                   D
                 </kbd>
+              </button>
+            )}
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                aria-pressed={changesOpen}
+                aria-label={
+                  changeItems.length > 0
+                    ? t('Changes ({count})', { count: changeItems.length })
+                    : t('Changes')
+                }
+                aria-keyshortcuts="C"
+                title={`${t('Changes since the last commit')} (C)`}
+                onClick={() => toggleDock('changes')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                  changesOpen && 'bg-accent',
+                )}
+              >
+                <GitCompare className="size-3.5" />
+                <span className="hidden lg:inline">{t('Changes')}</span>
+                {changeItems.length > 0 && (
+                  <span
+                    aria-hidden
+                    className="min-w-4 rounded-full px-1 text-center font-mono text-[10px] text-background tabular-nums"
+                    style={{ background: 'var(--change-changed)' }}
+                  >
+                    {changeItems.length}
+                  </span>
+                )}
               </button>
             )}
 
@@ -799,6 +869,7 @@ export function Doc() {
             activeId={activeOutlineId}
             onSelectPage={scrollToPage}
             onSelectEntry={scrollToEntry}
+            {...(changesOpen ? { changedPages } : {})}
           />
           <div className="relative flex min-w-0 flex-1">
             <div
@@ -842,6 +913,13 @@ export function Doc() {
                 ))}
               </div>
             </div>
+            {changesOpen && scrollRef.current && (
+              <ChangesOverlay
+                container={scrollRef.current}
+                items={changeItems}
+                activeId={activeChange}
+              />
+            )}
             {import.meta.env.DEV && docId && (
               <EditSaveCard
                 textCount={textPending}
@@ -858,8 +936,8 @@ export function Doc() {
               key={docId}
               docId={docId}
               containerRef={scrollRef}
-              panelHidden={designOpen}
-              onPick={closeDesign}
+              panelHidden={dock !== null}
+              onPick={closeDock}
               quiet={cardShown}
               onExit={() => setEditing(false)}
               exitRef={leaveEditRef}
@@ -867,7 +945,21 @@ export function Doc() {
               onPendingChange={setTextPending}
             />
           )}
-          {designOpen && <DesignPanel onClose={() => setDesignOpen(false)} />}
+          {designOpen && <DesignPanel onClose={closeDock} />}
+          {changesOpen && (
+            <ChangesPanel
+              state={changes.state}
+              items={changeItems}
+              placement={placement}
+              since={changes.since}
+              revisions={changes.revisions}
+              activeId={activeChange}
+              onSince={changes.setSince}
+              onSelect={selectChange}
+              onRevert={changes.revert}
+              onClose={closeDock}
+            />
+          )}
         </div>
       </div>
     </CommandPaletteProvider>

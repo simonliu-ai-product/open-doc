@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite';
 import { registerAssetRoutes } from './routes/assets.ts';
+import { registerChangesRoutes } from './routes/changes.ts';
 import { type ApiPluginOptions, makeContext } from './routes/context.ts';
 import { registerDocRoutes } from './routes/docs.ts';
 import { registerEditRoutes } from './routes/edit.ts';
@@ -19,6 +20,7 @@ export function apiPlugin(opts: ApiPluginOptions): Plugin {
       registerFolderRoutes(server, ctx);
       registerDocRoutes(server, ctx);
       registerEditRoutes(server, ctx);
+      registerChangesRoutes(server, ctx);
     },
   };
 }

@@ -148,4 +148,27 @@ export const PANELS: Record<string, string> = {
   Done: '完了',
   '{count} elements print from this line of source':
     'このソース行から {count} 個の要素が出力されます',
+  Changes: '変更',
+  'Changes ({count})': '変更（{count}）',
+  'Changes since the last commit': '前回のコミット以降の変更',
+  'Close the changes panel': '変更パネルを閉じる',
+  'Show changes since the last commit': '前回のコミット以降の変更を表示',
+  'Previous change': '前の変更',
+  'Next change': '次の変更',
+  Since: '比較',
+  'Compare with': '比較対象',
+  'Last commit': '前回のコミット',
+  'git is not installed': 'git がインストールされていません',
+  'Not a git repository': 'git リポジトリではありません',
+  'No changes': '変更はありません',
+  'Page {page}, changed': '{page} ページ（変更あり）',
+  Files: 'ファイル',
+  'Revert this change': 'この変更を元に戻す',
+  'that change is no longer there — reload the changes':
+    'この変更はもうありません。変更を再読み込みしてください',
+  'the file changed since the diff was read': '差分を読んだ後にファイルが変更されました',
+  'reverting this change alone would break the source — revert the changes around it too':
+    'この変更だけを戻すとソースが壊れます。周辺の変更も一緒に戻してください',
+  'a binary file cannot be reverted here': 'バイナリファイルはここでは元に戻せません',
+  'this workspace is not under git': 'このワークスペースは git で管理されていません',
 };

@@ -22,6 +22,8 @@ type Props = {
   activeId: string | null;
   onSelectPage: (page: number) => void;
   onSelectEntry: (entry: OutlineEntry) => void;
+  /** Pages carrying a change since the compared revision, while the changes panel is open. */
+  changedPages?: ReadonlySet<number>;
 };
 
 export function DocSidebar({
@@ -34,6 +36,7 @@ export function DocSidebar({
   activeId,
   onSelectPage,
   onSelectEntry,
+  changedPages,
 }: Props) {
   const t = useT();
   const [tab, setTab] = useState<Tab>('pages');
@@ -91,7 +94,11 @@ export function DocSidebar({
                   type="button"
                   data-thumb-page={page}
                   onClick={() => onSelectPage(page)}
-                  aria-label={t('Page {page}', { page })}
+                  aria-label={
+                    changedPages?.has(page)
+                      ? t('Page {page}, changed', { page })
+                      : t('Page {page}', { page })
+                  }
                   aria-current={page === currentPage ? 'page' : undefined}
                   className={cn(
                     'group flex w-full items-start gap-2 rounded-md p-1.5 transition-colors',
@@ -100,11 +107,18 @@ export function DocSidebar({
                 >
                   <span
                     className={cn(
-                      'w-5 flex-none pt-0.5 text-right font-mono text-[10px] tabular-nums',
+                      'flex w-5 flex-none flex-col items-end gap-1 pt-0.5 font-mono text-[10px] tabular-nums',
                       page === currentPage ? 'text-foreground' : 'text-muted-foreground',
                     )}
                   >
                     {String(page).padStart(2, '0')}
+                    {changedPages?.has(page) && (
+                      <span
+                        aria-hidden
+                        className="size-1.5 rounded-full"
+                        style={{ background: 'var(--change-changed)' }}
+                      />
+                    )}
                   </span>
                   <div
                     className={cn(
