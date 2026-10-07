@@ -15,6 +15,7 @@ export function useDocModule(docId: string | undefined): DocState {
   useEffect(() => {
     if (!docId) return;
     let cancelled = false;
+    let rescanned = false;
 
     const read = () => {
       loadDoc(docId)
@@ -23,6 +24,12 @@ export function useDocModule(docId: string | undefined): DocState {
         })
         .catch((err: unknown) => {
           if (cancelled) return;
+          // A document created a moment ago may not be in the list yet; the
+          // dev server rescans and reloads the page if it is on disk.
+          if (import.meta.env.DEV && !rescanned) {
+            rescanned = true;
+            void fetch('/__docs-rescan').catch(() => {});
+          }
           setState({
             status: 'error',
             doc: null,

@@ -202,6 +202,8 @@ export function openDocPlugin(opts: OpenDocPluginOptions): Plugin {
   const foldersManifestPath = path.join(docsRoot, '.folders.json');
 
   let isDev = false;
+  // The ids the browser was last given, to tell whether a rescan found new ones.
+  let listedIds = '';
 
   const docIdForEntry = (p: string): string | null => {
     const rel = path.relative(docsRoot, p);
@@ -242,6 +244,7 @@ export function openDocPlugin(opts: OpenDocPluginOptions): Plugin {
     async load(id) {
       if (id === resolved(DOCS_VMOD)) {
         const files = await findDocs(userCwd, docsDir);
+        listedIds = JSON.stringify(files.map((file) => toId(file, docsRoot)).sort());
         const { code, ignored } = await generateDocsModule(files, docsRoot, isDev);
         for (const docId of ignored) {
           if (warnedInvalidDocIds.has(docId)) continue;
@@ -296,6 +299,18 @@ export function openDocPlugin(opts: OpenDocPluginOptions): Plugin {
       server.watcher.add(docsRoot);
       server.watcher.on('add', (p) => {
         if (isDocEntry(p)) reload();
+      });
+      // The viewer's fallback when it is sent to a document it has never heard
+      // of: on Linux CI the watcher missed a folder created and filled in one
+      // go — a template, a copy, `open-doc new` — entirely, and the disk is the
+      // truth. Reloads only when the list really changed.
+      server.middlewares.use('/__docs-rescan', async (_req, res) => {
+        const files = await findDocs(userCwd, docsDir);
+        const changed =
+          JSON.stringify(files.map((file) => toId(file, docsRoot)).sort()) !== listedIds;
+        if (changed) reload();
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ changed }));
       });
       server.watcher.on('unlink', (p) => {
         if (isDocEntry(p)) reload();

@@ -96,6 +96,11 @@ export type DocRenderer = {
   sheets(): Promise<SheetSnapshot[]>;
   html(): Promise<BridgeBundle | null>;
   docx(): Promise<BridgeBundle | null>;
+  /**
+   * Lays the document out for one of its `records` and waits for the pages to
+   * settle; `status` then describes that row's copy. Returns its file name.
+   */
+  setRecord(index: number, pattern?: string): Promise<string>;
   close(): Promise<void>;
 };
 
@@ -182,7 +187,7 @@ export async function createRenderSession(opts: RenderSessionOptions): Promise<R
 
       const status = await page.evaluate<BridgeStatus>('globalThis.__openDoc.status()');
 
-      return {
+      const renderer: DocRenderer = {
         status,
         diagnose: () => page.evaluate<BridgeReport>('globalThis.__openDoc.diagnose()'),
         async pdf() {
@@ -240,8 +245,23 @@ export async function createRenderSession(opts: RenderSessionOptions): Promise<R
         },
         html: () => page.evaluate<BridgeBundle | null>('globalThis.__openDoc.htmlBundle()'),
         docx: () => page.evaluate<BridgeBundle | null>('globalThis.__openDoc.docxBundle()'),
+        async setRecord(index, pattern) {
+          const { name } = await page.evaluate<{ name: string }>(
+            `globalThis.__openDoc.setRecord(${JSON.stringify(index)}, ${pattern === undefined ? 'undefined' : JSON.stringify(pattern)})`,
+          );
+          // The row has to be the one the page reports, as well as ready: a
+          // ready from the moment before the switch is the last row's layout.
+          await page.waitForFunction(
+            `(() => { const s = globalThis.__openDoc.status(); return s.ready && s.record === ${JSON.stringify(index)}; })()`,
+            undefined,
+            { timeout },
+          );
+          renderer.status = await page.evaluate<BridgeStatus>('globalThis.__openDoc.status()');
+          return name;
+        },
         close: () => page.close(),
       };
+      return renderer;
     },
     async compareImages(before, after) {
       const page = await browser.newPage();

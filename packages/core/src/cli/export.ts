@@ -12,6 +12,10 @@ export interface ExportOptions {
   format?: ExportFormat;
   outDir?: string;
   all?: boolean;
+  /** One copy per row of the document's `records`. */
+  each?: boolean;
+  /** With `each`: the file name pattern — `{column}`, `{#}`. */
+  name?: string;
 }
 
 const FORMATS: readonly ExportFormat[] = EXPORT_FORMATS;
@@ -38,7 +42,16 @@ export async function exportDocs(docIds: string[], opts: ExportOptions = {}): Pr
       const result = await exportDocument(ctx, docId, {
         format,
         ...(opts.outDir !== undefined ? { outDir: opts.outDir } : {}),
+        ...(opts.each ? { each: true } : {}),
+        ...(opts.name !== undefined ? { name: opts.name } : {}),
       });
+      if (result.records !== undefined) {
+        process.stdout.write(
+          `${chalk.green('✓')} ${chalk.bold(docId)} ${chalk.dim(`${result.records} records, ${result.pageCount}p`)} → ${result.files.length} files\n`,
+        );
+        for (const file of result.files) process.stdout.write(chalk.dim(`  ${file}\n`));
+        continue;
+      }
       const files = result.files.join(', ');
       process.stdout.write(
         `${chalk.green('✓')} ${chalk.bold(docId)} ${chalk.dim(`${result.pageCount}p`)} → ${files}\n`,

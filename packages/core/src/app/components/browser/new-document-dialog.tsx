@@ -1,4 +1,5 @@
 import {
+  Award,
   FileText,
   type LucideIcon,
   Mail,
@@ -19,6 +20,7 @@ const ICONS: Record<string, LucideIcon> = {
   proposal: Presentation,
   'meeting-notes': Users,
   letter: Mail,
+  certificate: Award,
 };
 
 const iconOf = (template: TemplateSummary) => ICONS[template.name] ?? NotebookPen;

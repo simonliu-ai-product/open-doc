@@ -32,6 +32,8 @@ export type ExportResult = {
   pageCount: number;
   /** Written paths, relative to the workspace root. */
   files: string[];
+  /** With `each`: how many rows were written, one copy each. */
+  records?: number;
 };
 
 /**
@@ -156,10 +158,15 @@ function resolveOutDir(ctx: ApiContext, outDir: string): string {
   return resolved;
 }
 
+/**
+ * Writes the document's files. With `each`, a document that exports
+ * `records` is laid out and written once per row — `name` (or
+ * `meta.recordName`) names each row's files.
+ */
 export async function exportDocument(
   ctx: ApiContext,
   docId: string,
-  opts: { format?: ExportFormat; outDir?: string } = {},
+  opts: { format?: ExportFormat; outDir?: string; each?: boolean; name?: string } = {},
 ): Promise<ExportResult> {
   const format = opts.format ?? 'pdf';
   const dir = resolveOutDir(ctx, opts.outDir ?? 'out');
@@ -167,6 +174,7 @@ export async function exportDocument(
   return withDoc(ctx, docId, async (renderer) => {
     await fs.mkdir(dir, { recursive: true });
     const written: string[] = [];
+    const taken = new Set<string>();
 
     const write = async (name: string, bytes: Uint8Array) => {
       const file = path.join(dir, name);
@@ -174,22 +182,54 @@ export async function exportDocument(
       written.push(path.relative(ctx.userCwd, file));
     };
 
-    if (format === 'pdf') {
-      await write(`${docId}.pdf`, await renderer.pdf());
-    } else if (format === 'html' || format === 'docx') {
-      const bundle = format === 'html' ? await renderer.html() : await renderer.docx();
-      if (!bundle) throw new OpsError(422, `document has no pages: ${docId}`);
-      await write(bundle.filename, Buffer.from(bundle.base64, 'base64'));
-    } else {
-      const width = String(renderer.status.pageCount).length;
-      for (let page = 1; page <= renderer.status.pageCount; page++) {
+    // Two rows can fill the pattern the same way; the second must not
+    // overwrite the first.
+    const free = (base: string) => {
+      let name = base;
+      for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+      taken.add(name);
+      return name;
+    };
+
+    const writeCopy = async (base: string) => {
+      if (format === 'pdf') {
+        await write(`${base}.pdf`, await renderer.pdf());
+      } else if (format === 'html' || format === 'docx') {
+        const bundle = format === 'html' ? await renderer.html() : await renderer.docx();
+        if (!bundle) throw new OpsError(422, `document has no pages: ${docId}`);
         await write(
-          `${docId}-${String(page).padStart(width, '0')}.png`,
-          await renderer.screenshot(page),
+          `${base}${path.extname(bundle.filename)}`,
+          Buffer.from(bundle.base64, 'base64'),
         );
+      } else {
+        const width = String(renderer.status.pageCount).length;
+        for (let page = 1; page <= renderer.status.pageCount; page++) {
+          await write(
+            `${base}-${String(page).padStart(width, '0')}.png`,
+            await renderer.screenshot(page),
+          );
+        }
       }
+    };
+
+    if (!opts.each) {
+      await writeCopy(docId);
+      return { docId, format, pageCount: renderer.status.pageCount, files: written };
     }
 
-    return { docId, format, pageCount: renderer.status.pageCount, files: written };
+    const records = renderer.status.records;
+    if (records === 0) {
+      throw new OpsError(
+        422,
+        `${docId} has no records — export \`records\` (rows from a .csv) to write one copy per row`,
+      );
+    }
+    let pageCount = 0;
+    for (let index = 0; index < records; index++) {
+      const name = await renderer.setRecord(index, opts.name);
+      pageCount += renderer.status.pageCount;
+      await writeCopy(free(name));
+    }
+    return { docId, format, pageCount, files: written, records };
   });
 }

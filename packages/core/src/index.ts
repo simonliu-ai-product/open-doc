@@ -32,6 +32,8 @@ export { useDocLabel, useDocLabels } from './app/lib/labels.ts';
 export type { OutlineEntry } from './app/lib/outline.ts';
 export { useDocOutline } from './app/lib/outline.ts';
 export { useDocPageCount, useDocPageNumber } from './app/lib/page-context.tsx';
+export type { DataRecord, FieldProps } from './app/lib/records.ts';
+export { Field, useRecord } from './app/lib/records.ts';
 export type {
   DocEntry,
   DocMeta,

@@ -11,7 +11,7 @@ You only write files under `docs/<id>/`. Never modify `package.json`, `open-doc.
 
 **If the user already has the content written as Markdown, don't retype it into JSX.** `open-doc import <file.md> --id <id>` produces a real document — `flow()` body, cover, contents, local images copied into the document's assets — which you then refine. Steps 0–2 still apply for the parts the import cannot know (theme, page size, visual direction).
 
-**If a template fits the kind of document, start from it.** `open-doc templates` lists them — built-in (`report`, `proposal`, `meeting-notes`, `letter`, `blank`) and the workspace's own under `templates/<name>/` — with the name to pass on. `open-doc new <id> --template <name> --title "<title>"` copies one into `docs/<id>/`, retitled and dated today, and you then replace its stand-in content with the real substance (Steps 1–2 still apply). Over MCP, the same is `list_templates` and `create_from_template`.
+**If a template fits the kind of document, start from it.** `open-doc templates` lists them — built-in (`report`, `proposal`, `meeting-notes`, `letter`, `certificate`, `blank`) and the workspace's own under `templates/<name>/` — with the name to pass on. `open-doc new <id> --template <name> --title "<title>"` copies one into `docs/<id>/`, retitled and dated today, and you then replace its stand-in content with the real substance (Steps 1–2 still apply). Over MCP, the same is `list_templates` and `create_from_template`.
 
 ## Step 0 — Pick a theme
 

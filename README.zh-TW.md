@@ -174,7 +174,8 @@ pnpm dev
 | `open-doc export [ids…]` | 無頭產出 PDF / HTML / PNG |
 | `open-doc import <file.md>` | Markdown → `docs/` 下的一份文件 |
 | `open-doc templates` | 列出新文件可以使用的範本 |
-| `open-doc new <id> --template <name>` | 用範本建立新文件（`report`、`proposal`、`meeting-notes`、`letter`、`blank`，或你自己的 `templates/<name>/`） |
+| `open-doc new <id> --template <name>` | 用範本建立新文件（`report`、`proposal`、`meeting-notes`、`letter`、`certificate`、`blank`，或你自己的 `templates/<name>/`） |
+| `open-doc export <id> --each` | 依文件的 `records` 每一列輸出一份檔案（證書、信函、報價單） |
 
 ## 檔案契約
 

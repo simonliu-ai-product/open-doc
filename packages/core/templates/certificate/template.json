@@ -1,0 +1,6 @@
+{
+  "title": "Certificate",
+  "description": "One certificate per row of data/recipients.csv — preview each in the viewer, export them all with --each.",
+  "category": "batch",
+  "placeholder": "Certificate of completion"
+}

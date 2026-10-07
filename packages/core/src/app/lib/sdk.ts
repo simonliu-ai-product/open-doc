@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { DesignSystem } from './design.ts';
 import type { LabelVocabulary } from './labels.ts';
+import type { DataRecord } from './records.ts';
 
 /** The only sheets a document may be laid out on. */
 export const PAGE_SIZE_NAMES = ['A4', 'B4', 'A3'] as const;
@@ -93,6 +94,13 @@ export type DocMeta = {
    * declares. English when unset.
    */
   lang?: string;
+  /**
+   * With `records`: the file name for each row's copy — `{column}` takes the
+   * row's value, `{#}` its number. `<id>-{#}` when unset.
+   */
+  recordName?: string;
+  /** With `records`: the column that names a row in the viewer's picker. */
+  recordLabel?: string;
 };
 
 /**
@@ -121,6 +129,11 @@ export type DocModule = {
   default: DocEntry[];
   meta?: DocMeta;
   design?: DesignSystem;
+  /**
+   * Rows to print the document for, one copy each — usually an imported
+   * `.csv`. Pages read the current row with `useRecord()` or `<Field>`.
+   */
+  records?: DataRecord[];
 };
 
 export function resolvePageGeometry(meta?: DocMeta): PageGeometry {

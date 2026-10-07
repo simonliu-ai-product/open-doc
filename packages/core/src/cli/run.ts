@@ -37,6 +37,8 @@ interface ExportFlags {
   format?: string;
   outDir?: string;
   all?: boolean;
+  each?: boolean;
+  name?: string;
 }
 
 interface DiffFlags {
@@ -162,6 +164,11 @@ export async function run(argv: string[]): Promise<void> {
     .addOption(new Option('-f, --format <format>', 'output format').choices([...EXPORT_FORMATS]))
     .option('-o, --out-dir <dir>', 'directory to write into (defaults to `out`)')
     .option('--all', 'export every document under docs/')
+    .option('--each', "one copy per row of the document's `records`")
+    .option(
+      '--name <pattern>',
+      'with --each: file name, e.g. "certificate-{name}" ({#} is the row number)',
+    )
     .action(async (docIds: string[], flags: ExportFlags) => {
       const { exportDocs } = await import('./export.ts');
       await exportDocs(docIds, flags as Parameters<typeof exportDocs>[1]);

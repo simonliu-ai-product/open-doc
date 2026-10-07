@@ -174,7 +174,8 @@ Open http://localhost:5273. From there, drive it through your agent — or edit 
 | `open-doc export [ids…]` | Headless PDF / HTML / PNG |
 | `open-doc import <file.md>` | Markdown → a document under `docs/` |
 | `open-doc templates` | List the templates a document can start from |
-| `open-doc new <id> --template <name>` | A new document from a template (`report`, `proposal`, `meeting-notes`, `letter`, `blank`, or your own `templates/<name>/`) |
+| `open-doc new <id> --template <name>` | A new document from a template (`report`, `proposal`, `meeting-notes`, `letter`, `certificate`, `blank`, or your own `templates/<name>/`) |
+| `open-doc export <id> --each` | One file per row of the document's `records` (certificates, letters, quotes) |
 
 ## The file contract
 
