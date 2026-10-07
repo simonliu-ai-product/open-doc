@@ -297,6 +297,13 @@ export function openDocPlugin(opts: OpenDocPluginOptions): Plugin {
       server.watcher.on('add', (p) => {
         if (isDocEntry(p)) reload();
       });
+      // A document folder created and filled in one go — a template, a copy,
+      // `open-doc new` — can reach Linux's watcher before it watches the new
+      // folder, so the entry's own `add` never comes. The folder's does, and
+      // the reload re-globs the disk.
+      server.watcher.on('addDir', (p) => {
+        if (path.dirname(p) === docsRoot) reload();
+      });
       server.watcher.on('unlink', (p) => {
         if (isDocEntry(p)) reload();
       });
