@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { insertMarker, parseMarkers, removeMarker } from './comments.ts';
+import { insertMarker, locateMarkers, parseMarkers, removeMarker } from './comments.ts';
 import { readTextAt, replaceTextAt, replaceTextsAt, resolveTextTarget } from './edit-ops.ts';
 
 // Column is 0-based, line is 1-based — exactly what the loc tag carries.
@@ -741,5 +741,20 @@ describe('comment markers', () => {
   it('refuses to anchor to a self-closing element', () => {
     const selfClosing = `const P = () => (\n  <div>\n    <img src={a} />\n  </div>\n);\n`;
     expect(insertMarker(selfClosing, { line: 3, column: 4 }, 'note')).toBeNull();
+  });
+});
+
+describe('locateMarkers', () => {
+  it('names the element each marker sits in by its start', () => {
+    // Bottom first, so the second insertion's location is still the original's.
+    const first = insertMarker(SOURCE, WRAPPER, 'move this up', 'div');
+    const second = first && insertMarker(first.source, H1, 'tighten this', 'h1');
+    expect(second).not.toBeNull();
+    const source = (second as { source: string }).source;
+    const located = locateMarkers(source, parseMarkers(source));
+    expect(located.map((c) => [c.note, c.loc])).toEqual([
+      ['tighten this', '3:4'],
+      ['move this up', '8:4'],
+    ]);
   });
 });

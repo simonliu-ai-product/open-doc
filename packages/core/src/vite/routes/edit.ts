@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import type { ViteDevServer } from 'vite';
 import type { StyleChanges } from '../../app/lib/inspector/format.ts';
-import { insertMarker, parseMarkers, removeMarker } from '../../editing/comments.ts';
+import { insertMarker, locateMarkers, parseMarkers, removeMarker } from '../../editing/comments.ts';
 import {
   replaceTextAt,
   resolveTextTarget,
@@ -239,7 +239,8 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
     try {
       if (method === 'GET') {
         if (!entry) return json(res, 200, { comments: [] });
-        return json(res, 200, { comments: parseMarkers(await fs.readFile(entry, 'utf8')) });
+        const source = await fs.readFile(entry, 'utf8');
+        return json(res, 200, { comments: locateMarkers(source, parseMarkers(source)) });
       }
 
       if (method === 'DELETE') {

@@ -1,10 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import { type AstNode, findJsxAt, parseStrict } from './babel-walk.ts';
+import { type AstNode, findJsxAt, parseSource, parseStrict, walkJsx } from './babel-walk.ts';
 
 const MARKER_RE =
   /\{\/\*\s*@doc-comment\s+id="(c-[a-f0-9]+)"\s+ts="([^"]+)"\s+text="([A-Za-z0-9_-]+={0,2})"\s*\*\/\}/;
 
-export type DocComment = { id: string; line: number; ts: string; note: string; hint?: string };
+export type DocComment = {
+  id: string;
+  line: number;
+  ts: string;
+  note: string;
+  hint?: string;
+  /** `line:col` of the element the marker sits in — the same loc the page carries. */
+  loc?: string;
+};
 
 export function b64urlEncode(value: string): string {
   return Buffer.from(value, 'utf8')
@@ -31,6 +39,32 @@ export function parseMarkers(source: string): DocComment[] {
     } catch {}
   });
   return comments;
+}
+
+/**
+ * Where each marker's element starts. A marker is always an element's first
+ * child, so the element holding it is the one the note is about; its start is
+ * the `data-od-loc` the page stamps on it, which is how the viewer pins a note
+ * to what it printed.
+ */
+export function locateMarkers(source: string, comments: DocComment[]): DocComment[] {
+  const ast = parseSource(source);
+  if (!ast) return comments;
+  const owner = new Map<string, string>();
+  walkJsx(ast, (element) => {
+    if (!element.loc) return;
+    for (const child of (element.children ?? []) as AstNode[]) {
+      if (child.type !== 'JSXExpressionContainer') continue;
+      const id = /@doc-comment\s+id="(c-[a-f0-9]+)"/.exec(
+        source.slice(child.start, child.end),
+      )?.[1];
+      if (id) owner.set(id, `${element.loc.start.line}:${element.loc.start.column}`);
+    }
+  });
+  return comments.map((comment) => {
+    const loc = owner.get(comment.id);
+    return loc ? { ...comment, loc } : comment;
+  });
 }
 
 export function newCommentId(): string {

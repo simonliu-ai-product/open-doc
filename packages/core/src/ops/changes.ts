@@ -11,6 +11,7 @@ import {
   placeHunks,
   revertHunkIn,
   untrackedFile,
+  withoutReviewMarkers,
 } from './changes-diff.ts';
 import { OpsError, resolveEntry } from './documents.ts';
 
@@ -73,7 +74,7 @@ export async function readChanges(
     if (since !== 'HEAD') throw new OpsError(400, `not a revision in this repository: ${since}`);
   }
 
-  const files = commit
+  let files = commit
     ? parseUnifiedDiff(
         await git(ctx.userCwd, [
           'diff',
@@ -103,6 +104,7 @@ export async function readChanges(
     );
   }
 
+  files = withoutReviewMarkers(files);
   const own = files.find((file) => file.path === path.basename(entry));
   if (own && !own.binary) placeHunks(await fs.readFile(entry, 'utf8'), own.hunks);
   files.sort((a, b) => (a === own ? -1 : b === own ? 1 : a.path.localeCompare(b.path)));

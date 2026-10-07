@@ -5,7 +5,7 @@ description: Use this skill when the user asks to apply, process, or clear the c
 
 # Apply inspector comments
 
-The dev UI's **Inspect** mode lets the user click any element on a page and leave a note. Each note is written into the document source as a marker:
+In the viewer the user leaves notes from the **Comments** panel (`M`) or the element panel in edit mode, and the panel's **Copy request for the agent** button hands you `/apply-comments docs/<id>` — when a path is given, work on that document only. Each note is written into the document source as a marker:
 
 ```tsx
 <p style={p}>
@@ -17,6 +17,8 @@ The dev UI's **Inspect** mode lets the user click any element on a page and leav
 The marker is always the **first child of the element the note is about** — that is your anchor. `text` is base64url-encoded JSON: `{"note": "...", "hint": "p"}`.
 
 ## Step 1 — Find the pending comments
+
+If the request named a document (`docs/<id>`), look only there.
 
 ```bash
 grep -rn "@doc-comment" docs/

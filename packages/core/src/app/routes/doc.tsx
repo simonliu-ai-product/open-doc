@@ -18,6 +18,7 @@ import {
   Link2,
   Loader2,
   Maximize,
+  MessageSquare,
   Minimize,
   Minus,
   MoveHorizontal,
@@ -30,10 +31,13 @@ import {
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ChangesOverlay, elementsOf, usePlacement } from '../components/changes/changes-overlay';
+import { ChangesOverlay, elementsOf } from '../components/changes/changes-overlay';
 import { ChangesPanel } from '../components/changes/changes-panel';
 import { type ChangeItem, itemsOf, useChanges } from '../components/changes/use-changes';
 import { CommandPaletteProvider, type PaletteItem } from '../components/command-palette';
+import { CommentsOverlay } from '../components/comments/comments-overlay';
+import { CommentsPanel } from '../components/comments/comments-panel';
+import { type DocComment, useComments } from '../components/comments/use-comments';
 import { DesignPanel } from '../components/design-panel/design-panel';
 import { DesignProvider } from '../components/design-panel/design-provider';
 import { DocSearch } from '../components/doc-search';
@@ -41,6 +45,7 @@ import { DocSidebar } from '../components/doc-sidebar';
 import { HistoryProvider } from '../components/history-provider';
 import { Inspector, type InspectorControls } from '../components/inspector/inspector';
 import { PageFrame } from '../components/page-frame';
+import { elementsAtLoc, usePlacement } from '../components/page-placement';
 import { browserItems } from '../components/palette-items';
 import { EditSaveCard } from '../components/panel/edit-save-card';
 import { ThemeToggle } from '../components/theme-toggle';
@@ -209,11 +214,13 @@ export function Doc() {
   const [customRange, setCustomRange] = useState('');
   // One dock on the right, one panel in it at a time; the element panel takes
   // it back whenever an element is picked.
-  const [dock, setDock] = useState<'design' | 'changes' | null>(null);
+  const [dock, setDock] = useState<'design' | 'changes' | 'comments' | null>(null);
   const designOpen = dock === 'design';
   const changesOpen = dock === 'changes';
+  const commentsOpen = dock === 'comments';
   const toggleDock = useCallback(
-    (panel: 'design' | 'changes') => setDock((open) => (open === panel ? null : panel)),
+    (panel: 'design' | 'changes' | 'comments') =>
+      setDock((open) => (open === panel ? null : panel)),
     [],
   );
   const closeDock = useCallback(() => setDock(null), []);
@@ -245,8 +252,50 @@ export function Doc() {
   // shows up in the count and on the page without being asked for.
   const changes = useChanges(docId, doc, import.meta.env.DEV);
   const changeItems = useMemo(() => itemsOf(changes.state), [changes.state]);
-  const placement = usePlacement(changesOpen ? scrollRef.current : null, changeItems);
+  const changeTargets = useMemo(
+    () =>
+      changeItems.map((item) => ({
+        id: item.hunk.id,
+        locs: item.hunk.targets.map((target) => target.loc),
+      })),
+    [changeItems],
+  );
+  const placement = usePlacement(changesOpen ? scrollRef.current : null, changeTargets);
   const changedPages = useMemo(() => new Set([...placement.values()].flat()), [placement]);
+
+  const comments = useComments(docId, doc, import.meta.env.DEV);
+  const commentList = useMemo(
+    () => (comments.state.status === 'ready' ? comments.state.comments : []),
+    [comments.state],
+  );
+  const commentTargets = useMemo(
+    () =>
+      commentList.map((comment) => ({ id: comment.id, locs: comment.loc ? [comment.loc] : [] })),
+    [commentList],
+  );
+  const commentPlacement = usePlacement(commentsOpen ? scrollRef.current : null, commentTargets);
+  const commentPages = useMemo(
+    () => new Set([...commentPlacement.values()].flat()),
+    [commentPlacement],
+  );
+  const [activeComment, setActiveComment] = useState<string | null>(null);
+  const selectComment = useCallback((comment: DocComment) => {
+    setActiveComment(comment.id);
+    const container = scrollRef.current;
+    const first = container && comment.loc ? elementsAtLoc(container, comment.loc)[0] : undefined;
+    first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, []);
+  // "New comment" goes straight to picking an element, with the note open
+  // and focused when the element panel comes up.
+  const [commentFirst, setCommentFirst] = useState(false);
+  const startComment = useCallback(() => {
+    setDock(null);
+    setCommentFirst(true);
+    setEditing(true);
+  }, [setEditing]);
+  useEffect(() => {
+    if (!editing) setCommentFirst(false);
+  }, [editing]);
   const [activeChange, setActiveChange] = useState<string | null>(null);
   const selectChange = useCallback((item: ChangeItem) => {
     setActiveChange(item.hunk.id);
@@ -577,6 +626,15 @@ export function Doc() {
           icon: GitCompare,
           run: () => toggleDock('changes'),
         },
+        {
+          id: 'comments',
+          group: t('Actions'),
+          label: commentsOpen ? t('Close the comments panel') : t('Show comments'),
+          hint: 'M',
+          keywords: 'comments review notes agent',
+          icon: MessageSquare,
+          run: () => toggleDock('comments'),
+        },
       );
     }
     return [
@@ -618,6 +676,9 @@ export function Doc() {
       } else if (import.meta.env.DEV && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
         toggleDock('changes');
+      } else if (import.meta.env.DEV && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        toggleDock('comments');
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -783,6 +844,36 @@ export function Doc() {
                 )}
               </button>
             )}
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                aria-pressed={commentsOpen}
+                aria-label={
+                  commentList.length > 0
+                    ? t('Comments ({count})', { count: commentList.length })
+                    : t('Comments')
+                }
+                aria-keyshortcuts="M"
+                title={`${t('Comments')} (M)`}
+                onClick={() => toggleDock('comments')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                  commentsOpen && 'bg-accent',
+                )}
+              >
+                <MessageSquare className="size-3.5" />
+                <span className="hidden lg:inline">{t('Comments')}</span>
+                {commentList.length > 0 && (
+                  <span
+                    aria-hidden
+                    className="min-w-4 rounded-full px-1 text-center font-mono text-[10px] text-white tabular-nums"
+                    style={{ background: 'var(--comment-pin)' }}
+                  >
+                    {commentList.length}
+                  </span>
+                )}
+              </button>
+            )}
 
             <CopyLink />
 
@@ -870,6 +961,7 @@ export function Doc() {
             onSelectPage={scrollToPage}
             onSelectEntry={scrollToEntry}
             {...(changesOpen ? { changedPages } : {})}
+            {...(commentsOpen ? { commentPages } : {})}
           />
           <div className="relative flex min-w-0 flex-1">
             <div
@@ -913,6 +1005,13 @@ export function Doc() {
                 ))}
               </div>
             </div>
+            {commentsOpen && scrollRef.current && (
+              <CommentsOverlay
+                container={scrollRef.current}
+                comments={commentList}
+                activeId={activeComment}
+              />
+            )}
             {changesOpen && scrollRef.current && (
               <ChangesOverlay
                 container={scrollRef.current}
@@ -938,6 +1037,7 @@ export function Doc() {
               containerRef={scrollRef}
               panelHidden={dock !== null}
               onPick={closeDock}
+              commentFirst={commentFirst}
               quiet={cardShown}
               onExit={() => setEditing(false)}
               exitRef={leaveEditRef}
@@ -946,6 +1046,30 @@ export function Doc() {
             />
           )}
           {designOpen && <DesignPanel onClose={closeDock} />}
+          {commentsOpen && docId && (
+            <CommentsPanel
+              docId={docId}
+              state={comments.state}
+              placement={commentPlacement}
+              excerpts={
+                new Map(
+                  commentList.map((comment) => {
+                    const el =
+                      scrollRef.current && comment.loc
+                        ? elementsAtLoc(scrollRef.current, comment.loc)[0]
+                        : undefined;
+                    const text = (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+                    return [comment.id, text.length > 90 ? `${text.slice(0, 89)}…` : text];
+                  }),
+                )
+              }
+              activeId={activeComment}
+              onSelect={selectComment}
+              onResolve={comments.resolve}
+              onNew={startComment}
+              onClose={closeDock}
+            />
+          )}
           {changesOpen && (
             <ChangesPanel
               state={changes.state}

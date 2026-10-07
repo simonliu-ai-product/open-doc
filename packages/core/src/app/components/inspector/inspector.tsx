@@ -514,6 +514,8 @@ type Props = {
   panelHidden: boolean;
   /** An element was picked on the page — the dock should show its panel. */
   onPick: () => void;
+  /** The reader came here to leave a comment: the element panel opens on the note. */
+  commentFirst?: boolean;
   /** The save card is showing, so the hint underneath it steps aside. */
   quiet: boolean;
   onExit: () => void;
@@ -528,6 +530,7 @@ export function Inspector({
   containerRef,
   panelHidden,
   onPick,
+  commentFirst = false,
   quiet,
   onExit,
   exitRef,
@@ -1587,8 +1590,16 @@ export function Inspector({
               </button>
             )}
           </Section>
-          <CollapsibleSection title={t('Comment for the agent')}>
+          <CollapsibleSection
+            // Remounted per element while commenting, so each pick opens on
+            // the note with the caret in it.
+            key={commentFirst ? loc : 'comment'}
+            title={t('Comment for the agent')}
+            defaultOpen={commentFirst}
+          >
             <textarea
+              // biome-ignore lint/a11y/noAutofocus: the reader asked to comment and then picked this element
+              autoFocus={commentFirst}
               aria-label={t('Comment for the agent')}
               value={note}
               onChange={(e) => setNote(e.target.value)}

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseUnifiedDiff, placeHunks, revertHunkIn, untrackedFile } from './changes-diff.ts';
+import {
+  parseUnifiedDiff,
+  placeHunks,
+  revertHunkIn,
+  untrackedFile,
+  withoutReviewMarkers,
+} from './changes-diff.ts';
 
 const DIFF = `diff --git a/docs/report/index.tsx b/docs/report/index.tsx
 index 1111111..2222222 100644
@@ -197,5 +203,23 @@ describe('revertHunkIn', () => {
   it('takes back an untracked file line by line', () => {
     const file = untrackedFile('index.tsx', 'one\ntwo\n');
     expect(file.hunks[0]).toMatchObject({ newStart: 1, newLines: 2, added: ['one', 'two'] });
+  });
+});
+
+describe('withoutReviewMarkers', () => {
+  it('leaves out a hunk that only adds a review comment', () => {
+    const files = parseUnifiedDiff(
+      `diff --git a/d/index.tsx b/d/index.tsx
+--- a/d/index.tsx
++++ b/d/index.tsx
+@@ -3,0 +4 @@
++      {/* @doc-comment id="c-1a2b3c4d" ts="2026-10-07T00:00:00.000Z" text="eyJub3RlIjoieCJ9" */}
+@@ -8 +9 @@
+-    <p>Old</p>
++    <p>New</p>
+`,
+      'd/',
+    );
+    expect(withoutReviewMarkers(files)[0]?.hunks.map((h) => h.added)).toEqual([['    <p>New</p>']]);
   });
 });

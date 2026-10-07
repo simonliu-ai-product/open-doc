@@ -31,6 +31,22 @@ export type FileChange = {
   hunks: Hunk[];
 };
 
+const REVIEW_MARKER = /^\s*\{\/\*\s*@doc-comment\s.*\*\/\}\s*$/;
+
+/**
+ * Drops hunks that only add or remove review comments. A comment is a marker
+ * in the source, but it is a note about the document, not a change to it —
+ * counting it would put every note left in review on the changes list too.
+ */
+export function withoutReviewMarkers(files: FileChange[]): FileChange[] {
+  return files.map((file) => ({
+    ...file,
+    hunks: file.hunks.filter(
+      (hunk) => ![...hunk.removed, ...hunk.added].every((line) => REVIEW_MARKER.test(line)),
+    ),
+  }));
+}
+
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 function hunkId(file: string, oldStart: number, removed: string[], added: string[]): string {
