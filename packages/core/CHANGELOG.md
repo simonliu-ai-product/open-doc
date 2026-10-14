@@ -1,5 +1,11 @@
 # @open-document/core
 
+## 0.13.1
+
+### Patch Changes
+
+- [#76](https://github.com/simonliu-ai-product/open-doc/pull/76) [`bb9b64f`](https://github.com/simonliu-ai-product/open-doc/commit/bb9b64f65938e60af5441498dda99f3e626c00e7) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Add per-file async write queue (`withFileLock`) and SHA-256 optimistic concurrency control (`hashSource` / `expectedHash`) across document, text, comment, design, and folder operations to prevent concurrent write clobbering on local and GCS FUSE storage.
+
 ## 0.13.0
 
 ### Minor Changes
