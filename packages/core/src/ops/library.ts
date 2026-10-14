@@ -19,6 +19,7 @@ import {
 } from '../files/folders.ts';
 import type { ApiContext } from '../vite/routes/context.ts';
 import { parseFrontmatter } from '../vite/themes-plugin.ts';
+import { withFileLock } from './concurrency.ts';
 import { listDocIds, OpsError, resolveEntry } from './documents.ts';
 
 /** Themes, assets, and folders — the material a document is written against. */
@@ -131,7 +132,9 @@ export async function writeAsset(
   await fs.mkdir(dir, { recursive: true });
   const file = resolveScopedAssetFile(ctx.docsRoot, ctx.globalAssetsRoot, scope, name);
   if (!file) throw new OpsError(400, 'invalid filename');
-  await fs.writeFile(file, data);
+  await withFileLock(file, async () => {
+    await fs.writeFile(file, data);
+  });
   return {
     scope,
     filename: name,
@@ -144,7 +147,9 @@ export async function deleteAsset(ctx: ApiContext, scope: string, filename: stri
   const file = resolveScopedAssetFile(ctx.docsRoot, ctx.globalAssetsRoot, scope, filename);
   if (!file) throw new OpsError(400, 'invalid filename');
   if (!existsSync(file)) throw new OpsError(404, `asset not found: ${scope}/${filename}`);
-  await fs.rm(file);
+  await withFileLock(file, async () => {
+    await fs.rm(file);
+  });
 }
 
 /** Which documents import this asset — check before deleting one. */
@@ -183,11 +188,13 @@ export async function createFolder(
   if (!name) throw new OpsError(400, 'invalid folder name');
   const icon = validateIcon(rawIcon ?? DEFAULT_FOLDER_ICON);
   if (!icon) throw new OpsError(400, 'invalid icon');
-  const manifest = await readManifest(ctx.manifestPath);
-  const folder: Folder = { id: newFolderId(), name, icon };
-  manifest.folders.push(folder);
-  await writeManifest(ctx.manifestPath, manifest);
-  return folder;
+  return withFileLock(ctx.manifestPath, async () => {
+    const manifest = await readManifest(ctx.manifestPath);
+    const folder: Folder = { id: newFolderId(), name, icon };
+    manifest.folders.push(folder);
+    await writeManifest(ctx.manifestPath, manifest);
+    return folder;
+  });
 }
 
 /** Filing only edits assignments — a document id never moves on disk. */
@@ -196,11 +203,13 @@ export async function fileDocument(
   docId: string,
   folderId: string | null,
 ): Promise<void> {
-  const manifest = await readManifest(ctx.manifestPath);
-  if (folderId !== null && !manifest.folders.some((f) => f.id === folderId)) {
-    throw new OpsError(404, `folder not found: ${folderId}`);
-  }
-  if (folderId === null) delete manifest.assignments[docId];
-  else manifest.assignments[docId] = folderId;
-  await writeManifest(ctx.manifestPath, manifest);
+  await withFileLock(ctx.manifestPath, async () => {
+    const manifest = await readManifest(ctx.manifestPath);
+    if (folderId !== null && !manifest.folders.some((f) => f.id === folderId)) {
+      throw new OpsError(404, `folder not found: ${folderId}`);
+    }
+    if (folderId === null) delete manifest.assignments[docId];
+    else manifest.assignments[docId] = folderId;
+    await writeManifest(ctx.manifestPath, manifest);
+  });
 }

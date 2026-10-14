@@ -168,7 +168,7 @@ export function registerTools(
     {
       title: 'Overwrite document source',
       description:
-        'Replace a document’s source. Pass `expected` (the source you read) to be refused instead of clobbering a concurrent edit.',
+        'Replace a document’s source. Pass `expected` (the source you read) or `expectedHash` (the 16-char SHA-256 hash returned by read_document) to be refused instead of clobbering a concurrent edit.',
       inputSchema: z.object({
         docId: z.string(),
         source: z.string(),
@@ -176,11 +176,17 @@ export function registerTools(
           .string()
           .optional()
           .describe('the source you last read; enables conflict check'),
+        expectedHash: z
+          .string()
+          .optional()
+          .describe(
+            'the 16-char hash returned by read_document; enables lightweight conflict check',
+          ),
       }),
     },
-    ({ docId, source, expected }) =>
+    ({ docId, source, expected, expectedHash }) =>
       run(async () => {
-        const res = await writeDocument(ctx, docId, source, expected);
+        const res = await writeDocument(ctx, docId, source, expected, expectedHash);
         notify('change', docEntry(docId));
         return res;
       }),
@@ -191,11 +197,18 @@ export function registerTools(
     {
       title: 'Rename document',
       description: 'Rewrites meta.title in the source. The document id never changes.',
-      inputSchema: z.object({ docId: z.string(), title: z.string() }),
+      inputSchema: z.object({
+        docId: z.string(),
+        title: z.string(),
+        expectedHash: z
+          .string()
+          .optional()
+          .describe('optional 16-char hash from read_document; refuses write if file changed'),
+      }),
     },
-    ({ docId, title }) =>
+    ({ docId, title, expectedHash }) =>
       run(async () => {
-        const res = await renameDocument(ctx, docId, title);
+        const res = await renameDocument(ctx, docId, title, { expectedHash });
         notify('change', docEntry(docId));
         return res;
       }),
@@ -257,13 +270,19 @@ export function registerTools(
     {
       title: 'Replace text at a location',
       description:
-        'Surgical edit of one text run, leaving surrounding markup untouched. Pass `expected` so a stale write is refused. A run that read_text returned with `segments` (code, emphasis, links) must be written with `segments` too, or it is refused rather than losing its formatting.',
+        'Surgical edit of one text run, leaving surrounding markup untouched. Pass `expected` (or `expectedHash`) so a stale write is refused. A run that read_text returned with `segments` (code, emphasis, links) must be written with `segments` too, or it is refused rather than losing its formatting.',
       inputSchema: z.object({
         docId: z.string(),
         loc: LOC,
         text: z.string(),
         index: z.number().int().nonnegative().optional().describe('which run, for mixed content'),
         expected: z.string().optional(),
+        expectedHash: z
+          .string()
+          .optional()
+          .describe(
+            'optional 16-char hash from read_document or read_text; refuses write if file changed',
+          ),
         segments: z
           .array(
             z.object({
@@ -279,9 +298,15 @@ export function registerTools(
         prop: z.string().optional().describe('as in read_text'),
       }),
     },
-    ({ docId, loc, text, index, expected, segments, prop }) =>
+    ({ docId, loc, text, index, expected, expectedHash, segments, prop }) =>
       run(async () => {
-        const res = await writeText(ctx, docId, loc, text, { index, expected, segments, prop });
+        const res = await writeText(ctx, docId, loc, text, {
+          index,
+          expected,
+          expectedHash,
+          segments,
+          prop,
+        });
         notify('change', docEntry(docId));
         return res;
       }),
@@ -298,11 +323,17 @@ export function registerTools(
         loc: LOC,
         note: z.string(),
         hint: z.string().optional(),
+        expectedHash: z
+          .string()
+          .optional()
+          .describe(
+            'optional 16-char hash from read_document or read_text; refuses write if file changed',
+          ),
       }),
     },
-    ({ docId, loc, note, hint }) =>
+    ({ docId, loc, note, hint, expectedHash }) =>
       run(async () => {
-        const res = await addComment(ctx, docId, loc, note, hint);
+        const res = await addComment(ctx, docId, loc, note, hint, { expectedHash });
         notify('change', docEntry(docId));
         return res;
       }),

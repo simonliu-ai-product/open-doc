@@ -3,6 +3,7 @@ import type { Plugin, ViteDevServer } from 'vite';
 import { type DesignSystem, defaultDesign } from '../app/lib/design.ts';
 import { type AstNode, parseSource, parseStrict } from '../editing/babel-walk.ts';
 import { validateMutationRequest } from '../http/request-guard.ts';
+import { withFileLock } from '../ops/concurrency.ts';
 import { json, readBody, resolveDocPath } from './routes/context.ts';
 
 type DesignDeclLocation = {
@@ -357,20 +358,30 @@ export function designPlugin(opts: DesignPluginOptions): Plugin {
             if (!patch || typeof patch !== 'object') {
               return json(res, 400, { error: 'missing patch object' });
             }
-            let source: string;
-            try {
-              source = await fs.readFile(file, 'utf8');
-            } catch {
-              return json(res, 404, { error: 'document not found' });
-            }
-            const parsed = parseDocDesign(source);
-            if (!parsed.ok && parsed.exists) return json(res, 422, { error: parsed.error });
+            const outcome = await withFileLock(file, async () => {
+              let source: string;
+              try {
+                source = await fs.readFile(file, 'utf8');
+              } catch {
+                return { status: 404 as const, payload: { error: 'document not found' } };
+              }
+              const parsed = parseDocDesign(source);
+              if (!parsed.ok && parsed.exists) {
+                return { status: 422 as const, payload: { error: parsed.error } };
+              }
 
-            const merged = mergeDesign(parsed.ok ? parsed.design : defaultDesign, patch);
-            const written = applyDesignWrite(source, merged);
-            if (!written.ok) return json(res, written.status, { error: written.error });
-            if (written.source !== source) await fs.writeFile(file, written.source, 'utf8');
-            return json(res, 200, { ok: true, design: merged, created: written.created });
+              const merged = mergeDesign(parsed.ok ? parsed.design : defaultDesign, patch);
+              const written = applyDesignWrite(source, merged);
+              if (!written.ok) {
+                return { status: written.status, payload: { error: written.error } };
+              }
+              if (written.source !== source) await fs.writeFile(file, written.source, 'utf8');
+              return {
+                status: 200 as const,
+                payload: { ok: true, design: merged, created: written.created },
+              };
+            });
+            return json(res, outcome.status, outcome.payload);
           }
 
           if (method === 'POST' && url.pathname === '/reset') {
@@ -378,16 +389,24 @@ export function designPlugin(opts: DesignPluginOptions): Plugin {
             if (!requestCheck.ok) {
               return json(res, requestCheck.status, { error: requestCheck.error });
             }
-            let source: string;
-            try {
-              source = await fs.readFile(file, 'utf8');
-            } catch {
-              return json(res, 404, { error: 'document not found' });
-            }
-            const written = applyDesignWrite(source, defaultDesign);
-            if (!written.ok) return json(res, written.status, { error: written.error });
-            if (written.source !== source) await fs.writeFile(file, written.source, 'utf8');
-            return json(res, 200, { ok: true, design: defaultDesign, created: written.created });
+            const outcome = await withFileLock(file, async () => {
+              let source: string;
+              try {
+                source = await fs.readFile(file, 'utf8');
+              } catch {
+                return { status: 404 as const, payload: { error: 'document not found' } };
+              }
+              const written = applyDesignWrite(source, defaultDesign);
+              if (!written.ok) {
+                return { status: written.status, payload: { error: written.error } };
+              }
+              if (written.source !== source) await fs.writeFile(file, written.source, 'utf8');
+              return {
+                status: 200 as const,
+                payload: { ok: true, design: defaultDesign, created: written.created },
+              };
+            });
+            return json(res, outcome.status, outcome.payload);
           }
 
           return next();

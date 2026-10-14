@@ -13,6 +13,7 @@ import {
   untrackedFile,
   withoutReviewMarkers,
 } from './changes-diff.ts';
+import { withFileLock } from './concurrency.ts';
 import { OpsError, resolveEntry } from './documents.ts';
 
 const run = promisify(execFile);
@@ -159,15 +160,17 @@ export async function revertChange(
   if (file.binary) throw new OpsError(422, 'a binary file cannot be reverted here');
 
   const target = path.join(ctx.docsRoot, docId, file.path);
-  const source = await fs.readFile(target, 'utf8');
-  const next = revertHunkIn(source, hunk);
-  if (next === null) throw new OpsError(409, 'the file changed since the diff was read');
-  if (/\.(tsx?|jsx?)$/.test(file.path) && !parseStrict(next)) {
-    throw new OpsError(
-      422,
-      'reverting this change alone would break the source — revert the changes around it too',
-    );
-  }
-  await fs.writeFile(target, next, 'utf8');
-  return { ok: true };
+  return withFileLock(target, async () => {
+    const source = await fs.readFile(target, 'utf8');
+    const next = revertHunkIn(source, hunk);
+    if (next === null) throw new OpsError(409, 'the file changed since the diff was read');
+    if (/\.(tsx?|jsx?)$/.test(file.path) && !parseStrict(next)) {
+      throw new OpsError(
+        422,
+        'reverting this change alone would break the source — revert the changes around it too',
+      );
+    }
+    await fs.writeFile(target, next, 'utf8');
+    return { ok: true };
+  });
 }

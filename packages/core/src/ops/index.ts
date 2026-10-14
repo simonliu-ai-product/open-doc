@@ -18,6 +18,11 @@ export {
   readChanges,
   revertChange,
 } from './changes.ts';
+export {
+  assertExpectedSource,
+  hashSource,
+  withFileLock,
+} from './concurrency.ts';
 export { type DiffResult, diffDocument, type PageChange, type PageStatus } from './diff.ts';
 export {
   createDocument,
@@ -69,4 +74,4 @@ export {
   suggestDocId,
   type TemplateSummary,
 } from './templates.ts';
-export { addComment, type Loc, readText, writeText, writeTexts } from './text.ts';
+export { addComment, type Loc, readText, writeEdits, writeText, writeTexts } from './text.ts';
