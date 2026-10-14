@@ -2,8 +2,9 @@ import path from 'node:path';
 import * as readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
-import { Command, Option } from 'commander';
+import { Argument, Command, Option } from 'commander';
 import { EXPORT_FORMATS, ORIENTATIONS, PAGE_SIZE_NAMES } from '../app/lib/sdk.ts';
+import type { GcpDeployFlags } from './deploy-gcp.ts';
 import { readCoreVersion } from './package-version.ts';
 import { detectSkillsDrift, syncSkills } from './sync.ts';
 
@@ -63,6 +64,18 @@ interface ImportFlags {
   cover?: boolean;
   contents?: boolean;
 }
+
+const GCP_DEPLOY_ACTIONS = [
+  'up',
+  'check',
+  'status',
+  'pull',
+  'push',
+  'stop',
+  'start',
+  'down',
+] as const;
+type GcpDeployAction = (typeof GCP_DEPLOY_ACTIONS)[number];
 
 function resolveBuiltinSkillsDir(): string {
   // dist/cli/bin.js → ../../skills (package root + /skills)
@@ -238,6 +251,74 @@ export async function run(argv: string[]): Promise<void> {
     .action(async (flags: SyncFlags) => {
       const { syncSkills } = await import('./sync.ts');
       await syncSkills(resolveBuiltinSkillsDir(), flags);
+    });
+
+  const deployCmd = program
+    .command('deploy')
+    .description(
+      'Deploy and manage this workspace on a cloud provider (e.g. `open-doc deploy gcp`)',
+    );
+
+  deployCmd
+    .command('gcp')
+    .description(
+      'Deploy to Google Cloud Run + Cloud Storage, sync files, or stop/delete the service',
+    )
+    .addArgument(
+      new Argument(
+        '[action]',
+        'up (deploy), check (preflight diagnostics), status, pull, push, stop, start, or down',
+      )
+        .choices([...GCP_DEPLOY_ACTIONS])
+        .default('up'),
+    )
+    .option('--project <id>', 'Google Cloud project ID')
+    .option('--region <region>', 'Cloud Run and Cloud Storage region (defaults to asia-east1)')
+    .option('--service <name>', 'Cloud Run service name')
+    .option('--bucket <name>', 'Cloud Storage bucket name for persistent docs/assets/themes')
+    .addOption(
+      new Option('--mode <mode>', 'deployment mode: editable (GCS + MCP) or static').choices([
+        'editable',
+        'static',
+      ]),
+    )
+    .option('--memory <size>', 'Cloud Run memory limit (defaults to 1Gi)')
+    .option('--token <token>', 'Bearer token for the remote /mcp endpoint')
+    .option('--dry-run', 'print the cloud commands without executing them')
+    .option('--json', 'print output as JSON (for check and status)')
+    .option('--delete', 'with pull/push: delete destination files missing from source')
+    .option('--pull', 'with stop: pull latest files from Cloud Storage before locking service')
+    .option('--skip-pull', 'with down: skip backing up files from Cloud Storage before deleting')
+    .option('--purge-storage', 'with down: also delete the Cloud Storage bucket')
+    .option('-y, --yes', 'skip confirmation prompts')
+    .action(async (action: GcpDeployAction, flags: GcpDeployFlags) => {
+      const mod = await import('./deploy-gcp.ts');
+      switch (action) {
+        case 'up':
+          await mod.runGcpUp(flags);
+          break;
+        case 'check':
+          await mod.runGcpCheck(flags);
+          break;
+        case 'status':
+          await mod.runGcpStatus(flags);
+          break;
+        case 'pull':
+          await mod.runGcpPull(flags);
+          break;
+        case 'push':
+          await mod.runGcpPush(flags);
+          break;
+        case 'stop':
+          await mod.runGcpStop(flags);
+          break;
+        case 'start':
+          await mod.runGcpStart(flags);
+          break;
+        case 'down':
+          await mod.runGcpDown(flags);
+          break;
+      }
     });
 
   await program.parseAsync(argv, { from: 'user' });

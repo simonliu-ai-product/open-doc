@@ -6,6 +6,7 @@
 
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { SheetWatermark } from '../components/page-frame';
 import { designToCssVars } from './design';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
@@ -29,6 +30,7 @@ export async function withRenderedPages<T>(
   geometry: PageGeometry,
   doc: DocModule,
   visit: (hosts: HTMLElement[], container: HTMLElement) => Promise<T> | T,
+  opts: { includeWatermark?: boolean } = {},
 ): Promise<T> {
   const container = document.createElement('div');
   container.setAttribute('aria-hidden', 'true');
@@ -61,7 +63,16 @@ export async function withRenderedPages<T>(
       container.appendChild(host);
       hosts.push(host);
       const root = createRoot(host);
-      root.render(createElement(DocPageProvider, { index: i, total: pages.length }, page.content));
+      root.render(
+        createElement(
+          DocPageProvider,
+          { index: i, total: pages.length },
+          page.content,
+          opts.includeWatermark
+            ? createElement(SheetWatermark, { text: doc.meta?.watermark })
+            : null,
+        ),
+      );
       roots.push(root);
     }
 
@@ -88,7 +99,9 @@ export async function renderPagesToHtml(
   geometry: PageGeometry,
   doc: DocModule,
 ): Promise<string[]> {
-  return withRenderedPages(pages, geometry, doc, (hosts) => hosts.map((host) => host.innerHTML));
+  return withRenderedPages(pages, geometry, doc, (hosts) => hosts.map((host) => host.innerHTML), {
+    includeWatermark: true,
+  });
 }
 
 export function collectCss(): string {

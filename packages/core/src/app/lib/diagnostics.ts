@@ -3,6 +3,8 @@ import type { PageGeometry } from './sdk';
 
 export type LayoutRule =
   | 'unresolved-ref'
+  | 'duplicate-id'
+  | 'heading-skip'
   | 'page-overflow'
   | 'off-page'
   | 'blank-page'
@@ -102,6 +104,8 @@ export function diagnosePages(
 
   const findings: LayoutFinding[] = [];
   const frames = Array.from(root.querySelectorAll<HTMLElement>(`[${PAGE_ATTR}]`));
+  const seenLabelIds = new Map<string, number>();
+  let lastHeadingLevel = 0;
 
   frames.forEach((frame, index) => {
     const page = pageNumberOf(frame, index);
@@ -115,6 +119,7 @@ export function diagnosePages(
     let hasMedia = false;
 
     for (const el of descendants) {
+      if (el.closest('[data-od-watermark]')) continue;
       const rect = el.getBoundingClientRect();
       if (!isPainted(el, rect)) continue;
       if (MEDIA_TAGS.has(el.tagName)) hasMedia = true;
@@ -129,7 +134,9 @@ export function diagnosePages(
       if (el instanceof HTMLImageElement && el.complete && el.naturalWidth === 0) broken.push(el);
     }
 
-    const text = (frame.textContent ?? '').trim();
+    const watermarkText = frame.querySelector('[data-od-watermark]')?.textContent?.trim() ?? '';
+    const rawText = (frame.textContent ?? '').trim();
+    const text = watermarkText && rawText === watermarkText ? '' : rawText;
     // A page shell always paints — background, borders. What makes a sheet
     // blank is that it carries neither words nor a picture.
     if (text === '' && !hasMedia) {
@@ -203,6 +210,43 @@ export function diagnosePages(
         element: snippet(el),
         loc: locOf(el),
       });
+    }
+
+    for (const el of Array.from(frame.querySelectorAll<HTMLElement>('[data-od-label]'))) {
+      const kind = el.getAttribute('data-od-label');
+      if (kind !== 'figure' && kind !== 'table') continue;
+      const id = el.getAttribute('data-od-label-id');
+      if (!id) continue;
+      const prevPage = seenLabelIds.get(id);
+      if (prevPage !== undefined) {
+        findings.push({
+          page,
+          rule: 'duplicate-id',
+          severity: 'error',
+          message: `Duplicate ${kind} id "${id}" (already declared on p. ${prevPage}).`,
+          element: snippet(el),
+          loc: locOf(el),
+        });
+      } else {
+        seenLabelIds.set(id, page);
+      }
+    }
+
+    for (const heading of Array.from(frame.querySelectorAll<HTMLElement>('h1, h2, h3, h4'))) {
+      if (heading.getAttribute('data-od-outline') === 'skip') continue;
+      const level = Number(heading.tagName.slice(1));
+      if (!Number.isFinite(level)) continue;
+      if (lastHeadingLevel > 0 && level > lastHeadingLevel + 1) {
+        findings.push({
+          page,
+          rule: 'heading-skip',
+          severity: 'warn',
+          message: `Heading jumps from <h${lastHeadingLevel}> to <h${level}> without an <h${lastHeadingLevel + 1}> in between.`,
+          element: snippet(heading),
+          loc: locOf(heading),
+        });
+      }
+      lastHeadingLevel = level;
     }
 
     findings.push(...danglingHeadings(frame, frameRect, geometry, page).slice(0, perPageLimit));

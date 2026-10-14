@@ -36,6 +36,8 @@ function resolveEsmEntry(userCwd: string, name: string): string | null {
 export type McpPluginOptions = ApiPluginOptions & {
   /** Path the MCP endpoint is served on. */
   endpoint?: string;
+  /** Extra hostnames allowed in Host/Origin headers, or `true` to allow all. */
+  allowedHosts?: string[] | true;
 };
 
 /**
@@ -86,6 +88,10 @@ export function mcpPlugin(opts: McpPluginOptions): Plugin {
           assetsDir: opts.assetsDir,
           version: opts.coreVersion,
           serverOrigin: originOf(),
+          ...(opts.allowedHosts !== undefined ? { allowedHosts: opts.allowedHosts } : {}),
+          onFileChange: (event: 'add' | 'change' | 'unlink', filePath: string) => {
+            server.watcher.emit(event, filePath);
+          },
         });
         return middleware(req, res, next);
       });

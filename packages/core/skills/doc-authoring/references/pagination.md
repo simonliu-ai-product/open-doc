@@ -41,13 +41,25 @@ export default [Cover, Contents, Body] satisfies DocEntry[];
 | Heading never last on a page | `data-od-keep-with-next` | **on** for `h1`–`h4` |
 | Caption stays with its figure | `data-od-keep-with-previous` on the caption | off |
 | Force a new page here | `data-od-break-before` | off |
+| Span all columns in multi-column flow | `data-od-column-span="all"` | **on** for `h1` |
 
 Set `data-od-keep-with-next="false"` on a heading if you deliberately want it to end a page.
 
+### Multi-column flow (`columns` & `columnGap`)
+
+Pass `columns: 2` (or `3`) and optional `columnGap` (default `24`) to `flow(children, { columns: 2, columnGap: 24, footer: Footer })` to pack blocks into balanced newspaper/academic columns on each page:
+
+- Blocks flow down column 1 first, then column 2, then open a new page.
+- `<h1>` elements (and any block carrying `data-od-column-span="all"`) span the full text-block width across all columns and flush the columns above them.
+- Footnotes lifted from any column on a page share the single page-wide footnote area at the bottom of the sheet.
+
+### Splittable tables (`<DataTable splittable />`)
+
+By default, blocks in `flow()` are atomic. However, `<DataTable splittable rows={…} />` is measured row-by-row and automatically sliced across as many flow pages as needed, repeating `<thead>` on every continuation page and appending the continuation suffix (`meta.labels?.continued ?? ' (continued)'`) to the caption.
+
 ### What flow does not do
 
-- **It never splits a block.** A 40-row table taller than one page stays whole and overflows — split it yourself into two tables with a repeated header.
-- **It does not balance pages.** Content fills top-down; the last page can be short.
+- **It never splits an arbitrary block** unless it is a `<DataTable splittable />` (or bears `data-od-splittable="table"`).
 - **It does not reorder anything.** Blocks keep the order you wrote them in.
 
 ## Fixed pages and the vertical budget

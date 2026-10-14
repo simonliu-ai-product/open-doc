@@ -120,8 +120,10 @@ import services from './data/services.csv';
   arrives after the layout is decided.
 - Columns default to the keys of the first row. A column whose values are all
   numbers aligns right and gets `tabular-nums` without being told.
-- `format`: `'integer'`, `'number'`, `'percent'`, `'text'`, or your own
-  `(value, row) => ReactNode`.
+- `format`: `'integer'`, `'number'`, `'percent'`, `'currency'` (uses `column.currency ?? 'USD'`), `'delta'` (`+` prefix for positives, `−` for negatives), `'text'`, or your own `(value, row) => ReactNode`.
+- `dataBar`: `true` or `{ color?: string; max?: number }` on a numeric column draws an inline proportional bar behind the cell's number.
+- `summaryRow`: `'sum' | 'avg'` (aggregates all numeric columns automatically) or a custom record `{ service: 'Total', requests: 'sum', error_rate: 'avg' }` rendered in `<tfoot>`.
+- `splittable`: when `true` inside a `flow()` section, automatically splits long tables across pages, repeating `<thead>` and appending `meta.labels?.continued ?? ' (continued)'` to the caption on continuation sheets.
 - `caption` numbers the table and prints the caption above it; without one you
   get a plain table.
 - `limit` prints the first N rows and says how many were left out — never
@@ -129,3 +131,42 @@ import services from './data/services.csv';
 
 **Retyping numbers into JSX is the thing this replaces.** If the user has the
 data in a file, import the file.
+
+## Citations and bibliography (`<Cite>` & `<Bibliography>`)
+
+```tsx
+import { Bibliography, Cite } from '@open-document/core';
+
+<p style={p}>
+  Tail latency dominates fan-out services <Cite id="dean2013" label="p. 75" source="J. Dean and L. A. Barroso, 'The Tail at Scale,' Communications of the ACM, vol. 56, no. 2, pp. 74–80, 2013." />.
+</p>
+
+<Bibliography title="References" />
+```
+
+- `<Cite id="…" />` numbers citations `[1]`, `[2]` in order of first appearance across the entire document. Citing the same `id` again reuses the same number; pass `source` on at least the first occurrence, and optional `label` (e.g. `"p. 42"`) to render `[1, p. 42]`.
+- `<Bibliography />` prints the numbered reference list in order of appearance. An entry cited without any `source` renders `[?id]` so missing bibliography text is immediately visible.
+
+## Syntax-highlighted code (`<CodeBlock>`)
+
+```tsx
+import { CodeBlock } from '@open-document/core';
+
+<CodeBlock
+  id="retry-policy"
+  caption="Exponential backoff retry policy"
+  lang="ts"
+  lineNumbers
+  highlightLines={[3, 4]}
+  code={`export async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  for (let i = 0; i < retries; i++) {
+    try { return await fn(); }
+    catch (err) { if (i === retries - 1) throw err; }
+  }
+  throw new Error('Unreachable');
+}`}
+/>
+```
+
+- Highlights keywords, strings, comments, numbers, and types at render time with zero external dependencies using `--od-*` variables.
+- Passing `caption` numbers the code block as a figure (retrievable via `<Ref to="retry-policy" />`).

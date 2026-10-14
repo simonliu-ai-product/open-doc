@@ -17,11 +17,11 @@ Read the matching reference **before** using a primitive:
 | Primitive | Read before | File |
 | --- | --- | --- |
 | `design` const + `var(--od-*)` tokens | writing any new document | `references/design-system.md` |
-| `flow()` auto-pagination | any body content (the default) | `references/pagination.md` |
+| `flow()` auto-pagination & multi-column | any body content (the default) | `references/pagination.md` |
 | Vertical budget (fixed pages) | laying out a cover or divider by hand | `references/pagination.md` |
-| Tables, stat rows, inline charts | rendering data of any kind | `references/tables-and-charts.md` |
+| Tables, stat rows, `<Chart>`, `<Sparkline>`, `<Callout>` | rendering data or callouts | `references/tables-and-charts.md` |
 | Assets + `<ImagePlaceholder>` | importing images or leaving a placeholder | `references/assets.md` |
-| Footnotes, `<Figure>`, `<Ref>`, `<DataTable>` | any note, numbered figure, cross-reference, or `.csv` | `references/long-form.md` |
+| Footnotes, `<Figure>`, `<Ref>`, `<DataTable>`, `<Cite>`, `<Bibliography>`, `<CodeBlock>` | notes, figures, cross-references, citations, code blocks, or `.csv` | `references/long-form.md` |
 
 ## Themes
 
@@ -62,6 +62,7 @@ export default [Cover, Body] satisfies DocPage[];
 - `meta.pageSize` is `'A4' | 'B4' | 'A3'` (default `'A4'`) and `meta.orientation` is `'portrait' | 'landscape'` (default portrait). **These six combinations are the only sheets there are** — there is no Letter, no A5, no custom size, and no way to set a page's dimensions by hand. The same value drives the on-screen page, the `@page` size when printing, and the HTML export.
 - `meta.lang` is the document's language as a BCP 47 tag — **set it for anything not in English**: `'zh-Hant-TW'`, `'zh-Hans'`, `'ja'`, `'ko'`. Every sheet carries it, so it decides the glyph shapes of shared Han characters, the line-breaking rules (no `，。」` at the start of a line), and the language exported HTML and Word declare. The sheet already sets CJK text properly — strict kinsoku, and an eighth-em gap where a CJK character meets a Latin letter or digit with no space typed — so don't hand-insert spaces for that; a block that must not get the gap takes `textAutospace: 'no-autospace'`.
 - **One document per row of data** (certificates, letters, quotes): `export const records = rows` (an imported `.csv`) makes the document print once per row. Pages read the current row with `useRecord()` or print one value with `<Field name="company" />`; `meta.recordName: 'certificate-{name}'` names each row's file (`{#}` is the row number) and `meta.recordLabel` names rows in the viewer's picker. `open-doc export <id> --each` writes one file per row. A flow section's blocks are fixed when the module loads, so content that varies by row goes **inside** blocks — a block can render nothing for a row — never as a different number of blocks.
+- `meta.watermark` (optional string, e.g. `'CONFIDENTIAL'` or `'DRAFT'`) renders a subtle diagonal watermark across every sheet in the viewer and exports.
 - `meta.createdAt` is an **ISO 8601 string literal** set once when the doc is scaffolded — the home page sorts on it. **Immediately before writing the file, run `node -e "console.log(new Date().toISOString())"` and paste the exact output.** It must stay a plain string literal (no `new Date(...)`): the framework reads it with a regex at build time, it never evaluates the module.
 
 ## Two ways to fill pages
@@ -154,11 +155,12 @@ contents list does. Read `references/long-form.md` before using any of them.
   content in one unbreakable block. `<ListOfFigures />` / `<ListOfTables />`
   build the lists.
 - **`<Ref to="id" />`** — "Figure 3", plus the page when the target is elsewhere.
-- **`<DataTable rows={…}>`** — a print-shaped table from an imported `.csv`.
-- **`<Diagram chart={…} caption>`** — an architecture or flow drawing from an
-  imported `.mmd`. Given a caption it numbers as a figure, like `<Figure>`.
-- **`<Chart data x y caption>`** — a bar, line or pie chart from rows, in the
-  document's colours; numbers as a figure. See `references/tables-and-charts.md`.
+- **`<Cite id="…" source="…" />` & `<Bibliography />`** — academic/report citations numbered in order of first appearance (`[1]`), deduplicated by `id`, and listed by `<Bibliography />`.
+- **`<DataTable rows={…} splittable summaryRow>`** — a print-shaped table from an imported `.csv` (supports automatic multi-page splitting with repeated headers when `splittable` is set, plus `summaryRow`, `dataBar`, `'currency'`, and `'delta'` formats).
+- **`<CodeBlock code={…} lang="ts" lineNumbers highlightLines={[…]} caption="…" />`** — zero-dependency syntax-highlighted code block with optional line numbers, highlighted lines, and figure numbering when given `caption`.
+- **`<Callout type="note|tip|warning|danger" title="…">`** — semantic callout box styled with `--od-*` tokens.
+- **`<Diagram chart={…} caption>`** — an architecture, flow, or sequence drawing from an imported `.mmd`. Given a caption it numbers as a figure, like `<Figure>`.
+- **`<Chart data x y caption>` & `<Sparkline data={…} />`** — `bar`, `horizontal-bar`, `line`, `area`, or `pie` charts from rows, plus inline SVG `<Sparkline>` for tables and stat cards. See `references/tables-and-charts.md`.
 
 `meta.labels` sets what they are called (`圖`, `表`) — the numbering itself is
 structural.
@@ -188,13 +190,10 @@ It is compiled to SVG at build time and drawn with the document's own theme
 variables, so it prints with the same ink and faces as the prose around it.
 Never reach for an image of a diagram when the diagram can be written.
 
-Supported: `flowchart`/`graph` with `TD` or `LR`; nodes as `A[box]`, `A(round)`,
-`A([stadium])`, `A[(database)]`, `A{decision}`, `A((circle))`; links `-->`,
-`---`, `-.->`, `==>` with optional `|labels|`; chains `A --> B --> C`; `%%`
-comments. A link back to an earlier step is drawn round the side, clear of the
-steps in between. Anything else
-in Mermaid's syntax — subgraphs, class diagrams, sequence diagrams — is not
-supported, and a bad diagram fails the build with the line to fix.
+Supported:
+- `flowchart`/`graph` with `TD` or `LR`; nodes as `A[box]`, `A(round)`, `A([stadium])`, `A[(database)]`, `A{decision}`, `A((circle))`; links `-->`, `---`, `-.->`, `==>` with optional `|labels|`; chains `A --> B --> C`; `subgraph id [Title] ... end` clusters; `%%` comments. A link back to an earlier step is drawn round the side, clear of the steps in between.
+- `sequenceDiagram` with `participant Id as Label`, message arrows (`->>`, `-->>`, `->`, `-->`), and `Note over A,B: text` (or `Note left of` / `Note right of`).
+- Anything else in Mermaid's syntax is not supported, and a bad diagram fails the build with the line to fix.
 
 Keep `width` inside the text block: a drawing wider than the column is a layout
 fault, and `open-doc check` reports it as one.
@@ -416,7 +415,7 @@ confirms it.
 - [ ] `docs/<id>/index.tsx` `export default`s a non-empty `DocEntry[]`, with body content in a `flow()` section rather than hand-split pages.
 - [ ] Every page's root fills `100% × 100%` and sets `boxSizing: 'border-box'` with the margin as padding.
 - [ ] **For every fixed page, sum (font_size × line_height × lines) + gaps + 2×margin ≤ page height.** If close, split — or move the content into the flow section. No `overflow: auto` escape hatches.
-- [ ] No block inside a `flow()` section is taller than one page (a long table has to be split by hand — the framework never splits a block).
+- [ ] No unbreakable block inside a `flow()` section is taller than one page (pass `splittable` on long `<DataTable>` instances so the framework splits rows across pages with repeated headers).
 - [ ] Body type ≥ 13px; nothing on the page under 9px.
 - [ ] Section titles are real `h1`/`h2`/`h3` elements, so the outline and TOC pick them up.
 - [ ] Contents page uses `<TableOfContents />`, not a hand-written list.

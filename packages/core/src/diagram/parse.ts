@@ -6,6 +6,7 @@ export type DiagramNode = {
   id: string;
   label: string;
   shape: NodeShape;
+  subgraph?: string;
 };
 
 export type EdgeStyle = 'solid' | 'dashed' | 'thick';
@@ -19,10 +20,33 @@ export type DiagramEdge = {
   arrow: boolean;
 };
 
+export type DiagramSubgraph = {
+  id: string;
+  label: string;
+  nodeIds: string[];
+};
+
+export type SequenceParticipant = {
+  id: string;
+  label: string;
+};
+
+export type SequenceMessage = {
+  from: string;
+  to: string;
+  label: string;
+  style: EdgeStyle;
+  arrow: boolean;
+};
+
 export type Diagram = {
+  kind?: 'flowchart' | 'sequence';
   direction: Direction;
   nodes: DiagramNode[];
   edges: DiagramEdge[];
+  subgraphs?: DiagramSubgraph[];
+  participants?: SequenceParticipant[];
+  messages?: SequenceMessage[];
 };
 
 export class DiagramSyntaxError extends Error {
@@ -35,6 +59,11 @@ export class DiagramSyntaxError extends Error {
 }
 
 const HEADER_RE = /^(?:flowchart|graph)(?:\s+(TB|TD|BT|LR|RL))?$/i;
+const SEQ_HEADER_RE = /^sequenceDiagram$/i;
+const SUBGRAPH_RE = /^subgraph\s+(?:([A-Za-z0-9_.-]+)\s*\[([\s\S]*?)\]|([\s\S]+))$/i;
+const PARTICIPANT_RE = /^(?:participant|actor)\s+([A-Za-z0-9_.-]+)(?:\s+as\s+([\s\S]+))?$/i;
+const SEQ_MSG_RE =
+  /^([A-Za-z0-9_.-]+?)\s*(-->>|--\)|-->|->|->>|-\))\s*([+-]?[A-Za-z0-9_.-]+)\s*:\s*([\s\S]*)$/;
 
 /** `A[Label]`, `A(Label)`, `A([Label])`, `A[(Label)]`, `A{Label}`, `A((Label))`, or a bare `A`. */
 const NODE_RE =
@@ -133,26 +162,114 @@ function unquote(label: string): string {
   return trimmed;
 }
 
+function parseSequence(lines: string[]): Diagram {
+  const participants = new Map<string, SequenceParticipant>();
+  const messages: SequenceMessage[] = [];
+
+  const ensureParticipant = (id: string, label?: string) => {
+    const cleanId = id.replace(/^[+-]/, '');
+    const existing = participants.get(cleanId);
+    if (!existing) {
+      participants.set(cleanId, { id: cleanId, label: label ? unquote(label) : cleanId });
+    } else if (label && existing.label === existing.id) {
+      existing.label = unquote(label);
+    }
+    return cleanId;
+  };
+
+  lines.forEach((rawLine, index) => {
+    const lineNumber = index + 1;
+    const line = stripComment(rawLine).trim();
+    if (!line || SEQ_HEADER_RE.test(line) || /^autonumber$/i.test(line)) return;
+
+    const partMatch = PARTICIPANT_RE.exec(line);
+    if (partMatch) {
+      ensureParticipant(partMatch[1], partMatch[2]);
+      return;
+    }
+
+    const msgMatch = SEQ_MSG_RE.exec(line);
+    if (msgMatch) {
+      const from = ensureParticipant(msgMatch[1]);
+      const arrowToken = msgMatch[2];
+      const to = ensureParticipant(msgMatch[3]);
+      const label = msgMatch[4].trim();
+      const dashed = arrowToken.startsWith('--');
+      messages.push({
+        from,
+        to,
+        label,
+        style: dashed ? 'dashed' : 'solid',
+        arrow: true,
+      });
+      return;
+    }
+
+    throw new DiagramSyntaxError(`cannot read sequence line "${line}"`, lineNumber);
+  });
+
+  if (participants.size === 0)
+    throw new DiagramSyntaxError('sequence diagram has no participants', 1);
+
+  const partList = [...participants.values()];
+  return {
+    kind: 'sequence',
+    direction: 'LR',
+    nodes: partList.map((p) => ({ id: p.id, label: p.label, shape: 'rect' })),
+    edges: messages.map((m) => ({
+      from: m.from,
+      to: m.to,
+      label: m.label || null,
+      style: m.style,
+      arrow: m.arrow,
+    })),
+    participants: partList,
+    messages,
+  };
+}
+
 /**
- * A practical subset of Mermaid's flowchart syntax — the shapes and links a
- * report actually uses. Agents already write this dialect fluently, which is
- * the whole reason to borrow it rather than invent one; the renderer is ours,
- * so the output follows the document's theme instead of Mermaid's.
+ * A practical subset of Mermaid's flowchart and sequenceDiagram syntax — the
+ * shapes, subgraphs and links a report actually uses. Agents already write this
+ * dialect fluently, which is the whole reason to borrow it rather than invent
+ * one; the renderer is ours, so the output follows the document's theme instead
+ * of Mermaid's.
  */
 export function parseDiagram(source: string): Diagram {
   const lines = source.split('\n');
+  const firstMeaningful = lines.map((l) => stripComment(l).trim()).find((l) => l.length > 0);
+
+  if (firstMeaningful && SEQ_HEADER_RE.test(firstMeaningful)) {
+    return parseSequence(lines);
+  }
+
   let direction: Direction = 'TD';
   let sawHeader = false;
 
   const nodes = new Map<string, DiagramNode>();
   const edges: DiagramEdge[] = [];
+  const subgraphs: DiagramSubgraph[] = [];
+  const subgraphStack: DiagramSubgraph[] = [];
 
   const remember = (node: DiagramNode) => {
+    const activeSubgraph = subgraphStack[subgraphStack.length - 1];
     const existing = nodes.get(node.id);
     // A later mention without a label must not blank out the declared one:
     // `A[Start] --> B` then `B --> A` is ordinary.
-    if (!existing || (existing.label === existing.id && node.label !== node.id)) {
-      nodes.set(node.id, node);
+    if (!existing) {
+      const created: DiagramNode = activeSubgraph ? { ...node, subgraph: activeSubgraph.id } : node;
+      nodes.set(node.id, created);
+    } else {
+      if (existing.label === existing.id && node.label !== node.id) {
+        existing.label = node.label;
+        existing.shape = node.shape;
+      }
+      if (!existing.subgraph && activeSubgraph) {
+        existing.subgraph = activeSubgraph.id;
+      }
+    }
+    if (activeSubgraph && !activeSubgraph.nodeIds.includes(node.id)) {
+      activeSubgraph.nodeIds.push(node.id);
     }
     return node.id;
   };
@@ -169,6 +286,25 @@ export function parseDiagram(source: string): Diagram {
         sawHeader = true;
         return;
       }
+    }
+
+    if (/^end$/i.test(line)) {
+      subgraphStack.pop();
+      return;
+    }
+
+    const subMatch = SUBGRAPH_RE.exec(line);
+    if (subMatch) {
+      const id = subMatch[1] ?? `sg-${subgraphs.length + 1}`;
+      const label = unquote(subMatch[2] ?? subMatch[3] ?? id);
+      const sg: DiagramSubgraph = { id, label, nodeIds: [] };
+      subgraphs.push(sg);
+      subgraphStack.push(sg);
+      return;
+    }
+
+    if (/^direction\s+(?:TB|TD|BT|LR|RL)$/i.test(line)) {
+      return;
     }
 
     const chain = splitChain(line);
@@ -189,5 +325,11 @@ export function parseDiagram(source: string): Diagram {
   });
 
   if (nodes.size === 0) throw new DiagramSyntaxError('diagram has no nodes', 1);
-  return { direction, nodes: [...nodes.values()], edges };
+  return {
+    kind: 'flowchart',
+    direction,
+    nodes: [...nodes.values()],
+    edges,
+    ...(subgraphs.length > 0 ? { subgraphs } : {}),
+  };
 }

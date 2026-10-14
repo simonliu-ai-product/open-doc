@@ -59,7 +59,26 @@ describe('paginateBlocks', () => {
   });
 
   it('returns no pages for no blocks', () => {
-    expect(paginateBlocks([], 1000)).toEqual({ pages: [], overflowing: [] });
+    expect(paginateBlocks([], 1000)).toEqual({ pages: [], slices: [], overflowing: [] });
+  });
+
+  it('splits a tall splittable table across pages with repeated header', () => {
+    const tableBlock = b(680, {
+      splittable: {
+        headerHeight: 40,
+        footerHeight: 40,
+        rowHeights: [100, 100, 100, 100, 100, 100],
+      },
+    });
+    const result = paginateBlocks([b(500), tableBlock], 1000);
+    // Page 1 has 500px left: header(40) + 4 rows(400) = 440 <= 500.
+    // Page 2 gets the remaining 2 rows + header(40) + footer(40).
+    expect(result.pages).toEqual([[0, 1], [1]]);
+    expect(result.slices).toEqual([
+      [{ index: 0 }, { index: 1, rowStart: 0, rowEnd: 4 }],
+      [{ index: 1, rowStart: 4, rowEnd: 6 }],
+    ]);
+    expect(result.overflowing).toEqual([]);
   });
 });
 

@@ -1,7 +1,13 @@
 import { createElement, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { FlowPage } from '../components/flow-page';
 import type { DesignSystem } from './design';
-import { type DocEntry, type FlowSection, isFlowSection, paginateBlocks } from './flow';
+import {
+  type BlockSlice,
+  type DocEntry,
+  type FlowSection,
+  isFlowSection,
+  paginateBlocks,
+} from './flow';
 import { type MeasurableSection, measureFlowSections } from './flow-measure';
 import { extractSectionFootnotes, notesForPage, type PreparedSection } from './footnotes';
 import { useRecordIndex } from './records';
@@ -13,8 +19,8 @@ export type ExpandedPage = {
 };
 
 type Plan = {
-  /** Section index → block indices per page. */
-  bySection: number[][][];
+  /** Section index → block slices per page. */
+  bySection: BlockSlice[][][];
   overflowing: Array<{ section: number; block: number }>;
 };
 
@@ -59,6 +65,8 @@ export function useDocPages(
         blocks: prepared[index].blocks,
         notesByBlock: prepared[index].notesByBlock,
         ...(section.padding !== undefined ? { padding: section.padding } : {}),
+        ...(section.columns !== undefined ? { columns: section.columns } : {}),
+        ...(section.columnGap !== undefined ? { columnGap: section.columnGap } : {}),
       })),
     [sections, prepared],
   );
@@ -79,13 +87,13 @@ export function useDocPages(
     measureFlowSections(measurable, { geometry, design, lang })
       .then((measurements) => {
         if (cancelled) return;
-        const bySection: number[][][] = [];
+        const bySection: BlockSlice[][][] = [];
         const overflowing: Plan['overflowing'] = [];
         measurements.forEach((measurement, sectionIndex) => {
           const result = paginateBlocks(measurement.metrics, measurement.available, {
             footnoteOverhead: measurement.footnoteOverhead,
           });
-          bySection.push(result.pages);
+          bySection.push(result.slices);
           for (const block of result.overflowing) {
             overflowing.push({ section: sectionIndex, block });
           }
@@ -118,16 +126,23 @@ export function useDocPages(
       const blocks = ready?.blocks ?? section.blocks;
       // Before measurement lands, render the section as a single page so the
       // viewer shows something rather than flashing empty.
-      const chunks = plan.bySection[sectionIndex] ?? [blocks.map((_, i) => i)];
-      chunks.forEach((blockIndices, pageIndex) => {
+      const chunks: BlockSlice[][] = plan.bySection[sectionIndex] ?? [
+        blocks.map((_, index) => ({ index })),
+      ];
+      chunks.forEach((blockSlices, pageIndex) => {
+        const blockIndices = blockSlices.map((s) => s.index);
+        const noteIndices = blockSlices
+          .filter((s) => s.rowStart === undefined || s.rowStart === 0)
+          .map((s) => s.index);
         out.push({
           key: `f${entryIndex}-${pageIndex}`,
           content: createElement(FlowPage, {
             section,
             design,
             blockIndices,
+            blockSlices,
             blocks,
-            notes: ready ? notesForPage(ready.notesByBlock, blockIndices) : [],
+            notes: ready ? notesForPage(ready.notesByBlock, noteIndices) : [],
           }),
         });
       });

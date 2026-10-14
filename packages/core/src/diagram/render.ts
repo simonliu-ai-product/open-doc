@@ -1,4 +1,11 @@
-import { type LaidOutDiagram, type LaidOutEdge, type LaidOutNode, measureText } from './layout.ts';
+import {
+  type LaidOutDiagram,
+  type LaidOutEdge,
+  type LaidOutLifeline,
+  type LaidOutNode,
+  type LaidOutSubgraph,
+  measureText,
+} from './layout.ts';
 
 export type RenderOptions = {
   fontSize?: number;
@@ -14,6 +21,25 @@ function escapeXml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function subgraphMarkup(sg: LaidOutSubgraph, fontSize: number): string {
+  const titleSize = round(fontSize * 0.85);
+  return (
+    `<rect x="${round(sg.x)}" y="${round(sg.y)}" width="${round(sg.width)}" height="${round(sg.height)}" ` +
+    `style="rx: var(--od-radius, 4px)" fill="color-mix(in srgb, var(--od-accent, #2563eb) 5%, var(--od-bg, #ffffff))" ` +
+    `stroke="var(--od-rule, #d1d5db)" stroke-width="1" stroke-dasharray="4 3" />` +
+    `<text x="${round(sg.x + 10)}" y="${round(sg.y + titleSize + 5)}" ` +
+    `font-family="var(--od-font-heading, sans-serif)" font-size="${titleSize}" font-weight="600" ` +
+    `fill="var(--od-muted, #6b7280)">${escapeXml(sg.label)}</text>`
+  );
+}
+
+function lifelineMarkup(line: LaidOutLifeline): string {
+  return (
+    `<line x1="${round(line.x)}" y1="${round(line.y1)}" x2="${round(line.x)}" y2="${round(line.y2)}" ` +
+    `stroke="var(--od-rule, #d1d5db)" stroke-width="1.25" stroke-dasharray="4 4" />`
+  );
 }
 
 /**
@@ -120,6 +146,8 @@ export function renderDiagram(diagram: LaidOutDiagram, options: RenderOptions = 
     `<path d="M0,1 L10,5 L0,9 z" fill="var(--od-text, #16181d)" /></marker></defs>`;
 
   const body = [
+    ...(diagram.subgraphs ?? []).map((sg) => subgraphMarkup(sg, fontSize)),
+    ...(diagram.lifelines ?? []).map((ll) => lifelineMarkup(ll)),
     ...diagram.edges.map((edge) => edgePath(edge, marker)),
     ...diagram.nodes.map((node) => shapePath(node)),
     ...diagram.nodes.map((node) => nodeText(node, fontSize)),

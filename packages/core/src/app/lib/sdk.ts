@@ -62,6 +62,10 @@ export type FlowSection = {
   footer?: ComponentType;
   /** Page padding override in px; defaults to the design's `margin`. */
   padding?: number;
+  /** Number of columns for body content inside each page of this flow section. */
+  columns?: 1 | 2 | 3;
+  /** Gap in px between columns when `columns > 1`; defaults to 24. */
+  columnGap?: number;
 };
 
 /** What a document's default export may contain: fixed pages, flow sections, or both. */
@@ -101,6 +105,8 @@ export type DocMeta = {
   recordName?: string;
   /** With `records`: the column that names a row in the viewer's picker. */
   recordLabel?: string;
+  /** Diagonal watermark text stamped across every sheet (e.g. 'CONFIDENTIAL', 'DRAFT'). */
+  watermark?: string;
 };
 
 /**

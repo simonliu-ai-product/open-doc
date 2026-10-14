@@ -5,6 +5,28 @@ export type OpenDocBuildConfig = {
   allowHtmlExport?: boolean;
 };
 
+export type OpenDocGcpDeployConfig = {
+  /** Google Cloud project ID. Falls back to `--project` or `gcloud config`. */
+  project?: string;
+  /** Cloud Run and Cloud Storage region. Defaults to `asia-east1`. */
+  region?: string;
+  /** Cloud Run service name. Defaults to package name or directory name. */
+  service?: string;
+  /** Cloud Storage bucket name for persistent docs/assets/themes. */
+  bucket?: string;
+  /**
+   * `editable` runs `open-doc dev --mcp` backed by GCS FUSE so edits and
+   * Antigravity MCP calls persist. `static` builds a read-only bundle.
+   */
+  mode?: 'editable' | 'static';
+  /** Cloud Run container memory limit. Defaults to `1Gi`. */
+  memory?: string;
+};
+
+export type OpenDocDeployConfig = {
+  gcp?: OpenDocGcpDeployConfig;
+};
+
 export type OpenDocConfig = {
   base?: string;
   /**
@@ -19,4 +41,5 @@ export type OpenDocConfig = {
   port?: number;
   allowedHosts?: string[] | true;
   build?: OpenDocBuildConfig;
+  deploy?: OpenDocDeployConfig;
 };

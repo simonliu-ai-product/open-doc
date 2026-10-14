@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/server';
 import {
   type ApiContext,
@@ -34,6 +35,8 @@ import {
   writeText,
 } from '@open-document/core/ops';
 import { z } from 'zod';
+
+export type FileChangeTap = (event: 'add' | 'change' | 'unlink', filePath: string) => void;
 
 /**
  * Every tool is a thin wrapper over `@open-document/core/ops` — the same functions
@@ -71,7 +74,16 @@ async function run(fn: () => Promise<unknown>) {
   }
 }
 
-export function registerTools(server: McpServer, ctx: ApiContext): void {
+export function registerTools(
+  server: McpServer,
+  ctx: ApiContext,
+  onFileChange?: FileChangeTap,
+): void {
+  const docEntry = (docId: string) => path.join(ctx.docsRoot, docId, 'index.tsx');
+  const notify = (event: 'add' | 'change' | 'unlink', filePath: string) => {
+    onFileChange?.(event, filePath);
+  };
+
   server.registerTool(
     'list_documents',
     {
@@ -105,7 +117,12 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         source: z.string().describe('complete TSX module source'),
       }),
     },
-    ({ docId, source }) => run(() => createDocument(ctx, docId, source)),
+    ({ docId, source }) =>
+      run(async () => {
+        const res = await createDocument(ctx, docId, source);
+        notify('add', docEntry(res.id));
+        return res;
+      }),
   );
 
   server.registerTool(
@@ -135,13 +152,15 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
       }),
     },
     ({ template, docId, title }) =>
-      run(() =>
-        createFromTemplate(ctx, {
+      run(async () => {
+        const res = await createFromTemplate(ctx, {
           template,
           ...(docId ? { docId } : {}),
           ...(title ? { title } : {}),
-        }),
-      ),
+        });
+        notify('add', docEntry(res.id));
+        return res;
+      }),
   );
 
   server.registerTool(
@@ -159,7 +178,12 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
           .describe('the source you last read; enables conflict check'),
       }),
     },
-    ({ docId, source, expected }) => run(() => writeDocument(ctx, docId, source, expected)),
+    ({ docId, source, expected }) =>
+      run(async () => {
+        const res = await writeDocument(ctx, docId, source, expected);
+        notify('change', docEntry(docId));
+        return res;
+      }),
   );
 
   server.registerTool(
@@ -169,7 +193,12 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
       description: 'Rewrites meta.title in the source. The document id never changes.',
       inputSchema: z.object({ docId: z.string(), title: z.string() }),
     },
-    ({ docId, title }) => run(() => renameDocument(ctx, docId, title)),
+    ({ docId, title }) =>
+      run(async () => {
+        const res = await renameDocument(ctx, docId, title);
+        notify('change', docEntry(docId));
+        return res;
+      }),
   );
 
   server.registerTool(
@@ -179,7 +208,12 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
       description: 'Copies the folder to a fresh id, lands in the same folder as the original.',
       inputSchema: z.object({ docId: z.string(), newId: z.string().optional() }),
     },
-    ({ docId, newId }) => run(() => duplicateDocument(ctx, docId, newId)),
+    ({ docId, newId }) =>
+      run(async () => {
+        const res = await duplicateDocument(ctx, docId, newId);
+        notify('add', docEntry(res.id));
+        return res;
+      }),
   );
 
   server.registerTool(
@@ -189,7 +223,12 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
       description: 'Removes the document folder from disk. Not reversible.',
       inputSchema: z.object({ docId: z.string() }),
     },
-    ({ docId }) => run(() => deleteDocument(ctx, docId).then(() => ({ ok: true }))),
+    ({ docId }) =>
+      run(async () => {
+        await deleteDocument(ctx, docId);
+        notify('unlink', docEntry(docId));
+        return { ok: true };
+      }),
   );
 
   server.registerTool(
@@ -241,7 +280,11 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
       }),
     },
     ({ docId, loc, text, index, expected, segments, prop }) =>
-      run(() => writeText(ctx, docId, loc, text, { index, expected, segments, prop })),
+      run(async () => {
+        const res = await writeText(ctx, docId, loc, text, { index, expected, segments, prop });
+        notify('change', docEntry(docId));
+        return res;
+      }),
   );
 
   server.registerTool(
@@ -257,7 +300,12 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         hint: z.string().optional(),
       }),
     },
-    ({ docId, loc, note, hint }) => run(() => addComment(ctx, docId, loc, note, hint)),
+    ({ docId, loc, note, hint }) =>
+      run(async () => {
+        const res = await addComment(ctx, docId, loc, note, hint);
+        notify('change', docEntry(docId));
+        return res;
+      }),
   );
 
   server.registerTool(
@@ -350,7 +398,12 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
           .describe('defaults to a grey colour chip'),
       }),
     },
-    ({ name, icon }) => run(() => createFolder(ctx, name, icon)),
+    ({ name, icon }) =>
+      run(async () => {
+        const res = await createFolder(ctx, name, icon);
+        notify('change', path.join(ctx.docsRoot, '.folders.json'));
+        return res;
+      }),
   );
 
   server.registerTool(
@@ -361,7 +414,11 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
       inputSchema: z.object({ docId: z.string(), folderId: z.string().nullable() }),
     },
     ({ docId, folderId }) =>
-      run(() => fileDocument(ctx, docId, folderId).then(() => ({ ok: true }))),
+      run(async () => {
+        await fileDocument(ctx, docId, folderId);
+        notify('change', path.join(ctx.docsRoot, '.folders.json'));
+        return { ok: true };
+      }),
   );
 
   server.registerTool(
@@ -490,6 +547,11 @@ export function registerTools(server: McpServer, ctx: ApiContext): void {
         contents: z.boolean().optional().describe('add a self-filling contents page'),
       }),
     },
-    (args) => run(() => importMarkdown(ctx, args)),
+    (args) =>
+      run(async () => {
+        const res = await importMarkdown(ctx, args);
+        notify('add', docEntry(res.id));
+        return res;
+      }),
   );
 }

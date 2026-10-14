@@ -24,7 +24,23 @@ export function compileDiagram(source: string, options: CompileOptions = {}): Co
   };
 }
 
-export type { LaidOutDiagram, LaidOutEdge, LaidOutNode, LayoutOptions } from './layout.ts';
-export type { Diagram, DiagramEdge, DiagramNode, Direction, NodeShape } from './parse.ts';
+export type {
+  LaidOutDiagram,
+  LaidOutEdge,
+  LaidOutLifeline,
+  LaidOutNode,
+  LaidOutSubgraph,
+  LayoutOptions,
+} from './layout.ts';
+export type {
+  Diagram,
+  DiagramEdge,
+  DiagramNode,
+  DiagramSubgraph,
+  Direction,
+  NodeShape,
+  SequenceMessage,
+  SequenceParticipant,
+} from './parse.ts';
 export type { RenderOptions } from './render.ts';
 export { DiagramSyntaxError, layoutDiagram, parseDiagram, renderDiagram };

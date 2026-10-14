@@ -27,6 +27,8 @@ export type FigureProps = {
   captionPosition?: 'above' | 'below';
   /** Plain-text caption for the list of figures, when `caption` carries markup. */
   captionText?: string;
+  /** When false, prints the caption without registering a new label number (e.g. continued table slices). */
+  numbered?: boolean;
   style?: CSSProperties;
   captionStyle?: CSSProperties;
   className?: string;
@@ -49,6 +51,7 @@ export function Figure({
   kind = 'figure',
   captionPosition,
   captionText,
+  numbered = true,
   style,
   captionStyle,
   className,
@@ -75,28 +78,35 @@ export function Figure({
         ...captionStyle,
       }}
     >
-      <span style={{ fontWeight: 600, color: 'var(--od-text)' }}>
-        {nameFor(kind, vocabulary)} {entry?.number ?? ''}
-      </span>
+      {numbered && (
+        <span style={{ fontWeight: 600, color: 'var(--od-text)' }}>
+          {nameFor(kind, vocabulary)} {entry?.number ?? ''}
+        </span>
+      )}
       {typeof caption === 'string' || typeof caption === 'number' ? (
         <span>
-          {' — '}
+          {numbered ? ' — ' : ''}
           <span {...sourceAttrs(loc, 'caption')}>{caption}</span>
         </span>
       ) : caption ? (
-        <span> — {caption}</span>
+        <span>
+          {numbered ? ' — ' : ''}
+          {caption}
+        </span>
       ) : null}
     </figcaption>
   ) : null;
 
   return (
     <figure
-      {...{
-        [LABEL_ATTR]: kind,
-        [LABEL_ID_ATTR]: labelId,
-        [LABEL_TEXT_ATTR]: text,
-        ...sourceAttrs(loc),
-      }}
+      {...(numbered
+        ? {
+            [LABEL_ATTR]: kind,
+            [LABEL_ID_ATTR]: labelId,
+            [LABEL_TEXT_ATTR]: text,
+            ...sourceAttrs(loc),
+          }
+        : sourceAttrs(loc))}
       className={className}
       style={{ margin: '0 0 16px', ...style }}
     >
@@ -143,7 +153,10 @@ export function Ref({ to, showPage = 'auto', style, className }: RefProps) {
     );
   }
 
-  const name = entry.kind === 'footnote' ? '' : `${nameFor(entry.kind, vocabulary)} `;
+  const name =
+    entry.kind === 'footnote' || entry.kind === 'citation'
+      ? ''
+      : `${nameFor(entry.kind, vocabulary)} `;
   const withPage = showPage === 'auto' ? entry.page !== here : showPage;
 
   return (
@@ -218,4 +231,205 @@ export function ListOfFigures(props: Omit<ListOfProps, 'kind'>) {
 
 export function ListOfTables(props: Omit<ListOfProps, 'kind'>) {
   return <ListOf {...props} kind="table" />;
+}
+
+export type CiteProps = {
+  /** Stable citation key (e.g. 'rfc9110' or 'q3-audit'). */
+  id: string;
+  /** Citation details printed in `<Bibliography />`. Needs only to be supplied on one `<Cite>` for that id, or in `<Bibliography items={...} />`. */
+  source?: string;
+  style?: CSSProperties;
+  className?: string;
+};
+
+/**
+ * An inline bibliographic citation (`[1]`), numbered in order of first
+ * appearance across the rendered pages. Multiple `<Cite id="x" />` calls share
+ * the same number.
+ */
+export function Cite({ id, source, style, className }: CiteProps) {
+  const entry = useDocLabel(id, 'citation');
+  return (
+    <span
+      {...{
+        [LABEL_ATTR]: 'citation',
+        [LABEL_ID_ATTR]: id,
+        ...(source ? { [LABEL_TEXT_ATTR]: source } : {}),
+      }}
+      data-od-cite={id}
+      className={className}
+      style={{
+        fontSize: '0.82em',
+        verticalAlign: 'super',
+        lineHeight: 0,
+        fontWeight: 600,
+        color: 'var(--od-accent)',
+        fontVariantNumeric: 'tabular-nums',
+        ...style,
+      }}
+    >
+      [{entry?.number ?? '·'}]
+    </span>
+  );
+}
+
+export type BibliographyItem = {
+  id?: string;
+  title?: ReactNode;
+  source?: ReactNode;
+  author?: string;
+  year?: string | number;
+  url?: string;
+  note?: string;
+};
+
+export type BibliographyProps = {
+  /** Optional catalog of reference details keyed by citation `id` (or an array with `id`). Merged with inline `<Cite source="..." />` texts. */
+  items?: Record<string, string | BibliographyItem> | BibliographyItem[];
+  /** Optional heading text above the reference list. Pass `""` to omit. */
+  title?: ReactNode;
+  /** Show page numbers where each citation first appeared. */
+  showPageNumbers?: boolean;
+  style?: CSSProperties;
+  className?: string;
+};
+
+function renderBibItem(spec: string | BibliographyItem | undefined, fallback: string): ReactNode {
+  if (!spec) return fallback;
+  if (typeof spec === 'string') return spec;
+  if (spec.source && !spec.title) return spec.source;
+  return (
+    <span>
+      {spec.author ? `${spec.author}. ` : ''}
+      <strong style={{ fontWeight: 600, color: 'var(--od-text)' }}>{spec.title}</strong>
+      {spec.year ? ` (${spec.year}).` : '.'}
+      {spec.note ? ` ${spec.note}` : ''}
+      {spec.url ? (
+        <>
+          {' '}
+          <span
+            style={{
+              fontFamily: 'var(--od-font-mono)',
+              fontSize: '0.92em',
+              color: 'var(--od-muted)',
+            }}
+          >
+            {spec.url}
+          </span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Renders the numbered list of all `<Cite>` references in order of appearance,
+ * plus any additional uncited entries passed in `items`.
+ */
+export function Bibliography({
+  items,
+  title,
+  showPageNumbers = false,
+  style,
+  className,
+}: BibliographyProps) {
+  const cited = useDocLabels('citation');
+  const vocabulary = useLabelVocabulary();
+
+  const map = new Map<string, string | BibliographyItem>();
+  if (Array.isArray(items)) {
+    items.forEach((item, idx) => {
+      map.set(item.id ?? `bib-${idx + 1}`, item);
+    });
+  } else if (items) {
+    for (const [k, v] of Object.entries(items)) map.set(k, v);
+  }
+
+  const rows: Array<{ id: string; number: number; content: ReactNode; page?: number }> = cited.map(
+    (entry) => ({
+      id: entry.id,
+      number: entry.number,
+      content: renderBibItem(map.get(entry.id), entry.text || entry.id),
+      page: entry.page,
+    }),
+  );
+
+  for (const [id, spec] of map.entries()) {
+    if (!rows.some((r) => r.id === id)) {
+      rows.push({
+        id,
+        number: rows.length + 1,
+        content: renderBibItem(spec, id),
+      });
+    }
+  }
+
+  const heading = title !== undefined ? title : vocabulary.bibliography;
+
+  return (
+    <div
+      data-od-bibliography=""
+      className={className}
+      style={{
+        fontFamily: 'var(--od-font-body)',
+        fontSize: 'var(--od-size-caption, 11px)',
+        lineHeight: 1.55,
+        color: 'var(--od-text)',
+        margin: '8px 0 14px',
+        ...style,
+      }}
+    >
+      {heading ? (
+        <div
+          style={{
+            fontFamily: 'var(--od-font-heading)',
+            fontSize: 'var(--od-size-h3, 14px)',
+            fontWeight: 600,
+            marginBottom: 8,
+            color: 'var(--od-text)',
+          }}
+        >
+          {heading}
+        </div>
+      ) : null}
+      <ol style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {rows.map((row) => (
+          <li
+            key={row.id}
+            data-od-bib-entry={row.id}
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 8,
+              marginBottom: 5,
+            }}
+          >
+            <span
+              style={{
+                flex: 'none',
+                minWidth: 24,
+                fontWeight: 600,
+                color: 'var(--od-accent)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              [{row.number}]
+            </span>
+            <span style={{ flex: 1, color: 'var(--od-text)' }}>{row.content}</span>
+            {showPageNumbers && row.page !== undefined && (
+              <span
+                style={{
+                  flex: 'none',
+                  color: 'var(--od-muted)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                p. {row.page}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }
