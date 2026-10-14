@@ -148,7 +148,10 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
           prop: typeof body.prop === 'string' ? body.prop : undefined,
         });
         if (!result.ok) return json(res, result.status, { error: result.error });
-        if (result.source !== source) await fs.writeFile(entry, result.source, 'utf8');
+        if (result.source !== source) {
+          await fs.writeFile(entry, result.source, 'utf8');
+          server.watcher.emit('change', entry);
+        }
         return json(res, 200, { ok: true });
       }
 
@@ -162,7 +165,10 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         }
         const edits = readTextEdits(body.docId, body.edits);
         if (!edits) return json(res, 400, { error: 'invalid payload' });
-        return json(res, 200, await writeTexts(ctx, body.docId, edits));
+        const out = await writeTexts(ctx, body.docId, edits);
+        const entry = entryFor(body.docId);
+        if (entry) server.watcher.emit('change', entry);
+        return json(res, 200, out);
       }
 
       if (method === 'GET' && url.pathname === '/style') {
@@ -191,7 +197,10 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         const texts = readTextEdits(body.docId, body.texts ?? []);
         const styles = readStyleEdits(body.docId, body.styles ?? []);
         if (!texts || !styles) return json(res, 400, { error: 'invalid payload' });
-        return json(res, 200, await writeEdits(ctx, body.docId, texts, styles));
+        const out = await writeEdits(ctx, body.docId, texts, styles);
+        const entry = entryFor(body.docId);
+        if (entry) server.watcher.emit('change', entry);
+        return json(res, 200, out);
       }
 
       if (method === 'POST' && url.pathname === '/comment') {
@@ -220,6 +229,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
           });
         }
         await fs.writeFile(entry, inserted.source, 'utf8');
+        server.watcher.emit('change', entry);
         return json(res, 200, { ok: true, id: inserted.id });
       }
 
@@ -253,6 +263,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         const next = removeMarker(source, id);
         if (next === null) return json(res, 404, { error: 'comment not found' });
         await fs.writeFile(entry, next, 'utf8');
+        server.watcher.emit('change', entry);
         return json(res, 200, { ok: true });
       }
 

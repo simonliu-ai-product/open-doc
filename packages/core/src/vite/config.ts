@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
@@ -37,6 +37,14 @@ function readCoreVersion(): string {
 
 const CORE_VERSION = readCoreVersion();
 
+function safeRealpath(target: string): string | null {
+  try {
+    return existsSync(target) ? realpathSync(target) : null;
+  } catch {
+    return null;
+  }
+}
+
 export type CreateViteConfigOptions = {
   userCwd: string;
   /** Mount the MCP endpoint (requires `@open-document/mcp`). */
@@ -60,6 +68,18 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
   const themesAbs = path.resolve(userCwd, config.themesDir ?? 'themes');
   const assetsAbs = path.resolve(userCwd, assetsDir);
 
+  const isCloud = process.env.OPEN_DOC_CLOUD === '1' || Boolean(process.env.K_SERVICE);
+  const allowedHosts = config.allowedHosts ?? (isCloud ? true : undefined);
+
+  const fsAllow = new Set<string>([APP_ROOT, userCwd, docsAbs, themesAbs, assetsAbs]);
+  for (const candidate of [userCwd, docsAbs, themesAbs, assetsAbs]) {
+    const real = safeRealpath(candidate);
+    if (real) fsAllow.add(real);
+  }
+  if (process.env.OPEN_DOC_MOUNT_DIR) {
+    fsAllow.add(path.resolve(process.env.OPEN_DOC_MOUNT_DIR));
+  }
+
   return {
     base: config.base ?? '/',
     root: APP_ROOT,
@@ -76,7 +96,17 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
       designPlugin({ userCwd, docsDir }),
       apiPlugin({ userCwd, docsDir, assetsDir, coreVersion: CORE_VERSION }),
       ...(opts.headless ? [] : [currentPlugin({ userCwd, docsDir })]),
-      ...(opts.mcp ? [mcpPlugin({ userCwd, docsDir, assetsDir, coreVersion: CORE_VERSION })] : []),
+      ...(opts.mcp
+        ? [
+            mcpPlugin({
+              userCwd,
+              docsDir,
+              assetsDir,
+              coreVersion: CORE_VERSION,
+              ...(allowedHosts !== undefined ? { allowedHosts } : {}),
+            }),
+          ]
+        : []),
     ],
     resolve: {
       alias: {
@@ -88,6 +118,8 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
       entries: [path.join(APP_ROOT, 'main.tsx')],
       include: [
         'react',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
         'react-dom',
         'react-dom/client',
         'react-router-dom',
@@ -114,9 +146,10 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
       },
     },
     server: {
-      port: config.port ?? 5273,
-      ...(config.allowedHosts !== undefined ? { allowedHosts: config.allowedHosts } : {}),
-      fs: { allow: [APP_ROOT, userCwd, docsAbs, themesAbs, assetsAbs] },
+      port: config.port ?? (process.env.PORT ? Number(process.env.PORT) : 5273),
+      ...(allowedHosts !== undefined ? { allowedHosts } : {}),
+      ...(isCloud ? { watch: { usePolling: true, interval: 1500 } } : {}),
+      fs: { allow: [...fsAllow] },
     },
     build: {
       outDir: path.resolve(userCwd, 'dist'),

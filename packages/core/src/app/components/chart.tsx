@@ -114,26 +114,47 @@ export function Chart({
       }}
       className={caption ? undefined : className}
     >
-      {chart.ticks.map((tick) => (
-        <g key={tick.value}>
-          <line
-            x1={chart.plot.x}
-            x2={chart.plot.x + chart.plot.width}
-            y1={tick.at}
-            y2={tick.at}
-            style={{ stroke: RULE }}
-            strokeWidth={1}
-          />
-          <text
-            x={chart.plot.x - 6}
-            y={tick.at + CHART_FONT_SIZE * 0.35}
-            textAnchor="end"
-            style={{ ...text, fill: MUTED }}
-          >
-            {tick.label}
-          </text>
-        </g>
-      ))}
+      {chart.ticks.map((tick) =>
+        chart.horizontal ? (
+          <g key={tick.value}>
+            <line
+              x1={tick.at}
+              x2={tick.at}
+              y1={chart.plot.y}
+              y2={chart.plot.y + chart.plot.height}
+              style={{ stroke: RULE }}
+              strokeWidth={1}
+            />
+            <text
+              x={tick.at}
+              y={chart.plot.y + chart.plot.height + CHART_FONT_SIZE * 1.4}
+              textAnchor="middle"
+              style={{ ...text, fill: MUTED }}
+            >
+              {tick.label}
+            </text>
+          </g>
+        ) : (
+          <g key={tick.value}>
+            <line
+              x1={chart.plot.x}
+              x2={chart.plot.x + chart.plot.width}
+              y1={tick.at}
+              y2={tick.at}
+              style={{ stroke: RULE }}
+              strokeWidth={1}
+            />
+            <text
+              x={chart.plot.x - 6}
+              y={tick.at + CHART_FONT_SIZE * 0.35}
+              textAnchor="end"
+              style={{ ...text, fill: MUTED }}
+            >
+              {tick.label}
+            </text>
+          </g>
+        ),
+      )}
       {chart.bars.map((bar) => (
         <rect
           key={`${bar.series}-${bar.x}-${bar.y}`}
@@ -144,18 +165,38 @@ export function Chart({
           style={{ fill: colorOf(bar.series, colors) }}
         />
       ))}
-      {chart.baseline !== null && chart.bars.length > 0 && (
-        <line
-          x1={chart.plot.x}
-          x2={chart.plot.x + chart.plot.width}
-          y1={chart.baseline}
-          y2={chart.baseline}
-          style={{ stroke: MUTED }}
-          strokeWidth={1}
-        />
-      )}
+      {chart.baseline !== null &&
+        chart.bars.length > 0 &&
+        (chart.horizontal ? (
+          <line
+            x1={chart.baseline}
+            x2={chart.baseline}
+            y1={chart.plot.y}
+            y2={chart.plot.y + chart.plot.height}
+            style={{ stroke: MUTED }}
+            strokeWidth={1}
+          />
+        ) : (
+          <line
+            x1={chart.plot.x}
+            x2={chart.plot.x + chart.plot.width}
+            y1={chart.baseline}
+            y2={chart.baseline}
+            style={{ stroke: MUTED }}
+            strokeWidth={1}
+          />
+        ))}
       {chart.lines.map((line) => (
         <g key={line.series} style={{ stroke: colorOf(line.series, colors) }}>
+          {line.areaPath && (
+            <path
+              d={line.areaPath}
+              stroke="none"
+              style={{
+                fill: `color-mix(in srgb, ${colorOf(line.series, colors)} 20%, transparent)`,
+              }}
+            />
+          )}
           <polyline
             points={line.points.map((point) => `${point.x},${point.y}`).join(' ')}
             fill="none"
@@ -184,10 +225,10 @@ export function Chart({
       ))}
       {chart.categories.map((category) => (
         <text
-          key={category.x}
+          key={`${category.x}-${category.y ?? 0}-${category.text}`}
           x={category.x}
-          y={chart.plot.y + chart.plot.height + CHART_FONT_SIZE * 1.5}
-          textAnchor="middle"
+          y={category.y ?? chart.plot.y + chart.plot.height + CHART_FONT_SIZE * 1.5}
+          textAnchor={chart.horizontal ? 'end' : 'middle'}
           style={{ ...text, fill: MUTED }}
         >
           {category.text}
@@ -235,5 +276,122 @@ export function Chart({
     >
       {drawing}
     </Figure>
+  );
+}
+
+export type SparklineProps = {
+  /** Numeric values to plot in order. */
+  data: number[];
+  /** Line with subtle fill, or compact inline bars. Defaults to 'line'. */
+  type?: 'line' | 'bar';
+  width?: number;
+  height?: number;
+  color?: string;
+  /** Highlight the final data point with a dot on line sparklines. Defaults to true. */
+  showEndDot?: boolean;
+  style?: CSSProperties;
+  className?: string;
+};
+
+/**
+ * A compact word-sized chart that sits inline inside a paragraph or table cell.
+ */
+export function Sparkline({
+  data,
+  type = 'line',
+  width = 76,
+  height = 20,
+  color = ACCENT,
+  showEndDot = true,
+  style,
+  className,
+}: SparklineProps) {
+  const nums = data.filter((v) => typeof v === 'number' && Number.isFinite(v));
+  if (nums.length === 0) return null;
+
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const span = max - min || 1;
+  const pad = 2.5;
+  const w = Math.max(4, width - pad * 2);
+  const h = Math.max(4, height - pad * 2);
+
+  if (type === 'bar') {
+    const baseMin = Math.min(0, min);
+    const baseMax = Math.max(0, max) || 1;
+    const baseSpan = baseMax - baseMin || 1;
+    const step = w / nums.length;
+    const barW = Math.max(1.5, step * 0.72);
+    return (
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        aria-hidden="true"
+        className={className}
+        style={{
+          display: 'inline-block',
+          verticalAlign: 'middle',
+          overflow: 'visible',
+          ...style,
+        }}
+      >
+        {nums.map((val, idx) => {
+          const bh = Math.max(1.5, (Math.abs(val) / baseSpan) * h);
+          const x = pad + idx * step + (step - barW) / 2;
+          const y = pad + h - bh;
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: index is data order
+            <rect key={idx} x={x} y={y} width={barW} height={bh} rx={1} style={{ fill: color }} />
+          );
+        })}
+      </svg>
+    );
+  }
+
+  const pts = nums.map((val, idx) => {
+    const x = pad + (nums.length === 1 ? w / 2 : (idx / (nums.length - 1)) * w);
+    const y = pad + h - ((val - min) / span) * h;
+    return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+  });
+  const poly = pts.map((p) => `${p.x},${p.y}`).join(' ');
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  const area =
+    pts.length >= 2 && first && last
+      ? `M${pts.map((p) => `${p.x},${p.y}`).join(' L')} L${last.x},${pad + h} L${first.x},${pad + h} Z`
+      : null;
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      width={width}
+      height={height}
+      aria-hidden="true"
+      className={className}
+      style={{
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        overflow: 'visible',
+        ...style,
+      }}
+    >
+      {area && (
+        <path
+          d={area}
+          stroke="none"
+          style={{ fill: `color-mix(in srgb, ${color} 18%, transparent)` }}
+        />
+      )}
+      <polyline
+        points={poly}
+        fill="none"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ stroke: color }}
+      />
+      {showEndDot && last && <circle cx={last.x} cy={last.y} r={2.2} style={{ fill: color }} />}
+    </svg>
   );
 }

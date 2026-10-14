@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 
-export type LabelKind = 'figure' | 'table' | 'footnote';
+export type LabelKind = 'figure' | 'table' | 'footnote' | 'citation';
 
 export type LabelEntry = {
   /** Author-supplied id for `<Ref to>`, or a generated one. */
@@ -29,6 +29,8 @@ export type LabelVocabulary = {
   table: string;
   /** Heading above a page's footnotes. Empty string renders no heading. */
   footnotes: string;
+  /** Heading above a bibliography section when not overridden. */
+  bibliography: string;
   /** Page suffix for a cross-reference. `{page}` is replaced. */
   onPage: string;
 };
@@ -37,6 +39,7 @@ export const defaultVocabulary: LabelVocabulary = {
   figure: 'Figure',
   table: 'Table',
   footnotes: '',
+  bibliography: 'References',
   onPage: ' (p. {page})',
 };
 
@@ -47,7 +50,7 @@ export type LabelSnapshot = {
 
 const EMPTY: LabelSnapshot = { entries: [], vocabulary: defaultVocabulary };
 
-const KINDS: LabelKind[] = ['figure', 'table', 'footnote'];
+const KINDS: LabelKind[] = ['figure', 'table', 'footnote', 'citation'];
 
 function isKind(value: string | null): value is LabelKind {
   return value !== null && (KINDS as string[]).includes(value);
@@ -61,7 +64,12 @@ function isKind(value: string | null): value is LabelKind {
  */
 export function collectLabels(root: ParentNode): LabelEntry[] {
   const entries: LabelEntry[] = [];
-  const counters: Record<LabelKind, number> = { figure: 0, table: 0, footnote: 0 };
+  const counters: Record<LabelKind, number> = {
+    figure: 0,
+    table: 0,
+    footnote: 0,
+    citation: 0,
+  };
   const frames = Array.from(root.querySelectorAll<HTMLElement>(`[${PAGE_ATTR}]`));
 
   frames.forEach((frame, fallbackIndex) => {
@@ -73,17 +81,23 @@ export function collectLabels(root: ParentNode): LabelEntry[] {
       if (!isKind(kind)) continue;
       const id = el.getAttribute(LABEL_ID_ATTR);
       if (!id) continue;
+      const text = (el.getAttribute(LABEL_TEXT_ATTR) ?? el.textContent ?? '')
+        .replace(/\s+/g, ' ')
+        .trim();
       // A footnote's marker and the note at the foot of the page carry the same
-      // id; the marker is what fixes its position in the sequence.
-      if (entries.some((entry) => entry.id === id)) continue;
+      // id; the marker is what fixes its position in the sequence. Same for repeated `<Cite id>`
+      // calls — the first appearance fixes its citation number, and later ones reuse it.
+      const existing = entries.find((entry) => entry.kind === kind && entry.id === id);
+      if (existing) {
+        if (!existing.text && text) existing.text = text;
+        continue;
+      }
       counters[kind] += 1;
       entries.push({
         id,
         kind,
         number: counters[kind],
-        text: (el.getAttribute(LABEL_TEXT_ATTR) ?? el.textContent ?? '')
-          .replace(/\s+/g, ' ')
-          .trim(),
+        text,
         page,
       });
     }
@@ -124,6 +138,7 @@ function sameVocabulary(a: LabelVocabulary, b: LabelVocabulary): boolean {
     a.figure === b.figure &&
     a.table === b.table &&
     a.footnotes === b.footnotes &&
+    a.bibliography === b.bibliography &&
     a.onPage === b.onPage
   );
 }
@@ -162,8 +177,12 @@ export function useDocLabels(kind: LabelKind): LabelEntry[] {
 }
 
 /** One numbered item by id, once the scan has run. */
-export function useDocLabel(id: string): LabelEntry | null {
-  return useLabelSnapshot().entries.find((entry) => entry.id === id) ?? null;
+export function useDocLabel(id: string, kind?: LabelKind): LabelEntry | null {
+  return (
+    useLabelSnapshot().entries.find(
+      (entry) => entry.id === id && (kind === undefined || entry.kind === kind),
+    ) ?? null
+  );
 }
 
 export function useLabelVocabulary(): LabelVocabulary {

@@ -1041,6 +1041,7 @@ export function Doc() {
                     scale={scale}
                     design={doc.design}
                     lang={pageLang(doc.meta)}
+                    watermark={doc.meta?.watermark}
                   >
                     {page.content}
                   </PageFrame>

@@ -1,5 +1,6 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { SheetWatermark } from '../components/page-frame';
 import { designToCssVars } from './design';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
@@ -124,7 +125,14 @@ export async function mountPrintCopy(
     }
     root.appendChild(host);
     const r = createRoot(host);
-    r.render(createElement(DocPageProvider, { index: i, total }, page.content));
+    r.render(
+      createElement(
+        DocPageProvider,
+        { index: i, total },
+        page.content,
+        createElement(SheetWatermark, { text: doc.meta?.watermark }),
+      ),
+    );
     reactRoots.push(r);
     onProgress?.({
       phase: 'rendering',

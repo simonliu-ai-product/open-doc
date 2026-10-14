@@ -82,4 +82,26 @@ describe('parseDiagram', () => {
     const [node] = parseDiagram('flowchart LR\n  Store[(資料湖)]').nodes;
     expect(node).toEqual({ id: 'Store', label: '資料湖', shape: 'cylinder' });
   });
+
+  it('collects nodes inside a subgraph ... end block', () => {
+    const parsed = parseDiagram(
+      'flowchart LR\n  subgraph Core [核心層]\n    A[API] --> B[(DB)]\n  end\n  B --> C[Cache]',
+    );
+    expect(parsed.subgraphs).toEqual([{ id: 'Core', label: '核心層', nodeIds: ['A', 'B'] }]);
+  });
+
+  it('parses a sequenceDiagram with participants and messages', () => {
+    const parsed = parseDiagram(
+      'sequenceDiagram\n  participant C as Client\n  participant S as Server\n  C->>S: Request\n  S-->>C: Response',
+    );
+    expect(parsed.kind).toBe('sequence');
+    expect(parsed.participants).toEqual([
+      { id: 'C', label: 'Client' },
+      { id: 'S', label: 'Server' },
+    ]);
+    expect(parsed.messages).toEqual([
+      { from: 'C', to: 'S', label: 'Request', style: 'solid', arrow: true },
+      { from: 'S', to: 'C', label: 'Response', style: 'dashed', arrow: true },
+    ]);
+  });
 });

@@ -1,10 +1,26 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { type CSSProperties, createContext, type ReactNode, useContext } from 'react';
 import type { DesignSystem } from '../lib/design';
-import type { FlowSection } from '../lib/flow';
+import type { BlockSlice, FlowSection } from '../lib/flow';
 import type { ExtractedNote } from '../lib/footnotes';
 import { Footnotes } from './footnote';
 
 export const FLOW_BLOCK_ATTR = 'data-od-flow-block';
+
+export type TableSliceRange = { rowStart: number; rowEnd: number };
+
+const SLICE_CONTEXT_KEY = '__open_doc_table_slice_context__';
+type GlobalWithSlice = typeof globalThis & {
+  [SLICE_CONTEXT_KEY]?: ReturnType<typeof createContext<TableSliceRange | null>>;
+};
+const g = globalThis as GlobalWithSlice;
+if (!g[SLICE_CONTEXT_KEY]) {
+  g[SLICE_CONTEXT_KEY] = createContext<TableSliceRange | null>(null);
+}
+const TableSliceContext = g[SLICE_CONTEXT_KEY];
+
+export function useTableSlice(): TableSliceRange | null {
+  return useContext(TableSliceContext);
+}
 
 /**
  * The page shell a flow section renders into. The framework owns the margin and
@@ -33,20 +49,30 @@ export function flowShellStyle(design: DesignSystem | undefined, padding?: numbe
   };
 }
 
-export function FlowBlock({ children }: { children?: ReactNode }) {
-  return <div {...{ [FLOW_BLOCK_ATTR]: '' }}>{children}</div>;
+export function FlowBlock({
+  slice,
+  children,
+}: {
+  slice?: TableSliceRange | null;
+  children?: ReactNode;
+}) {
+  const inner = <div {...{ [FLOW_BLOCK_ATTR]: '' }}>{children}</div>;
+  if (!slice) return inner;
+  return <TableSliceContext.Provider value={slice}>{inner}</TableSliceContext.Provider>;
 }
 
 export function FlowPage({
   section,
   design,
   blockIndices,
+  blockSlices,
   blocks,
   notes,
 }: {
   section: FlowSection;
   design: DesignSystem | undefined;
   blockIndices: number[];
+  blockSlices?: BlockSlice[];
   /** Blocks with footnotes already lifted out; falls back to the authored ones. */
   blocks?: ReactNode[];
   notes?: ExtractedNote[];
@@ -54,13 +80,36 @@ export function FlowPage({
   const Header = section.header;
   const Footer = section.footer;
   const source = blocks ?? section.blocks;
+  const items: BlockSlice[] = blockSlices ?? blockIndices.map((index) => ({ index }));
+  const cols = section.columns && section.columns > 1 ? section.columns : 1;
+
   return (
     <div style={flowShellStyle(design, section.padding)}>
       {Header && <Header />}
-      <div style={{ flex: 1, minHeight: 0 }}>
-        {blockIndices.map((index) => (
-          <FlowBlock key={index}>{source[index]}</FlowBlock>
-        ))}
+      <div
+        style={{
+          flex: cols > 1 ? 'none' : 1,
+          minHeight: 0,
+          ...(cols > 1
+            ? {
+                columnCount: cols,
+                columnGap: section.columnGap ?? 24,
+                columnFill: 'balance',
+              }
+            : {}),
+        }}
+      >
+        {items.map((item) => {
+          const slice =
+            item.rowStart !== undefined && item.rowEnd !== undefined
+              ? { rowStart: item.rowStart, rowEnd: item.rowEnd }
+              : null;
+          return (
+            <FlowBlock key={`${item.index}-${item.rowStart ?? 0}`} slice={slice}>
+              {source[item.index]}
+            </FlowBlock>
+          );
+        })}
       </div>
       {notes && notes.length > 0 && <Footnotes notes={notes} />}
       {Footer && <Footer />}

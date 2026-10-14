@@ -17,6 +17,8 @@ export type MeasurableSection = {
   /** Index-aligned with `blocks`. */
   notesByBlock: ExtractedNote[][];
   padding?: number;
+  columns?: 1 | 2 | 3;
+  columnGap?: number;
 };
 
 export function metricsFor(el: HTMLElement, height: number, footnoteHeight: number): BlockMetrics {
@@ -29,6 +31,27 @@ export function metricsFor(el: HTMLElement, height: number, footnoteHeight: numb
   const declaredKeepPrev = inner?.getAttribute('data-od-keep-with-previous') ?? null;
   const declaredBreak = inner?.getAttribute('data-od-break-before') ?? null;
 
+  let splittable: BlockMetrics['splittable'];
+  if (typeof el.querySelector === 'function') {
+    const splitTable = el.querySelector<HTMLTableElement>('table[data-od-splittable]');
+    if (splitTable) {
+      const tbodyRows = Array.from(splitTable.querySelectorAll<HTMLElement>('tbody > tr'));
+      if (tbodyRows.length > 1) {
+        const blockRect = el.getBoundingClientRect();
+        const firstRowRect = tbodyRows[0].getBoundingClientRect();
+        const lastRowRect = tbodyRows[tbodyRows.length - 1].getBoundingClientRect();
+        const headerHeight = Math.max(0, firstRowRect.top - blockRect.top);
+        const footerHeight = Math.max(0, height - (lastRowRect.bottom - blockRect.top));
+        const rowHeights = tbodyRows.map((row, idx) => {
+          const r = row.getBoundingClientRect();
+          const next = tbodyRows[idx + 1]?.getBoundingClientRect();
+          return Math.max(0, (next ? next.top : lastRowRect.bottom) - r.top);
+        });
+        splittable = { headerHeight, footerHeight, rowHeights };
+      }
+    }
+  }
+
   return {
     height,
     footnoteHeight,
@@ -37,6 +60,7 @@ export function metricsFor(el: HTMLElement, height: number, footnoteHeight: numb
     keepWithNext: declaredKeepNext !== null ? declaredKeepNext !== 'false' : HEADING_TAGS.has(tag),
     keepWithPrevious: declaredKeepPrev !== null && declaredKeepPrev !== 'false',
     breakBefore: declaredBreak !== null && declaredBreak !== 'false',
+    ...(splittable ? { splittable } : {}),
   };
 }
 
@@ -122,9 +146,12 @@ export async function measureFlowSections(
     // Out of the effect that called us, so `flushSync` below may commit.
     await Promise.resolve();
     for (const section of sections) {
-      const width = opts.geometry.width - paddingOf(section) * 2;
+      const fullWidth = opts.geometry.width - paddingOf(section) * 2;
+      const cols = section.columns && section.columns > 1 ? section.columns : 1;
+      const gap = section.columnGap ?? 24;
+      const blockWidth = cols > 1 ? (fullWidth - gap * (cols - 1)) / cols : fullWidth;
 
-      const blocks = makeContainer(width);
+      const blocks = makeContainer(blockWidth);
       blockContainers.push(blocks);
       const blockRoot = createRoot(blocks);
       // Committed now, not on React's schedule: on a slow machine a render
@@ -144,7 +171,7 @@ export async function measureFlowSections(
         noteContainers.push(null);
         continue;
       }
-      const notes = makeContainer(width);
+      const notes = makeContainer(fullWidth);
       noteContainers.push(notes);
       const noteRoot = createRoot(notes);
       flushSync(() => noteRoot.render(createElement(Footnotes, { notes: allNotes })));
@@ -168,6 +195,7 @@ export async function measureFlowSections(
 
     return sections.map((section, sectionIndex) => {
       const padding = paddingOf(section);
+      const cols = section.columns && section.columns > 1 ? section.columns : 1;
       const blocks = blockContainers[sectionIndex];
       const blockHeights = stackedHeights(blocks, `:scope > [${FLOW_BLOCK_ATTR}]`);
 
@@ -190,7 +218,8 @@ export async function measureFlowSections(
         let notesHeight = 0;
         for (let i = 0; i < count; i++) notesHeight += rowHeights[noteCursor + i] ?? 0;
         noteCursor += count;
-        return metricsFor(node, blockHeights[index] ?? 0, notesHeight);
+        const rawHeight = blockHeights[index] ?? 0;
+        return metricsFor(node, cols > 1 ? rawHeight / cols : rawHeight, notesHeight);
       });
 
       return {

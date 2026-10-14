@@ -9,7 +9,14 @@ import { type AstNode, parseSource, walkJsx } from '../editing/babel-walk.ts';
 
 // Capitalized components that forward `data-od-loc` to the hosts they render,
 // so the inspector can target them like a host element. See `app/lib/source-loc.ts`.
-const FORWARDING_COMPONENTS = new Set(['ImagePlaceholder', 'Figure', 'DataTable', 'Footnote']);
+const FORWARDING_COMPONENTS = new Set([
+  'ImagePlaceholder',
+  'Figure',
+  'DataTable',
+  'Footnote',
+  'CodeBlock',
+  'Callout',
+]);
 
 export function taggableName(opening: AstNode): string | null {
   const name = opening.name as { type?: string; name?: string } | undefined;

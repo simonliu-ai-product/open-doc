@@ -105,4 +105,19 @@ describe('layoutChart', () => {
     const chart = layoutChart({ ...base, type: 'pie', data: [DATA[0] ?? {}], y: ['cost'] });
     expect(chart.slices[0]?.path).toMatch(/ a.* a/);
   });
+
+  it('fills an area path closed down to the baseline for area charts', () => {
+    const chart = layoutChart({ ...base, type: 'area', y: ['cost'] });
+    expect(chart.lines).toHaveLength(1);
+    expect(chart.lines[0]?.areaPath).toMatch(/^M.* L.* Z$/);
+  });
+
+  it('lays out horizontal bars from left to right', () => {
+    const chart = layoutChart({ ...base, type: 'horizontal-bar', y: ['cost'] });
+    expect(chart.bars).toHaveLength(3);
+    for (const bar of chart.bars) {
+      expect(bar.x).toBeCloseTo(chart.plot.x, 1);
+      expect(bar.width).toBeGreaterThan(0);
+    }
+  });
 });

@@ -46,6 +46,7 @@ export function registerDocRoutes(server: ViteDevServer, ctx: ApiContext): void 
           }
           const body = (await readBody(req)) as { title?: unknown };
           const result = await renameDocument(ctx, docId, body.title);
+          server.watcher.emit('change', `${ctx.docsRoot}/${docId}/index.tsx`);
           return json(res, 200, { ok: true, title: result.title });
         }
 
@@ -55,6 +56,7 @@ export function registerDocRoutes(server: ViteDevServer, ctx: ApiContext): void 
             return json(res, requestCheck.status, { error: requestCheck.error });
           }
           await deleteDocument(ctx, docId);
+          server.watcher.emit('unlink', `${ctx.docsRoot}/${docId}/index.tsx`);
           return json(res, 200, { ok: true });
         }
       }

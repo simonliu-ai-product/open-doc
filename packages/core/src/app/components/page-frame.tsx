@@ -13,10 +13,50 @@ type Props = {
   design?: DesignSystem;
   /** The document's language — see `pageLang`. */
   lang?: string;
+  /** Optional diagonal watermark stamped across the sheet. */
+  watermark?: string;
   flat?: boolean;
   className?: string;
   children: ReactNode;
 };
+
+export function SheetWatermark({ text }: { text?: string }) {
+  const clean = text?.trim();
+  if (!clean) return null;
+  return (
+    <div
+      aria-hidden="true"
+      data-od-watermark=""
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        pointerEvents: 'none',
+        userSelect: 'none',
+        zIndex: 40,
+        overflow: 'hidden',
+      }}
+    >
+      <span
+        style={{
+          transform: 'rotate(-34deg)',
+          fontFamily: 'var(--od-font-heading, sans-serif)',
+          fontSize: 68,
+          fontWeight: 800,
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          color: 'var(--od-text, #16181d)',
+          opacity: 0.055,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {clean}
+      </span>
+    </div>
+  );
+}
 
 /**
  * One sheet of paper. The inner node always lays out at the page's true pixel
@@ -30,6 +70,7 @@ export function PageFrame({
   scale,
   design,
   lang = 'en',
+  watermark,
   flat = false,
   className,
   children,
@@ -67,6 +108,7 @@ export function PageFrame({
       >
         <DocPageProvider index={index} total={total}>
           {children}
+          <SheetWatermark text={watermark} />
         </DocPageProvider>
       </div>
     </div>

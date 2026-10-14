@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import fg from 'fast-glob';
@@ -206,12 +206,24 @@ export function openDocPlugin(opts: OpenDocPluginOptions): Plugin {
   let listedIds = '';
 
   const docIdForEntry = (p: string): string | null => {
-    const rel = path.relative(docsRoot, p);
-    if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
-    const parts = rel.split(path.sep);
-    if (parts.length !== 2) return null;
-    if (!/^index\.(tsx|jsx|ts|js)$/.test(parts[1])) return null;
-    return parts[0];
+    const roots = [docsRoot];
+    try {
+      if (existsSync(docsRoot)) {
+        const real = realpathSync(docsRoot);
+        if (real !== docsRoot) roots.push(real);
+      }
+    } catch {
+      // ignore realpath errors
+    }
+    for (const root of roots) {
+      const rel = path.relative(root, p);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) continue;
+      const parts = rel.split(path.sep);
+      if (parts.length !== 2) continue;
+      if (!/^index\.(tsx|jsx|ts|js)$/.test(parts[1])) continue;
+      return parts[0];
+    }
+    return null;
   };
 
   let docChangeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -299,6 +311,10 @@ export function openDocPlugin(opts: OpenDocPluginOptions): Plugin {
       server.watcher.add(docsRoot);
       server.watcher.on('add', (p) => {
         if (isDocEntry(p)) reload();
+      });
+      server.watcher.on('change', (p) => {
+        const docId = docIdForEntry(p);
+        if (docId) queueDocChanged(server, docId);
       });
       // The viewer's fallback when it is sent to a document it has never heard
       // of: on Linux CI the watcher missed a folder created and filled in one

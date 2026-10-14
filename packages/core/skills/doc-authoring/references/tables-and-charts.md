@@ -67,7 +67,7 @@ Rules:
 
 ### Long tables
 
-Split by row groups across pages. Repeat the full header row and mark the continuation in the caption ("Table 3 (continued)"). Never let a header land on one page and its rows on the next.
+Inside a `flow()` section, pass `splittable` to `<DataTable rows={…} splittable />` so the framework automatically slices rows across pages, repeats the `<thead>` header row, and marks the continuation in the caption ("Table 3 (continued)"). For hand-written `<table>` elements on fixed pages, split by row groups across pages and repeat the header row yourself. Never let a header land on one page and its rows on the next.
 
 ## Stat rows
 
@@ -106,13 +106,24 @@ import costs from './data/costs.csv';
 <Chart type="pie" data={services} x="service" y="cost" values caption="費用占比" />
 ```
 
-- `type`: `bar` (default), `line`, `pie`. `y` takes one key or several (one series each); a pie reads the first.
-- `stacked` stacks bar series instead of grouping them; `values` prints each value on its bar, point or slice.
-- `format`: `number`, `integer`, `percent`, or a function — the same vocabulary as `<DataTable>`.
+- `type`: `'bar'` (default), `'horizontal-bar'`, `'line'`, `'area'`, `'pie'`. `y` takes one key or several (one series each); a pie reads the first.
+- `stacked` stacks `bar`, `horizontal-bar`, or `area` series instead of grouping/overlapping them; `values` prints each value on its bar, point or slice.
+- `format`: `'number'`, `'integer'`, `'percent'`, `'currency'`, `'delta'`, or a function — the same vocabulary as `<DataTable>`.
 - `width` / `height` are the drawn size in px (default 560 × 260); it scales down to the column.
 - It lays out synchronously into a fixed box, so it paginates like any block. In Word it arrives as a picture.
 
-Anything `<Chart>` doesn't draw — a sparkline in a stat row, an annotated timeline — write as **inline SVG** sized in absolute px:
+### Inline sparklines (`<Sparkline>`)
+
+For compact trend lines or mini bar strips inside a `<DataTable>` cell, stat card, or prose paragraph, use **`<Sparkline>`**:
+
+```tsx
+import { Sparkline } from '@open-document/core';
+
+<Sparkline data={[38, 42, 40, 49, 55, 61]} type="area" width={88} height={22} showEndDot />
+<Sparkline data={[12, 18, 15, 24, 29]} type="bar" width={72} height={20} />
+```
+
+Anything `<Chart>` or `<Sparkline>` doesn't draw — an annotated timeline or bespoke diagram — write as **inline SVG** sized in absolute px:
 
 ```tsx
 const Bars = () => {
@@ -158,21 +169,14 @@ Rules:
 
 ## Callouts
 
-One box style, used sparingly (at most one or two per page):
+Use the built-in **`<Callout>`** primitive (`type`: `'note' | 'tip' | 'warning' | 'danger'`, default `'note'`) sparingly — at most one or two per page:
 
 ```tsx
-<div
-  style={{
-    borderLeft: '3px solid var(--od-accent)',
-    background: '#f8fafc',
-    padding: '12px 14px',
-    borderRadius: 'var(--od-radius)',
-    fontSize: 12,
-  }}
->
-  <strong style={{ display: 'block', marginBottom: 4 }}>Recommendation</strong>
+import { Callout } from '@open-document/core';
+
+<Callout type="warning" title="Recommendation">
   Move the checkout queue to its own cluster before the November peak.
-</div>
+</Callout>
 ```
 
 Reserve callouts for recommendations, risks, and definitions. A page where everything is boxed emphasizes nothing.

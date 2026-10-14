@@ -10,7 +10,7 @@
 
 import { measureText } from '../../diagram/layout';
 
-export type ChartType = 'bar' | 'line' | 'pie';
+export type ChartType = 'bar' | 'line' | 'pie' | 'area' | 'horizontal-bar';
 
 export type ChartFormat = 'number' | 'integer' | 'percent' | ((value: number) => string);
 
@@ -31,17 +31,22 @@ export type ChartSpec = {
 
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Tick = { value: number; at: number; label: string };
-export type CategoryLabel = { text: string; x: number };
+export type CategoryLabel = { text: string; x: number; y?: number };
 export type LegendItem = { name: string; series: number; x: number; y: number };
-export type ValueLabel = { text: string; x: number; y: number; anchor: 'middle' | 'start' };
+export type ValueLabel = { text: string; x: number; y: number; anchor: 'middle' | 'start' | 'end' };
 export type Bar = Rect & { series: number; value: number };
-export type Line = { series: number; points: Array<{ x: number; y: number; value: number }> };
+export type Line = {
+  series: number;
+  points: Array<{ x: number; y: number; value: number }>;
+  areaPath?: string;
+};
 export type Slice = { series: number; path: string; share: number; name: string };
 
 export type ChartLayout = {
   width: number;
   height: number;
   plot: Rect;
+  horizontal?: boolean;
   /** Where zero sits on the value axis, when the axis has one. */
   baseline: number | null;
   ticks: Tick[];
@@ -190,15 +195,126 @@ function layoutPie(spec: ChartSpec): ChartLayout {
   };
 }
 
+function layoutHorizontalBar(spec: ChartSpec): ChartLayout {
+  const names = spec.y.map((key) => seriesName(spec, key));
+  const categories = spec.data.map((row) => String(row[spec.x] ?? ''));
+  const matrix = spec.data.map((row) => spec.y.map((key) => toNumber(row[key])));
+
+  let lo = 0;
+  let hi = 0;
+  for (const values of matrix) {
+    if (spec.stacked) {
+      const up = values.reduce<number>((sum, v) => sum + Math.max(0, v ?? 0), 0);
+      const down = values.reduce<number>((sum, v) => sum + Math.min(0, v ?? 0), 0);
+      lo = Math.min(lo, down);
+      hi = Math.max(hi, up);
+    } else {
+      for (const v of values) {
+        if (v === null) continue;
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+    }
+  }
+  if (lo === 0 && hi === 0) hi = 1;
+
+  const tickValues = niceTicks(lo, hi);
+  const min = tickValues[0] ?? 0;
+  const max = tickValues[tickValues.length - 1] ?? 1;
+  const tickLabels = tickValues.map((value) => formatChartValue(value, spec.format));
+
+  const legendHeight = spec.y.length > 1 ? CHART_FONT_SIZE * 2.2 : 0;
+  const top = 6 + legendHeight;
+  const left =
+    Math.ceil(Math.max(24, ...categories.map((c) => measureText(c, CHART_FONT_SIZE))) * 1.12) + 12;
+  const bottom = CHART_FONT_SIZE * 2;
+  const right = spec.values ? 44 : 14;
+  const plot: Rect = {
+    x: left,
+    y: top,
+    width: Math.max(10, spec.width - left - right),
+    height: Math.max(10, spec.height - top - bottom),
+  };
+
+  const xOf = (value: number) => round(plot.x + ((value - min) / (max - min)) * plot.width);
+
+  const ticks = tickValues.map((value, i) => ({
+    value,
+    at: xOf(value),
+    label: tickLabels[i] ?? '',
+  }));
+
+  const band = plot.height / Math.max(1, categories.length);
+  const categoryLabels: CategoryLabel[] = categories.map((text, i) => ({
+    text,
+    x: plot.x - 8,
+    y: round(plot.y + band * (i + 0.5) + CHART_FONT_SIZE * 0.35),
+  }));
+
+  const bars: Bar[] = [];
+  const values: ValueLabel[] = [];
+  const group = band * 0.68;
+  const each = spec.stacked ? group : group / Math.max(1, spec.y.length);
+
+  matrix.forEach((row, i) => {
+    const startY = plot.y + band * i + (band - group) / 2;
+    let up = 0;
+    let down = 0;
+    row.forEach((value, series) => {
+      if (value === null) return;
+      let from: number;
+      let to: number;
+      if (spec.stacked) {
+        from = value >= 0 ? up : down;
+        to = from + value;
+        if (value >= 0) up = to;
+        else down = to;
+      } else {
+        from = 0;
+        to = value;
+      }
+      const x1 = xOf(Math.min(from, to));
+      const x2 = xOf(Math.max(from, to));
+      const y = round(spec.stacked ? startY : startY + each * series);
+      const height = round(Math.max(1, each - (spec.stacked ? 0 : 2)));
+      bars.push({ x: x1, y, width: round(Math.max(0, x2 - x1)), height, series, value });
+      if (spec.values && !spec.stacked) {
+        values.push({
+          text: formatChartValue(value, spec.format),
+          x: round(value >= 0 ? x2 + 5 : x1 - 5),
+          y: round(y + height / 2 + CHART_FONT_SIZE * 0.35),
+          anchor: value >= 0 ? 'start' : 'end',
+        });
+      }
+    });
+  });
+
+  return {
+    width: spec.width,
+    height: spec.height,
+    plot,
+    horizontal: true,
+    baseline: min <= 0 && max >= 0 ? xOf(0) : null,
+    ticks,
+    categories: categoryLabels,
+    bars,
+    lines: [],
+    slices: [],
+    legend: spec.y.length > 1 ? legendRow(names, plot.x, 6 + CHART_FONT_SIZE * 0.8) : [],
+    values,
+  };
+}
+
 export function layoutChart(spec: ChartSpec): ChartLayout {
   if (spec.type === 'pie') return layoutPie(spec);
+  if (spec.type === 'horizontal-bar') return layoutHorizontalBar(spec);
 
   const names = spec.y.map((key) => seriesName(spec, key));
   const categories = spec.data.map((row) => String(row[spec.x] ?? ''));
   const matrix = spec.data.map((row) => spec.y.map((key) => toNumber(row[key])));
 
-  // The value range, with stacked bars summed per category. Bars always stand
-  // on zero; a line keeps zero in view unless its values sit far above it.
+  // The value range, with stacked bars summed per category. Bars and area charts
+  // stand on zero; a line keeps zero in view unless its values sit far above it.
   let lo = Number.POSITIVE_INFINITY;
   let hi = Number.NEGATIVE_INFINITY;
   for (const values of matrix) {
@@ -219,8 +335,9 @@ export function layoutChart(spec: ChartSpec): ChartLayout {
     lo = 0;
     hi = 1;
   }
-  if (spec.type === 'bar' || (lo >= 0 && lo <= hi * 0.5)) lo = Math.min(0, lo);
-  if (spec.type === 'bar') hi = Math.max(0, hi);
+  if (spec.type === 'bar' || spec.type === 'area' || (lo >= 0 && lo <= hi * 0.5))
+    lo = Math.min(0, lo);
+  if (spec.type === 'bar' || spec.type === 'area') hi = Math.max(0, hi);
 
   const tickValues = niceTicks(lo, hi);
   const min = tickValues[0] ?? 0;
@@ -261,6 +378,7 @@ export function layoutChart(spec: ChartSpec): ChartLayout {
   const bars: Bar[] = [];
   const lines: Line[] = [];
   const values: ValueLabel[] = [];
+  const baseLineY = yOf(Math.max(min, Math.min(max, 0)));
 
   if (spec.type === 'bar') {
     const group = band * 0.68;
@@ -313,7 +431,14 @@ export function layoutChart(spec: ChartSpec): ChartLayout {
           ? []
           : [{ x: round(plot.x + band * (i + 0.5)), y: yOf(value), value }];
       });
-      lines.push({ series, points });
+      let areaPath: string | undefined;
+      if (spec.type === 'area' && points.length >= 2) {
+        const first = points[0];
+        const last = points[points.length - 1];
+        const strokePts = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+        areaPath = `${strokePts} L${last.x},${baseLineY} L${first.x},${baseLineY} Z`;
+      }
+      lines.push({ series, points, ...(areaPath ? { areaPath } : {}) });
       if (spec.values) {
         for (const point of points) {
           values.push({

@@ -14,10 +14,29 @@ export type LaidOutEdge = DiagramEdge & {
   labelAt: { x: number; y: number } | null;
 };
 
+export type LaidOutSubgraph = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type LaidOutLifeline = {
+  id: string;
+  x: number;
+  y1: number;
+  y2: number;
+};
+
 export type LaidOutDiagram = {
+  kind?: 'flowchart' | 'sequence';
   direction: Direction;
   nodes: LaidOutNode[];
   edges: LaidOutEdge[];
+  subgraphs?: LaidOutSubgraph[];
+  lifelines?: LaidOutLifeline[];
   width: number;
   height: number;
 };
@@ -328,9 +347,139 @@ function route(from: LaidOutNode, to: LaidOutNode, horizontal: boolean) {
   return [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
 }
 
+function layoutSequence(diagram: Diagram, opts: Required<LayoutOptions>): LaidOutDiagram {
+  const partNodes = diagram.nodes;
+  const messages = diagram.messages ?? [];
+  const labelSize = opts.fontSize * 0.85;
+
+  const boxSizes = partNodes.map((p) => {
+    const wrapped = wrapLabel(p.label, opts.fontSize, opts.maxLabelWidth);
+    const sz = sizeOf(p, wrapped, opts.fontSize);
+    return { node: p, lines: wrapped, width: sz.width, height: sz.height };
+  });
+
+  // Ensure adjacent participant centres are far enough apart for message labels between them.
+  const indexById = new Map(partNodes.map((p, i) => [p.id, i]));
+  const gapAfter = new Array<number>(Math.max(0, partNodes.length - 1)).fill(opts.nodeGap + 36);
+
+  for (const msg of messages) {
+    const fi = indexById.get(msg.from) ?? 0;
+    const ti = indexById.get(msg.to) ?? 0;
+    if (fi === ti) continue;
+    const lo = Math.min(fi, ti);
+    const hi = Math.max(fi, ti);
+    if (hi - lo === 1 && msg.label) {
+      const needed = measureText(msg.label, labelSize) + 36;
+      if (needed > gapAfter[lo]) gapAfter[lo] = needed;
+    }
+  }
+
+  const centres: number[] = [];
+  let cursorX = opts.padding;
+  boxSizes.forEach((box, i) => {
+    if (i === 0) {
+      centres.push(cursorX + box.width / 2);
+      cursorX += box.width;
+    } else {
+      const prevBox = boxSizes[i - 1];
+      const minCentreDist = (prevBox.width + box.width) / 2 + (gapAfter[i - 1] ?? opts.nodeGap);
+      const nextCentre = centres[i - 1] + minCentreDist;
+      centres.push(nextCentre);
+      cursorX = nextCentre + box.width / 2;
+    }
+  });
+
+  const topY = opts.padding;
+  const headerHeight = Math.max(...boxSizes.map((b) => b.height), 36);
+  const nodes: LaidOutNode[] = boxSizes.map((box, i) => ({
+    ...box.node,
+    lines: box.lines,
+    width: box.width,
+    height: headerHeight,
+    x: Math.round(centres[i] - box.width / 2),
+    y: topY,
+  }));
+
+  const centreById = new Map(partNodes.map((p, i) => [p.id, Math.round(centres[i])]));
+  const edges: LaidOutEdge[] = [];
+  let msgY = topY + headerHeight + 34;
+  const stepY = 42;
+  let maxRight = Math.max(...nodes.map((n) => n.x + n.width));
+
+  for (const msg of messages) {
+    const x1 = centreById.get(msg.from) ?? opts.padding;
+    const x2 = centreById.get(msg.to) ?? opts.padding;
+    if (msg.from === msg.to) {
+      const loopW = 36;
+      const loopH = 20;
+      const points = [
+        { x: x1, y: msgY },
+        { x: x1 + loopW, y: msgY },
+        { x: x1 + loopW, y: msgY + loopH },
+        { x: x1, y: msgY + loopH },
+      ];
+      const labelW = msg.label ? measureText(msg.label, labelSize) + 12 : 0;
+      const labelAt = msg.label ? { x: x1 + loopW + labelW / 2 + 4, y: msgY + loopH / 2 } : null;
+      if (labelAt) maxRight = Math.max(maxRight, labelAt.x + labelW / 2);
+      edges.push({
+        from: msg.from,
+        to: msg.to,
+        label: msg.label || null,
+        style: msg.style,
+        arrow: msg.arrow,
+        points,
+        labelAt,
+      });
+      msgY += stepY + 10;
+    } else {
+      const points = [
+        { x: x1, y: msgY },
+        { x: x2, y: msgY },
+      ];
+      const labelAt = msg.label ? { x: (x1 + x2) / 2, y: msgY - 10 } : null;
+      edges.push({
+        from: msg.from,
+        to: msg.to,
+        label: msg.label || null,
+        style: msg.style,
+        arrow: msg.arrow,
+        points,
+        labelAt,
+      });
+      msgY += stepY;
+    }
+  }
+
+  const lifelineBottom = Math.max(topY + headerHeight + 28, msgY - 10);
+  const lifelines: LaidOutLifeline[] = partNodes.map((p, i) => ({
+    id: p.id,
+    x: Math.round(centres[i]),
+    y1: topY + headerHeight,
+    y2: lifelineBottom,
+  }));
+
+  return {
+    kind: 'sequence',
+    direction: 'LR',
+    nodes,
+    edges,
+    lifelines,
+    width: Math.round(maxRight + opts.padding),
+    height: Math.round(lifelineBottom + opts.padding),
+  };
+}
+
 export function layoutDiagram(diagram: Diagram, options: LayoutOptions = {}): LaidOutDiagram {
   const opts = { ...DEFAULTS, ...options };
+  if (diagram.kind === 'sequence') {
+    return layoutSequence(diagram, opts);
+  }
+
   const horizontal = diagram.direction === 'LR';
+  const hasSubgraphs = (diagram.subgraphs?.length ?? 0) > 0;
+  const effectiveRankGap = hasSubgraphs ? Math.max(opts.rankGap, 62) : opts.rankGap;
+  const effectiveNodeGap = hasSubgraphs ? Math.max(opts.nodeGap, 38) : opts.nodeGap;
+  const outerPad = hasSubgraphs ? Math.max(opts.padding, 24) : opts.padding;
 
   const lines = new Map<string, string[]>();
   const sizes = new Map<string, { width: number; height: number }>();
@@ -352,7 +501,7 @@ export function layoutDiagram(diagram: Diagram, options: LayoutOptions = {}): La
 
   // Along the flow: each rank sits past the deepest node of the one before it.
   const rankOffset: number[] = [];
-  let cursor = opts.padding;
+  let cursor = outerPad + (hasSubgraphs ? 18 : 0);
   for (const rank of ranks) {
     rankOffset.push(cursor);
     const extent = Math.max(
@@ -361,7 +510,7 @@ export function layoutDiagram(diagram: Diagram, options: LayoutOptions = {}): La
         return horizontal ? (size?.width ?? 0) : (size?.height ?? 0);
       }),
     );
-    cursor += extent + opts.rankGap;
+    cursor += extent + effectiveRankGap;
   }
 
   // Across the flow: lay each rank out end to end, then centre the ranks on
@@ -374,14 +523,14 @@ export function layoutDiagram(diagram: Diagram, options: LayoutOptions = {}): La
       const size = sizes.get(id);
       const extent = horizontal ? (size?.height ?? 0) : (size?.width ?? 0);
       cross.set(id, offset + extent / 2);
-      offset += extent + opts.nodeGap;
+      offset += extent + effectiveNodeGap;
     }
-    rankSpan[i] = Math.max(0, offset - opts.nodeGap);
+    rankSpan[i] = Math.max(0, offset - effectiveNodeGap);
   });
 
   const widest = Math.max(...rankSpan, 0);
   ranks.forEach((rank, i) => {
-    const shift = (widest - rankSpan[i]) / 2 + opts.padding;
+    const shift = (widest - rankSpan[i]) / 2 + outerPad;
     for (const id of rank) cross.set(id, (cross.get(id) ?? 0) + shift);
   });
 
@@ -414,6 +563,32 @@ export function layoutDiagram(diagram: Diagram, options: LayoutOptions = {}): La
   }
   placeLabels(edges, opts.fontSize);
 
+  const subgraphs: LaidOutSubgraph[] = [];
+  if (diagram.subgraphs) {
+    const sgPadX = 14;
+    const sgPadTop = 26;
+    const sgPadBottom = 12;
+    for (const sg of diagram.subgraphs) {
+      const members = sg.nodeIds
+        .map((id) => byId.get(id))
+        .filter((n): n is LaidOutNode => n !== undefined);
+      if (members.length === 0) continue;
+      const minX = Math.min(...members.map((m) => m.x)) - sgPadX;
+      const minY = Math.min(...members.map((m) => m.y)) - sgPadTop;
+      const maxX = Math.max(...members.map((m) => m.x + m.width)) + sgPadX;
+      const maxY = Math.max(...members.map((m) => m.y + m.height)) + sgPadBottom;
+      const labelWidth = measureText(sg.label, opts.fontSize * 0.85) + sgPadX * 2;
+      subgraphs.push({
+        id: sg.id,
+        label: sg.label,
+        x: Math.max(2, Math.round(minX)),
+        y: Math.max(2, Math.round(minY)),
+        width: Math.round(Math.max(maxX - minX, labelWidth)),
+        height: Math.round(maxY - minY),
+      });
+    }
+  }
+
   // A link routed round the side, and its label, reach past the boxes.
   const labelSize = opts.fontSize * 0.85;
   const reach = edges.flatMap((edge) => [
@@ -427,9 +602,26 @@ export function layoutDiagram(diagram: Diagram, options: LayoutOptions = {}): La
         ]
       : []),
   ]);
+  const sgReach = subgraphs.map((s) => ({ x: s.x + s.width, y: s.y + s.height }));
   const width =
-    Math.max(...nodes.map((n) => n.x + n.width), ...reach.map((p) => p.x)) + opts.padding;
+    Math.max(
+      ...nodes.map((n) => n.x + n.width),
+      ...reach.map((p) => p.x),
+      ...sgReach.map((p) => p.x),
+    ) + opts.padding;
   const height =
-    Math.max(...nodes.map((n) => n.y + n.height), ...reach.map((p) => p.y)) + opts.padding;
-  return { direction: diagram.direction, nodes, edges, width, height };
+    Math.max(
+      ...nodes.map((n) => n.y + n.height),
+      ...reach.map((p) => p.y),
+      ...sgReach.map((p) => p.y),
+    ) + opts.padding;
+  return {
+    kind: 'flowchart',
+    direction: diagram.direction,
+    nodes,
+    edges,
+    ...(subgraphs.length > 0 ? { subgraphs } : {}),
+    width,
+    height,
+  };
 }
