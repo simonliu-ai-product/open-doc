@@ -42,7 +42,7 @@ describe('concurrency & optimistic locking', () => {
   });
 
   it('returns deterministic 16-char SHA-256 hash from readDocument and readText', async () => {
-    const ctx = makeContext({ userCwd: tmpDir, docsDir: 'docs' });
+    const ctx = makeContext({ userCwd: tmpDir, docsDir: 'docs', coreVersion: '0.13.1' });
     const created = await createDocument(ctx, 'demo', SAMPLE_DOC);
     expect(created.hash).toBe(hashSource(SAMPLE_DOC));
     expect(created.hash).toHaveLength(16);
@@ -57,7 +57,7 @@ describe('concurrency & optimistic locking', () => {
   });
 
   it('enforces expectedHash optimistic locking on writeDocument and writeText', async () => {
-    const ctx = makeContext({ userCwd: tmpDir, docsDir: 'docs' });
+    const ctx = makeContext({ userCwd: tmpDir, docsDir: 'docs', coreVersion: '0.13.1' });
     const { hash: initialHash } = await createDocument(ctx, 'demo', SAMPLE_DOC);
 
     // First write with matching expectedHash succeeds and returns new hash
@@ -86,7 +86,7 @@ describe('concurrency & optimistic locking', () => {
   });
 
   it('serializes concurrent edits on the same file via withFileLock without clobbering', async () => {
-    const ctx = makeContext({ userCwd: tmpDir, docsDir: 'docs' });
+    const ctx = makeContext({ userCwd: tmpDir, docsDir: 'docs', coreVersion: '0.13.1' });
     await createDocument(ctx, 'demo', SAMPLE_DOC);
 
     // Fire three concurrent mutations on the same document simultaneously
