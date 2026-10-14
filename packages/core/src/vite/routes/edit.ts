@@ -1,25 +1,21 @@
 import fs from 'node:fs/promises';
 import type { ViteDevServer } from 'vite';
 import type { StyleChanges } from '../../app/lib/inspector/format.ts';
-import { insertMarker, locateMarkers, parseMarkers, removeMarker } from '../../editing/comments.ts';
-import {
-  replaceTextAt,
-  resolveTextTarget,
-  type TextEdit,
-  type TextSegment,
-} from '../../editing/edit-ops.ts';
+import { locateMarkers, parseMarkers, removeMarker } from '../../editing/comments.ts';
+import { resolveTextTarget, type TextEdit, type TextSegment } from '../../editing/edit-ops.ts';
 import type { StyleEdit } from '../../editing/style-ops.ts';
 import { validateMutationRequest } from '../../http/request-guard.ts';
+import { hashSource, withFileLock } from '../../ops/concurrency.ts';
 import { OpsError } from '../../ops/documents.ts';
-import { readStyle, writeEdits, writeTexts } from '../../ops/text.ts';
+import { addComment, readStyle, writeEdits, writeText, writeTexts } from '../../ops/text.ts';
 import { type ApiContext, json, readBody, resolveDocEntry } from './context.ts';
 
 // GET    /__edit/text?docId=…&locs=12:4,296:10&shown=…&prop=…   resolve what was clicked
-// PUT    /__edit/text   { docId, line, column, text, index?, expected? }
-// PUT    /__edit/texts  { docId, edits: [{ line, column, text, segments?, index?, expected?, shown? }] }
+// PUT    /__edit/text   { docId, line, column, text, index?, expected?, expectedHash? }
+// PUT    /__edit/texts  { docId, edits: [...], expectedHash? }
 // GET    /__edit/style?docId=…&line=…&column=…&tag=…   what the element's style sets
-// PUT    /__edit/batch  { docId, texts: [...as /texts], styles: [{ line, column, tag, changes, expected? }] }
-// POST   /__edit/comment                         { docId, line, column, note, hint? }
+// PUT    /__edit/batch  { docId, texts: [...as /texts], styles: [...], expectedHash? }
+// POST   /__edit/comment                         { docId, line, column, note, hint?, expectedHash? }
 // GET    /__comments?docId=…                     list pending markers
 // DELETE /__comments?docId=…&id=…                drop one marker
 
@@ -126,7 +122,7 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
           url.searchParams.get('prop') ?? undefined,
         );
         if (!resolved) return json(res, 404, { error: 'element not found' });
-        return json(res, 200, resolved);
+        return json(res, 200, { ...resolved, hash: hashSource(source) });
       }
 
       if (method === 'PUT' && url.pathname === '/text') {
@@ -140,32 +136,34 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         const entry = entryFor(loc.docId);
         if (!entry) return json(res, 404, { error: 'document not found' });
 
-        const source = await fs.readFile(entry, 'utf8');
-        const result = replaceTextAt(source, loc, text, {
+        const out = await writeText(ctx, loc.docId, loc, text, {
           index: typeof body.index === 'number' ? body.index : undefined,
           expected: typeof body.expected === 'string' ? body.expected : undefined,
+          expectedHash: typeof body.expectedHash === 'string' ? body.expectedHash : undefined,
           shown: typeof body.shown === 'string' ? body.shown : undefined,
           prop: typeof body.prop === 'string' ? body.prop : undefined,
         });
-        if (!result.ok) return json(res, result.status, { error: result.error });
-        if (result.source !== source) {
-          await fs.writeFile(entry, result.source, 'utf8');
-          server.watcher.emit('change', entry);
-        }
-        return json(res, 200, { ok: true });
+        server.watcher.emit('change', entry);
+        return json(res, 200, out);
       }
 
       if (method === 'PUT' && url.pathname === '/texts') {
         const check = validateMutationRequest(req, { requireJsonBody: true });
         if (!check.ok) return json(res, check.status, { error: check.error });
 
-        const body = (await readBody(req)) as { docId?: unknown; edits?: unknown };
+        const body = (await readBody(req)) as {
+          docId?: unknown;
+          edits?: unknown;
+          expectedHash?: unknown;
+        };
         if (typeof body.docId !== 'string' || !Array.isArray(body.edits)) {
           return json(res, 400, { error: 'invalid payload' });
         }
         const edits = readTextEdits(body.docId, body.edits);
         if (!edits) return json(res, 400, { error: 'invalid payload' });
-        const out = await writeTexts(ctx, body.docId, edits);
+        const out = await writeTexts(ctx, body.docId, edits, {
+          expectedHash: typeof body.expectedHash === 'string' ? body.expectedHash : undefined,
+        });
         const entry = entryFor(body.docId);
         if (entry) server.watcher.emit('change', entry);
         return json(res, 200, out);
@@ -192,12 +190,15 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
           docId?: unknown;
           texts?: unknown;
           styles?: unknown;
+          expectedHash?: unknown;
         };
         if (typeof body.docId !== 'string') return json(res, 400, { error: 'invalid payload' });
         const texts = readTextEdits(body.docId, body.texts ?? []);
         const styles = readStyleEdits(body.docId, body.styles ?? []);
         if (!texts || !styles) return json(res, 400, { error: 'invalid payload' });
-        const out = await writeEdits(ctx, body.docId, texts, styles);
+        const out = await writeEdits(ctx, body.docId, texts, styles, {
+          expectedHash: typeof body.expectedHash === 'string' ? body.expectedHash : undefined,
+        });
         const entry = entryFor(body.docId);
         if (entry) server.watcher.emit('change', entry);
         return json(res, 200, out);
@@ -216,21 +217,16 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         const entry = entryFor(loc.docId);
         if (!entry) return json(res, 404, { error: 'document not found' });
 
-        const source = await fs.readFile(entry, 'utf8');
-        const inserted = insertMarker(
-          source,
+        const inserted = await addComment(
+          ctx,
+          loc.docId,
           loc,
-          note.trim(),
+          note,
           typeof body.hint === 'string' ? body.hint : undefined,
+          { expectedHash: typeof body.expectedHash === 'string' ? body.expectedHash : undefined },
         );
-        if (!inserted) {
-          return json(res, 422, {
-            error: 'cannot anchor a comment here — pick the surrounding element',
-          });
-        }
-        await fs.writeFile(entry, inserted.source, 'utf8');
         server.watcher.emit('change', entry);
-        return json(res, 200, { ok: true, id: inserted.id });
+        return json(res, 200, { ok: true, id: inserted.id, hash: inserted.hash });
       }
 
       return next();
@@ -259,10 +255,14 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         const id = url.searchParams.get('id') ?? '';
         if (!entry || !/^c-[a-f0-9]+$/.test(id)) return json(res, 400, { error: 'invalid id' });
 
-        const source = await fs.readFile(entry, 'utf8');
-        const next = removeMarker(source, id);
-        if (next === null) return json(res, 404, { error: 'comment not found' });
-        await fs.writeFile(entry, next, 'utf8');
+        const removed = await withFileLock(entry, async () => {
+          const source = await fs.readFile(entry, 'utf8');
+          const nextSource = removeMarker(source, id);
+          if (nextSource === null) return false;
+          await fs.writeFile(entry, nextSource, 'utf8');
+          return true;
+        });
+        if (!removed) return json(res, 404, { error: 'comment not found' });
         server.watcher.emit('change', entry);
         return json(res, 200, { ok: true });
       }

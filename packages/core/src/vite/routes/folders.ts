@@ -10,6 +10,7 @@ import {
   writeManifest,
 } from '../../files/folders.ts';
 import { validateMutationRequest } from '../../http/request-guard.ts';
+import { withFileLock } from '../../ops/concurrency.ts';
 import { DOC_ID_RE } from '../open-doc-plugin.ts';
 import { type ApiContext, json, readBody } from './context.ts';
 
@@ -40,10 +41,13 @@ export function registerFolderRoutes(server: ViteDevServer, ctx: ApiContext): vo
         const icon = validateIcon(body.icon);
         if (!icon) return json(res, 400, { error: 'invalid icon' });
 
-        const manifest = await readManifest(ctx.manifestPath);
-        const folder: Folder = { id: newFolderId(), name, icon };
-        manifest.folders.push(folder);
-        await writeManifest(ctx.manifestPath, manifest);
+        const folder = await withFileLock(ctx.manifestPath, async () => {
+          const manifest = await readManifest(ctx.manifestPath);
+          const created: Folder = { id: newFolderId(), name, icon };
+          manifest.folders.push(created);
+          await writeManifest(ctx.manifestPath, manifest);
+          return created;
+        });
         return json(res, 200, folder);
       }
 
@@ -63,13 +67,17 @@ export function registerFolderRoutes(server: ViteDevServer, ctx: ApiContext): vo
           folderId = body.folderId;
         } else return json(res, 400, { error: 'invalid folderId' });
 
-        const manifest = await readManifest(ctx.manifestPath);
-        if (folderId && !manifest.folders.some((f) => f.id === folderId)) {
-          return json(res, 404, { error: 'folder not found' });
-        }
-        if (folderId === null) delete manifest.assignments[docId];
-        else manifest.assignments[docId] = folderId;
-        await writeManifest(ctx.manifestPath, manifest);
+        const assigned = await withFileLock(ctx.manifestPath, async () => {
+          const manifest = await readManifest(ctx.manifestPath);
+          if (folderId && !manifest.folders.some((f) => f.id === folderId)) {
+            return false;
+          }
+          if (folderId === null) delete manifest.assignments[docId];
+          else manifest.assignments[docId] = folderId;
+          await writeManifest(ctx.manifestPath, manifest);
+          return true;
+        });
+        if (!assigned) return json(res, 404, { error: 'folder not found' });
         return json(res, 200, { ok: true });
       }
 
@@ -78,12 +86,16 @@ export function registerFolderRoutes(server: ViteDevServer, ctx: ApiContext): vo
         if (!requestCheck.ok) return json(res, requestCheck.status, { error: requestCheck.error });
 
         const body = (await readBody(req)) as { ids?: unknown };
-        const manifest = await readManifest(ctx.manifestPath);
-        const ids = validateReorder(body.ids, manifest.folders);
-        if (!ids) return json(res, 400, { error: 'invalid ids' });
-        const byId = new Map(manifest.folders.map((f) => [f.id, f]));
-        manifest.folders = ids.map((id) => byId.get(id) as Folder);
-        await writeManifest(ctx.manifestPath, manifest);
+        const reordered = await withFileLock(ctx.manifestPath, async () => {
+          const manifest = await readManifest(ctx.manifestPath);
+          const ids = validateReorder(body.ids, manifest.folders);
+          if (!ids) return false;
+          const byId = new Map(manifest.folders.map((f) => [f.id, f]));
+          manifest.folders = ids.map((id) => byId.get(id) as Folder);
+          await writeManifest(ctx.manifestPath, manifest);
+          return true;
+        });
+        if (!reordered) return json(res, 400, { error: 'invalid ids' });
         return json(res, 200, { ok: true });
       }
 
@@ -98,22 +110,26 @@ export function registerFolderRoutes(server: ViteDevServer, ctx: ApiContext): vo
             return json(res, requestCheck.status, { error: requestCheck.error });
           }
           const body = (await readBody(req)) as { name?: unknown; icon?: unknown };
-          const manifest = await readManifest(ctx.manifestPath);
-          const folder = manifest.folders.find((f) => f.id === id);
-          if (!folder) return json(res, 404, { error: 'folder not found' });
+          const outcome = await withFileLock(ctx.manifestPath, async () => {
+            const manifest = await readManifest(ctx.manifestPath);
+            const folder = manifest.folders.find((f) => f.id === id);
+            if (!folder) return { status: 404 as const, error: 'folder not found' };
 
-          if (body.name !== undefined) {
-            const name = validateName(body.name);
-            if (!name) return json(res, 400, { error: 'invalid name' });
-            folder.name = name;
-          }
-          if (body.icon !== undefined) {
-            const icon = validateIcon(body.icon);
-            if (!icon) return json(res, 400, { error: 'invalid icon' });
-            folder.icon = icon;
-          }
-          await writeManifest(ctx.manifestPath, manifest);
-          return json(res, 200, folder);
+            if (body.name !== undefined) {
+              const name = validateName(body.name);
+              if (!name) return { status: 400 as const, error: 'invalid name' };
+              folder.name = name;
+            }
+            if (body.icon !== undefined) {
+              const icon = validateIcon(body.icon);
+              if (!icon) return { status: 400 as const, error: 'invalid icon' };
+              folder.icon = icon;
+            }
+            await writeManifest(ctx.manifestPath, manifest);
+            return { status: 200 as const, folder };
+          });
+          if (outcome.status !== 200) return json(res, outcome.status, { error: outcome.error });
+          return json(res, 200, outcome.folder);
         }
 
         if (method === 'DELETE') {
@@ -121,16 +137,18 @@ export function registerFolderRoutes(server: ViteDevServer, ctx: ApiContext): vo
           if (!requestCheck.ok) {
             return json(res, requestCheck.status, { error: requestCheck.error });
           }
-          const manifest = await readManifest(ctx.manifestPath);
-          const before = manifest.folders.length;
-          manifest.folders = manifest.folders.filter((f) => f.id !== id);
-          if (manifest.folders.length === before) {
-            return json(res, 404, { error: 'folder not found' });
-          }
-          for (const [docId, folderId] of Object.entries(manifest.assignments)) {
-            if (folderId === id) delete manifest.assignments[docId];
-          }
-          await writeManifest(ctx.manifestPath, manifest);
+          const deleted = await withFileLock(ctx.manifestPath, async () => {
+            const manifest = await readManifest(ctx.manifestPath);
+            const before = manifest.folders.length;
+            manifest.folders = manifest.folders.filter((f) => f.id !== id);
+            if (manifest.folders.length === before) return false;
+            for (const [docId, folderId] of Object.entries(manifest.assignments)) {
+              if (folderId === id) delete manifest.assignments[docId];
+            }
+            await writeManifest(ctx.manifestPath, manifest);
+            return true;
+          });
+          if (!deleted) return json(res, 404, { error: 'folder not found' });
           return json(res, 200, { ok: true });
         }
       }
