@@ -126,6 +126,9 @@ function tokenStyle(kind: TokenKind): CSSProperties | undefined {
   }
 }
 
+/** Marks a framed component whose parts the Word export keeps inside one frame. */
+export const PANEL_ATTR = 'data-od-panel';
+
 /**
  * Print-ready syntax-highlighted code block with optional header bar, line
  * numbers, and highlighted lines. Uses `--od-*` variables so it harmonizes with
@@ -149,6 +152,7 @@ export function CodeBlock({
   return (
     <div
       {...sourceAttrs(loc)}
+      {...{ [PANEL_ATTR]: '' }}
       className={className}
       style={{
         border: '1px solid var(--od-rule, #e5e7eb)',

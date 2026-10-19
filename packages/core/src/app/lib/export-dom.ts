@@ -10,7 +10,7 @@ import { SheetWatermark } from '../components/page-frame';
 import { designToCssVars } from './design';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
-import { nextFrame, waitForFonts, waitForImages } from './print-ready';
+import { nextFrame, sleep, waitForFonts, waitForImages } from './print-ready';
 import { captureScan, restoreScan, scanDocument } from './scan';
 import { type DocModule, type PageGeometry, pageLang } from './sdk';
 import { scopeSvgIds } from './svg-ids';
@@ -57,6 +57,11 @@ export async function withRenderedPages<T>(
       host.setAttribute('lang', pageLang(doc.meta));
       host.style.width = `${geometry.width}px`;
       host.style.height = `${geometry.height}px`;
+      // As the sheet in the viewer is: what a page places absolutely — the
+      // watermark, a fixed page's footer — is placed on that page, not on the
+      // column of every page stacked in the container.
+      host.style.position = 'relative';
+      host.style.overflow = 'hidden';
       if (designVars) {
         for (const [k, v] of Object.entries(designVars)) host.style.setProperty(k, v);
       }
@@ -80,7 +85,11 @@ export async function withRenderedPages<T>(
     await waitForFonts();
     await waitForImages(container);
     scanDocument(container, doc.meta);
+    // As the print copy waits: a busy machine can let two frames pass before
+    // React has drawn the numbers the scan resolved, and a reference read then
+    // is still unresolved.
     await nextFrame();
+    await sleep(50);
     await nextFrame();
     hosts.forEach((host, i) => {
       scopeSvgIds(host, `export-${i}`);

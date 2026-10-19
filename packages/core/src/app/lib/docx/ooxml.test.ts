@@ -43,6 +43,13 @@ describe('hexColor', () => {
     expect(hexColor('#abc')).toBe('aabbcc');
     expect(hexColor('rgba(0, 0, 0, 0)')).toBeNull();
   });
+
+  it('reads color-mix results and flattens a translucent tint onto white', () => {
+    expect(hexColor('color(srgb 0.0863 0.0941 0.1137)')).toBe('16181d');
+    expect(hexColor('rgba(37, 99, 235, 0.1)')).toBe('e9effd');
+    expect(hexColor('color(srgb 0.145 0.388 0.922 / 0.1)')).toBe('e9effd');
+    expect(hexColor('color(srgb 0 0 0 / 0)')).toBeNull();
+  });
 });
 
 describe('escapeXml', () => {
@@ -312,6 +319,87 @@ describe('buildDocxParts', () => {
     expect(doc).toContain('<w:tblHeader/>');
     // An empty cell still ends in a paragraph, or Word calls the file corrupt.
     expect(doc).toContain('</w:tcPr><w:p/></w:tc>');
+  });
+
+  it('shades a paragraph and hangs its first line', () => {
+    const doc = buildDocxParts({
+      ...MODEL,
+      blocks: [
+        {
+          type: 'paragraph',
+          style: 'Code',
+          shade: 'e9effd',
+          inlines: [{ type: 'text', text: 'x' }],
+        },
+        {
+          type: 'paragraph',
+          indent: 480,
+          hanging: 480,
+          inlines: [
+            { type: 'text', text: '[1]' },
+            { type: 'tab' },
+            { type: 'text', text: 'Knuth' },
+          ],
+        },
+      ],
+    })['word/document.xml'] as string;
+    // Shading sits after the style and before spacing, where the schema puts it.
+    expect(doc).toContain(
+      '<w:pPr><w:pStyle w:val="Code"/><w:shd w:val="clear" w:color="auto" w:fill="e9effd"/></w:pPr>',
+    );
+    expect(doc).toContain('<w:ind w:left="480" w:hanging="480"/>');
+  });
+
+  it('sets a section in columns, ending the one before it', () => {
+    const doc = buildDocxParts({
+      ...MODEL,
+      blocks: [
+        {
+          type: 'paragraph',
+          inlines: [{ type: 'text', text: 'One' }],
+          sectionEnd: { running: true },
+        },
+        { type: 'paragraph', inlines: [{ type: 'text', text: 'Two' }] },
+      ],
+      finalColumns: { count: 2, gap: 420 },
+    })['word/document.xml'] as string;
+    expect(doc).toMatch(/<w:pgMar[^>]*\/><\/w:sectPr>.*One/);
+    expect(doc).toMatch(/Two.*<w:pgMar[^>]*\/><w:cols w:num="2" w:space="420"\/><\/w:sectPr>/);
+    expect(doc.match(/<w:cols /g)).toHaveLength(1);
+  });
+
+  it('stamps the watermark behind the text from every header', () => {
+    const parts = buildDocxParts({
+      ...MODEL,
+      blocks: [
+        {
+          type: 'paragraph',
+          inlines: [{ type: 'text', text: 'Cover' }],
+          sectionEnd: { running: false },
+        },
+        { type: 'paragraph', inlines: [{ type: 'text', text: 'Body' }] },
+      ],
+      images: [
+        ...MODEL.images,
+        {
+          name: 'watermark',
+          ext: 'png',
+          bytes: new Uint8Array([3]),
+          width: 7562850,
+          height: 10696575,
+        },
+      ],
+      watermark: 'watermark',
+    });
+    for (const header of ['word/header1.xml', 'word/header2.xml']) {
+      const xml = parts[header] as string;
+      expect(xml).toContain('behindDoc="1"');
+      expect(xml).toContain('<wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset>');
+      expect(xml).toContain('<wp:extent cx="7562850" cy="10696575"/>');
+      expect(parts[header.replace('word/', 'word/_rels/').concat('.rels')]).toContain(
+        'Target="media/watermark.png"',
+      );
+    }
   });
 
   it('gives each ordered list its own count', () => {
