@@ -13,6 +13,7 @@
  * but it is there, and nothing around it has to be retyped.
  */
 
+import { PANEL_ATTR } from '../../components/code-block';
 import { FLOW_BLOCK_ATTR } from '../../components/flow-page';
 import { FOOTNOTE_ID_ATTR } from '../../components/footnote';
 import { elementToPng } from '../export-image';
@@ -28,6 +29,7 @@ import {
   PX_TO_HALF_POINTS,
   PX_TO_TWIPS,
   type Run,
+  type SectionLayout,
   type StyleId,
   type Table,
   type TableCell,
@@ -59,6 +61,8 @@ export type WalkResult = {
   images: ImagePart[];
   lists: Array<'bullet' | 'decimal'>;
   finalRunning: boolean;
+  finalColumns?: SectionLayout['columns'];
+  finalContinuous?: boolean;
 };
 
 type Ctx = WalkOptions & {
@@ -119,7 +123,9 @@ function place(block: Block, box: { top: number; bottom: number }) {
 }
 
 function isHidden(el: Element): boolean {
-  if (el.getAttribute('aria-hidden') === 'true') return true;
+  // A drawing is hidden from a screen reader because it says nothing in words —
+  // a sparkline — not because it is off the page.
+  if (el.getAttribute('aria-hidden') === 'true' && !(el instanceof SVGSVGElement)) return true;
   const style = getComputedStyle(el);
   return style.display === 'none' || style.visibility === 'hidden';
 }
@@ -480,8 +486,11 @@ async function blockOfElement(el: Element, ctx: Ctx, out: Block[], style: StyleI
     return;
   }
   if (tag === 'PRE') {
-    const paragraph = await paragraphOf(Array.from(el.childNodes), 'Code', el, ctx);
-    if (paragraph) out.push(...boxed([paragraph], el));
+    out.push(...boxed(await codeLines(el, ctx), el));
+    return;
+  }
+  if (el.hasAttribute(PANEL_ATTR)) {
+    out.push(...(await panelOf(el, ctx, style)));
     return;
   }
   if (tag === 'FIGURE') {
@@ -499,6 +508,11 @@ async function blockOfElement(el: Element, ctx: Ctx, out: Block[], style: StyleI
     await blocksOf(el, ctx, inner, 'Quote');
     const paragraphs = inner.filter((block): block is Paragraph => block.type === 'paragraph');
     out.push(...(paragraphs.length === inner.length ? boxed(paragraphs, el) : inner));
+    return;
+  }
+  const row = await sideBySideOf(el, ctx, style);
+  if (row) {
+    out.push(row);
     return;
   }
   if (isTabbedRow(el, ctx)) {
@@ -527,6 +541,147 @@ async function blockOfElement(el: Element, ctx: Ctx, out: Block[], style: StyleI
   await blocksOf(el, ctx, out, style);
 }
 
+/**
+ * A `<pre>` whose lines are elements of their own — a highlighted code block —
+ * has no newlines in its text for Word to break at, so each line is a
+ * paragraph, and a highlighted one keeps its tint.
+ */
+async function codeLines(pre: Element, ctx: Ctx): Promise<Paragraph[]> {
+  const lines = Array.from(pre.children).filter((child) => !skip(child, ctx) && isBlock(child));
+  if (lines.length === 0) {
+    const paragraph = await paragraphOf(Array.from(pre.childNodes), 'Code', pre, ctx);
+    return paragraph ? [paragraph] : [];
+  }
+  const out: Paragraph[] = [];
+  for (const line of lines) {
+    const paragraph = (await paragraphOf(Array.from(line.childNodes), 'Code', line, ctx)) ?? {
+      type: 'paragraph',
+      style: 'Code',
+      inlines: [],
+    };
+    const shade = hexColor(getComputedStyle(line).backgroundColor);
+    out.push({ ...paragraph, spacingBefore: 0, spacingAfter: 0, ...(shade ? { shade } : {}) });
+  }
+  return out;
+}
+
+/**
+ * A framed component — a code block with its title bar — as a one-column
+ * table, one row per part, so each part keeps its own tint and inset inside
+ * the frame the way it printed.
+ */
+async function panelOf(el: Element, ctx: Ctx, style: StyleId): Promise<Block[]> {
+  const frame = getComputedStyle(el);
+  const fill = hexColor(frame.backgroundColor) ?? undefined;
+  const parts = Array.from(el.children).filter((child) => !skip(child, ctx));
+  const width = el.getBoundingClientRect().width * PX_TO_TWIPS;
+  const drawn: Array<{ part: Element; blocks: Block[] }> = [];
+  for (const part of parts) {
+    const blocks: Block[] = [];
+    await blockOf(part, ctx, blocks, style);
+    drawn.push({ part, blocks });
+  }
+  const all = drawn.flatMap((entry) => entry.blocks);
+  if (all.length === 0) return [];
+  if (all.some((block) => block.type !== 'paragraph')) return all;
+
+  let inset = 0;
+  const rows: Table['rows'] = drawn.map(({ part, blocks }, at) => {
+    const look = getComputedStyle(part);
+    // A <pre> carries its inset on itself; a title bar carries its own.
+    const padding = getComputedStyle(part.querySelector('pre') ?? part);
+    const pad = (side: string) =>
+      (Number.parseFloat(padding.getPropertyValue(`padding-${side}`)) || 0) * PX_TO_TWIPS;
+    inset = Math.max(inset, pad('left'));
+    const borders: NonNullable<TableCell['borders']> = {};
+    for (const side of ['Left', 'Right'] as const) {
+      const rule = border(frame, side);
+      if (rule) borders[side.toLowerCase() as 'left'] = rule;
+    }
+    const top = at === 0 ? border(frame, 'Top') : undefined;
+    if (top) borders.top = top;
+    const bottom = at === drawn.length - 1 ? border(frame, 'Bottom') : border(look, 'Bottom');
+    if (bottom) borders.bottom = bottom;
+    const tint = hexColor(look.backgroundColor) ?? fill;
+    const paragraphs = blocks as Paragraph[];
+    return {
+      header: false,
+      cells: [
+        {
+          blocks: paragraphs.map((paragraph, index) => ({
+            ...paragraph,
+            ...(index === 0 ? { spacingBefore: 0 } : {}),
+            ...(index === paragraphs.length - 1 ? { spacingAfter: 0 } : {}),
+            // A tab to the right edge of the page would land outside the frame.
+            ...(paragraph.rightTab !== undefined ? { rightTab: width - pad('left') * 2 } : {}),
+          })),
+          borders,
+          ...(tint ? { fill: tint } : {}),
+          padding: {
+            top: pad('top'),
+            left: pad('left'),
+            bottom: pad('bottom'),
+            right: pad('right'),
+          },
+        },
+      ],
+    };
+  });
+  const table: Table = {
+    type: 'table',
+    columns: [width],
+    rows,
+    cellMargin: { left: inset, right: inset },
+  };
+  // A table has no space after of its own; the frame's margin is a spacer.
+  const { spacingAfter = 0 } = spacing(el);
+  if (spacingAfter <= 0) return [table];
+  return [
+    table,
+    { type: 'paragraph', inlines: [], spacingBefore: 0, spacingAfter: 0, lineExact: spacingAfter },
+  ];
+}
+
+/**
+ * Framed boxes laid side by side — two callouts in a grid — as one row of a
+ * table, each box a cell and the gap an empty one, rather than a stack of
+ * boxes each as narrow as its column was.
+ */
+async function sideBySideOf(el: Element, ctx: Ctx, style: StyleId): Promise<Table | null> {
+  const display = getComputedStyle(el).display;
+  if (!display.includes('grid') && !display.includes('flex')) return null;
+  const boxes = Array.from(el.children).filter((child) => !skip(child, ctx));
+  if (boxes.length < 2) return null;
+  // Decided before walking, so a row that turns out not to qualify has not
+  // already drawn its pictures and numbered its notes once.
+  const framed = (box: Element) =>
+    box.tagName === 'BLOCKQUOTE' || box.tagName === 'PRE' || box.hasAttribute(PANEL_ATTR);
+  if (!boxes.every(framed)) return null;
+  const rects = boxes.map((box) => box.getBoundingClientRect());
+  const top = rects[0]?.top ?? 0;
+  if (rects.some((rect) => Math.abs(rect.top - top) > 2)) return null;
+  const cells: TableCell[] = [];
+  const columns: number[] = [];
+  for (const [at, box] of boxes.entries()) {
+    const drawn: Block[] = [];
+    await blockOf(box, ctx, drawn, style);
+    const table = drawn[0];
+    const cell =
+      table?.type === 'table' && table.rows.length === 1 ? table.rows[0]?.cells[0] : null;
+    if (drawn.length !== 1 || !cell || table?.type !== 'table' || table.columns.length !== 1) {
+      return null;
+    }
+    if (at > 0) {
+      const gap = (rects[at]?.left ?? 0) - (rects[at - 1]?.right ?? 0);
+      columns.push(Math.max(0, gap) * PX_TO_TWIPS);
+      cells.push({ blocks: [], padding: { top: 0, left: 0, bottom: 0, right: 0 } });
+    }
+    columns.push((rects[at]?.width ?? 0) * PX_TO_TWIPS);
+    cells.push(cell);
+  }
+  return { type: 'table', columns, rows: [{ header: false, cells }] };
+}
+
 function tocOf(el: Element, ctx: Ctx): Block {
   const entries = Array.from(el.querySelectorAll('[data-od-toc-entry]')).map((row) => {
     const id = row.getAttribute('data-od-toc-entry') ?? '';
@@ -538,7 +693,41 @@ function tocOf(el: Element, ctx: Ctx): Block {
   return { type: 'toc', entries };
 }
 
+/**
+ * An item of a list drawn without markers — a bibliography whose `[1]` is its
+ * own element. Word would number it a second time, so it is a plain paragraph,
+ * its label hanging to the left of the text as it sat beside it on the page.
+ */
+async function looseItemOf(item: Element, ctx: Ctx): Promise<Paragraph | null> {
+  const pieces = Array.from(item.children).filter((piece) => !skip(piece, ctx));
+  const label = pieces[0];
+  const text = pieces[1];
+  if (!getComputedStyle(item).display.includes('flex') || !label || !text) {
+    return paragraphOf(Array.from(item.childNodes), 'Normal', item, ctx);
+  }
+  const hang = Math.max(
+    0,
+    (text.getBoundingClientRect().left - item.getBoundingClientRect().left) * PX_TO_TWIPS,
+  );
+  const inlines: Inline[] = [...tidy(await inlinesOf([label], ctx.baselines.Normal, ctx))];
+  inlines.push({ type: 'tab' });
+  for (const [at, piece] of pieces.slice(1).entries()) {
+    if (at > 0) inlines.push({ type: 'text', text: ' ' });
+    inlines.push(...tidy(await inlinesOf([piece], ctx.baselines.Normal, ctx)));
+  }
+  return { type: 'paragraph', inlines, ...spacing(item), indent: hang, hanging: hang };
+}
+
 async function listOf(el: Element, ctx: Ctx, out: Block[], level: number) {
+  const first = Array.from(el.children).find((item) => item.tagName === 'LI');
+  if (first && getComputedStyle(first).listStyleType === 'none') {
+    for (const item of Array.from(el.children)) {
+      if (item.tagName !== 'LI' || skip(item, ctx)) continue;
+      const paragraph = await looseItemOf(item, ctx);
+      if (paragraph) out.push(paragraph);
+    }
+    return;
+  }
   ctx.lists.push(el.tagName === 'OL' ? 'decimal' : 'bullet');
   const numId = ctx.lists.length;
   for (const item of Array.from(el.children)) {
@@ -715,6 +904,25 @@ async function figureParts(figure: Element, ctx: Ctx, out: Block[]) {
 // Pages
 // ---------------------------------------------------------------------------
 
+/** The multi-column box a flow page's blocks sit in, if they sit in one. */
+function columnBoxOf(host: HTMLElement): { el: Element; count: number; gap: number } | null {
+  const block = host.querySelector(`[${FLOW_BLOCK_ATTR}]`);
+  for (let el = block?.parentElement; el && el !== host; el = el.parentElement) {
+    const style = getComputedStyle(el);
+    const count = Number.parseInt(style.columnCount, 10);
+    if (count > 1) return { el, count, gap: Number.parseFloat(style.columnGap) || 0 };
+  }
+  return null;
+}
+
+/** Which column of the box a block starts in, from where it was drawn. */
+function columnIndexOf(block: Element, box: { el: Element; count: number; gap: number }): number {
+  const frame = box.el.getBoundingClientRect();
+  const width = (frame.width - box.gap * (box.count - 1)) / box.count;
+  const left = block.getBoundingClientRect().left - frame.left;
+  return Math.max(0, Math.min(box.count - 1, Math.floor((left + 1) / (width + box.gap))));
+}
+
 /**
  * The document in reading order. A fixed page is its own sheet in Word too, so
  * it starts on a new page; a flow section's later pages continue it, and Word
@@ -735,7 +943,7 @@ export async function docxFromPages(
     page: { top: 0, bottom: 0, fixed: true, first: true },
   };
   const blocks: Block[] = [];
-  let previousRunning = true;
+  let previous: SectionLayout = { running: true };
 
   for (const [index, host] of hosts.entries()) {
     const info = pages[index] ?? { continues: false };
@@ -748,8 +956,39 @@ export async function docxFromPages(
     };
     const own: Block[] = [];
     const flowBlocks = Array.from(host.querySelectorAll(`[${FLOW_BLOCK_ATTR}]`));
+    const columnsHere = flowBlocks.length > 0 ? columnBoxOf(host) : null;
     if (flowBlocks.length > 0) {
-      for (const block of flowBlocks) await blockOf(block, ctx, own, 'Normal');
+      // A later page of a section in columns starts after a break as well: from
+      // the last column of the page before, Word's next column is this page's first.
+      let column = columnsHere && info.continues ? -1 : 0;
+      for (const block of flowBlocks) {
+        const start = own.length;
+        await blockOf(block, ctx, own, 'Normal');
+        // Word fills a column to the foot of the page before it starts the
+        // next, and Pages never balances them; a break where the printed
+        // page's next column began sets the columns as they printed.
+        const at = columnsHere ? columnIndexOf(block, columnsHere) : 0;
+        if (at > column && own.length > start) {
+          const first = own[start];
+          if (first?.type === 'paragraph' && at === column + 1) {
+            first.columnBreakBefore = true;
+          } else {
+            const breaks = Array.from(
+              { length: at - column },
+              (): Paragraph => ({
+                type: 'paragraph',
+                inlines: [],
+                columnBreakBefore: true,
+                spacingBefore: 0,
+                spacingAfter: 0,
+                lineExact: 20,
+              }),
+            );
+            own.splice(start, 0, ...breaks);
+          }
+          column = at;
+        }
+      }
     } else {
       await blocksOf(host, ctx, own);
     }
@@ -762,10 +1001,26 @@ export async function docxFromPages(
     if (ctx.page.fixed) {
       let bottom = rect.top + options.margin;
       let previous: Paragraph | null = null;
+      // Blocks that sat side by side on the sheet — a contents list beside a
+      // list of figures — are stacked in Word, and the height that adds comes
+      // out of the gaps below them, or the sheet's foot spills onto a page of
+      // its own.
+      let stacked = 0;
+      // Every paragraph of a list is placed at the list's box; one box is one block of height.
+      const counted = new Set<string>();
       for (const block of own) {
         const box = placed.get(block);
         if (!box) continue;
-        const gap = Math.max(0, box.top - bottom);
+        const key = `${box.top}:${box.bottom}`;
+        const repeat = counted.has(key);
+        counted.add(key);
+        if (!repeat && box.top < bottom) {
+          stacked += box.bottom - box.top - Math.max(0, box.bottom - bottom);
+        }
+        let gap = Math.max(0, box.top - bottom);
+        const taken = Math.min(gap, stacked);
+        gap -= taken;
+        stacked -= taken;
         if (block.type === 'paragraph') {
           block.spacingBefore = gap * PX_TO_TWIPS;
           if (previous) previous.spacingAfter = 0;
@@ -794,14 +1049,28 @@ export async function docxFromPages(
       }
     }
     // Flow pages carry the section's running header and footer; a fixed sheet
-    // prints its own running lines, so it sits in a section without them. The
-    // section break itself starts the next page.
-    const running = !ctx.page.fixed;
-    const breaksSection = own.length > 0 && blocks.length > 0 && running !== previousRunning;
+    // prints its own running lines, so it sits in a section without them. A
+    // flow set in columns is a section of that many columns. The section
+    // break itself starts the next page.
+    const layout: SectionLayout = { running: !ctx.page.fixed };
+    if (!ctx.page.fixed && columnsHere) {
+      layout.columns = { count: columnsHere.count, gap: columnsHere.gap * PX_TO_TWIPS };
+    }
+    const breaksSection =
+      own.length > 0 &&
+      blocks.length > 0 &&
+      (layout.running !== previous.running ||
+        (layout.columns?.count ?? 1) !== (previous.columns?.count ?? 1));
+    // Columns fill one at a time to the foot of the page unless a continuous
+    // break ends them, so the section after a set of columns starts on their
+    // page and breaks to its own with the first paragraph instead.
+    const afterColumns =
+      breaksSection && (previous.columns?.count ?? 1) > 1 && layout.running === previous.running;
+    if (afterColumns) layout.continuous = true;
     if (breaksSection) {
       const last = blocks[blocks.length - 1];
       if (last?.type === 'paragraph' && !last.sectionEnd) {
-        last.sectionEnd = { running: previousRunning };
+        last.sectionEnd = previous;
       } else {
         blocks.push({
           type: 'paragraph',
@@ -809,13 +1078,13 @@ export async function docxFromPages(
           spacingBefore: 0,
           spacingAfter: 0,
           lineExact: 20,
-          sectionEnd: { running: previousRunning },
+          sectionEnd: previous,
         });
       }
     }
     const first = own[0];
     if (first) {
-      const newPage = index > 0 && !info.continues && !breaksSection;
+      const newPage = index > 0 && !info.continues && (!breaksSection || afterColumns);
       // Word and Pages drop the space before the first paragraph on a page —
       // at the top of the document and after a break alike — so a gap there,
       // a cover's title low on its sheet or a closing line centred, is held
@@ -835,7 +1104,7 @@ export async function docxFromPages(
         });
       }
     }
-    if (own.length > 0) previousRunning = running;
+    if (own.length > 0) previous = layout;
     blocks.push(...own);
   }
 
@@ -856,7 +1125,15 @@ export async function docxFromPages(
     });
   }
 
-  return { blocks, footnotes, images: ctx.images, lists: ctx.lists, finalRunning: previousRunning };
+  return {
+    blocks,
+    footnotes,
+    images: ctx.images,
+    lists: ctx.lists,
+    finalRunning: previous.running,
+    ...(previous.columns ? { finalColumns: previous.columns } : {}),
+    ...(previous.continuous ? { finalContinuous: true } : {}),
+  };
 }
 
 /** Runs for one element — the footer the orchestrator renders on its own. */

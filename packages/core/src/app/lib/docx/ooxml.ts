@@ -66,12 +66,18 @@ export type Paragraph = {
   inlines: Inline[];
   list?: { numId: number; level: number };
   pageBreakBefore?: boolean;
+  /** Starts in the next column — where the printed page's next column began. */
+  columnBreakBefore?: boolean;
   keepNext?: boolean;
   /** Twips. */
   spacingBefore?: number;
   spacingAfter?: number;
   /** Left indent, twips, over the style's own. */
   indent?: number;
+  /** The first line starts this far left of `indent`, twips — a label hanging in the margin. */
+  hanging?: number;
+  /** Background behind the paragraph, `rrggbb` — a highlighted line of code. */
+  shade?: string;
   /** An exact line height, twips — a spacer that holds open a gap. */
   lineExact?: number;
   /**
@@ -80,13 +86,25 @@ export type Paragraph = {
    * Fixed sheets print their own running lines, so they sit in sections
    * without one.
    */
-  sectionEnd?: { running: boolean };
+  sectionEnd?: SectionLayout;
   /** Right-aligned tab stop, twips from the left margin — a footer's page number. */
   rightTab?: number;
   /** Dots leading to the right tab, as a contents entry has. */
   leader?: boolean;
   /** A bookmark round the paragraph, for a PAGEREF to find its page. */
   bookmark?: string;
+};
+
+/** What a section's pages carry: the running header and footer, and how many columns. */
+export type SectionLayout = {
+  running: boolean;
+  /** Text columns and the gap between them, twips; absent means one. */
+  columns?: { count: number; gap: number };
+  /**
+   * Starts on the page the section before it ended on. Word balances the
+   * columns of a section only where a continuous break ends it.
+   */
+  continuous?: boolean;
 };
 
 export type CellBorder = { color: string /** Eighths of a point. */; size: number };
@@ -166,6 +184,11 @@ export type DocxModel = {
   footer?: Paragraph;
   /** Whether the last section carries the header and footer. Defaults to true. */
   finalRunning?: boolean;
+  /** The last section's columns and start, as `SectionLayout`. */
+  finalColumns?: SectionLayout['columns'];
+  finalContinuous?: boolean;
+  /** A picture behind the text of every page, the size of the sheet — `meta.watermark`. */
+  watermark?: string;
   images: ImagePart[];
   /** One entry per list; ordered lists restart at 1 each. */
   lists: Array<'bullet' | 'decimal'>;
@@ -285,18 +308,38 @@ function fontTableXml(fonts: DocxModel['fonts']): string {
   );
 }
 
-/** `rgb(22, 24, 29)` or `#16181d` as `16181d`; null for anything transparent. */
+/**
+ * `rgb(22, 24, 29)`, `#16181d` or `color(srgb 0.09 0.09 0.11)` as `16181d`;
+ * null for anything transparent. Word has no alpha, so a translucent colour is
+ * flattened onto white paper — the tint `color-mix(… transparent)` drew there.
+ */
 export function hexColor(css: string): string | null {
   const hex = css.trim().match(/^#([0-9a-f]{6})$/i);
   if (hex?.[1]) return hex[1].toLowerCase();
   const short = css.trim().match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
   if (short)
     return `${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`.toLowerCase();
-  const rgb = css.match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+))?/i);
-  if (!rgb) return null;
-  if (rgb[4] !== undefined && Number(rgb[4]) === 0) return null;
-  return [rgb[1], rgb[2], rgb[3]]
-    .map((channel) => Number(channel).toString(16).padStart(2, '0'))
+  const alphaOf = (value: string | undefined) =>
+    value === undefined ? 1 : value.endsWith('%') ? Number.parseFloat(value) / 100 : Number(value);
+  let channels: number[];
+  let alpha: number;
+  const srgb = css.match(
+    /color\(\s*srgb\s+([\d.e-]+)\s+([\d.e-]+)\s+([\d.e-]+)(?:\s*\/\s*([\d.]+%?))?\s*\)/i,
+  );
+  const rgb = css.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?/i);
+  if (srgb) {
+    channels = [srgb[1], srgb[2], srgb[3]].map((value) => Number(value) * 255);
+    alpha = alphaOf(srgb[4]);
+  } else if (rgb) {
+    channels = [rgb[1], rgb[2], rgb[3]].map(Number);
+    alpha = alphaOf(rgb[4]);
+  } else {
+    return null;
+  }
+  if (!(alpha > 0)) return null;
+  return channels
+    .map((channel) => Math.round(Math.min(255, Math.max(0, channel * alpha + 255 * (1 - alpha)))))
+    .map((channel) => channel.toString(16).padStart(2, '0'))
     .join('');
 }
 
@@ -311,8 +354,8 @@ type WriteContext = {
   imageIds: Map<string, string>;
   drawingId: { value: number };
   bookmarkId?: { value: number };
-  /** A section's properties, with or without the running header and footer. */
-  section?: (running: boolean) => string;
+  /** A section's properties: its running header and footer, and its columns. */
+  section?: (layout: SectionLayout) => string;
 };
 
 const REL_HYPERLINK =
@@ -376,6 +419,30 @@ function imageXml(name: string, ctx: WriteContext): string {
   );
 }
 
+/** A picture pinned to the page's corner behind the text — how Word itself stores a watermark. */
+function anchoredImageXml(name: string, ctx: WriteContext): string {
+  const image = ctx.model.images.find((candidate) => candidate.name === name);
+  if (!image) return '';
+  const rel = relFor(ctx, REL_IMAGE, `media/${image.name}.${image.ext}`);
+  const id = ctx.drawingId.value++;
+  const extent = `cx="${Math.round(image.width)}" cy="${Math.round(image.height)}"`;
+  return (
+    '<w:r><w:drawing>' +
+    '<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="1" layoutInCell="1" allowOverlap="1">' +
+    '<wp:simplePos x="0" y="0"/>' +
+    '<wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>' +
+    '<wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV>' +
+    `<wp:extent ${extent}/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>` +
+    `<wp:docPr id="${id}" name="Watermark ${id}"/>` +
+    '<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
+    '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    `<pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="${escapeXml(image.name)}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${rel}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext ${extent}/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    '</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>'
+  );
+}
+
 function runXml(run: Run, ctx: WriteContext, linked = false): string {
   switch (run.type) {
     case 'text': {
@@ -424,6 +491,8 @@ export function paragraphXml(paragraph: Paragraph, ctx: WriteContext): string {
       `<w:numPr><w:ilvl w:val="${paragraph.list.level}"/><w:numId w:val="${paragraph.list.numId}"/></w:numPr>`,
     );
   }
+  if (paragraph.shade)
+    props.push(`<w:shd w:val="clear" w:color="auto" w:fill="${paragraph.shade}"/>`);
   if (paragraph.rightTab !== undefined) {
     const leader = paragraph.leader ? ' w:leader="dot"' : '';
     props.push(
@@ -449,13 +518,17 @@ export function paragraphXml(paragraph: Paragraph, ctx: WriteContext): string {
         : '';
     props.push(`<w:spacing${before}${after}${line}/>`);
   }
-  if (paragraph.indent !== undefined)
-    props.push(`<w:ind w:left="${Math.round(paragraph.indent)}"/>`);
+  if (paragraph.indent !== undefined || paragraph.hanging !== undefined) {
+    const hanging = paragraph.hanging ? ` w:hanging="${Math.round(paragraph.hanging)}"` : '';
+    props.push(`<w:ind w:left="${Math.round(paragraph.indent ?? 0)}"${hanging}/>`);
+  }
   if (paragraph.align && paragraph.align !== 'left')
     props.push(`<w:jc w:val="${paragraph.align}"/>`);
-  if (paragraph.sectionEnd && ctx.section) props.push(ctx.section(paragraph.sectionEnd.running));
+  if (paragraph.sectionEnd && ctx.section) props.push(ctx.section(paragraph.sectionEnd));
   const pPr = props.length > 0 ? `<w:pPr>${props.join('')}</w:pPr>` : '';
-  const runs = paragraph.inlines.map((inline) => inlineXml(inline, ctx)).join('');
+  const runs =
+    (paragraph.columnBreakBefore ? '<w:r><w:br w:type="column"/></w:r>' : '') +
+    paragraph.inlines.map((inline) => inlineXml(inline, ctx)).join('');
   if (!paragraph.bookmark) return `<w:p>${pPr}${runs}</w:p>`;
   ctx.bookmarkId ??= { value: 0 };
   const id = ctx.bookmarkId.value++;
@@ -660,7 +733,9 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
     model.finalRunning === false ||
     model.blocks.some((block) => block.type === 'paragraph' && block.sectionEnd?.running === false);
   const running = (kind: 'header' | 'footer') => {
-    if (!model[kind]) return { full: null, bare: null };
+    // The watermark is drawn from the header, so a document with one needs a
+    // header even when it has no running line to put there.
+    if (!model[kind] && !(kind === 'header' && model.watermark)) return { full: null, bare: null };
     return {
       full: relFor(docCtx, `${REL_BASE}/${kind}`, `${kind}1.xml`),
       bare: bare ? relFor(docCtx, `${REL_BASE}/${kind}`, `${kind}2.xml`) : null,
@@ -671,20 +746,30 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
 
   const { page } = model;
   const margin = Math.round(page.margin);
-  docCtx.section = (on) => {
+  docCtx.section = ({ running: on, columns, continuous }) => {
     const header = on ? headerRels.full : headerRels.bare;
     const footer = on ? footerRels.full : footerRels.bare;
+    const cols =
+      columns && columns.count > 1
+        ? `<w:cols w:num="${columns.count}" w:space="${Math.round(columns.gap)}"/>`
+        : '';
     return (
       '<w:sectPr>' +
       (header ? `<w:headerReference w:type="default" r:id="${header}"/>` : '') +
       (footer ? `<w:footerReference w:type="default" r:id="${footer}"/>` : '') +
+      (continuous ? '<w:type w:val="continuous"/>' : '') +
       `<w:pgSz w:w="${Math.round(page.width)}" w:h="${Math.round(page.height)}"${page.landscape ? ' w:orient="landscape"' : ''}/>` +
       `<w:pgMar w:top="${margin}" w:right="${margin}" w:bottom="${margin}" w:left="${margin}" w:header="${Math.round(margin / 2)}" w:footer="${Math.round(margin / 2)}" w:gutter="0"/>` +
+      cols +
       '</w:sectPr>'
     );
   };
   const body = model.blocks.map((block) => blockXml(block, docCtx)).join('');
-  const sectPr = docCtx.section(model.finalRunning !== false);
+  const sectPr = docCtx.section({
+    running: model.finalRunning !== false,
+    ...(model.finalColumns ? { columns: model.finalColumns } : {}),
+    ...(model.finalContinuous ? { continuous: true } : {}),
+  });
   const documentXml = `${XML_HEAD}<w:document ${NS}><w:body>${body}${sectPr}</w:body></w:document>`;
 
   // Footnotes and the footer are parts of their own, with their own rels.
@@ -721,17 +806,23 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
     ['header', headerRels, 'hdr', 'Header'],
     ['footer', footerRels, 'ftr', 'Footer'],
   ] as const) {
-    const line = model[kind];
-    if (!line || !rels.full) continue;
-    const ctx: WriteContext = { model, rels: [], imageIds: new Map(), drawingId };
-    runningParts[`word/${kind}1.xml`] =
-      `${XML_HEAD}<w:${tag} ${NS}>${paragraphXml({ ...line, style: line.style ?? (style as StyleId) }, ctx)}</w:${tag}>`;
-    if (ctx.rels.length > 0) runningParts[`word/_rels/${kind}1.xml.rels`] = relsXml(ctx.rels);
-    runningTypes.push(`/word/${kind}1.xml|${kind}`);
-    if (rels.bare) {
-      runningParts[`word/${kind}2.xml`] = `${XML_HEAD}<w:${tag} ${NS}><w:p/></w:${tag}>`;
-      runningTypes.push(`/word/${kind}2.xml|${kind}`);
-    }
+    if (!rels.full) continue;
+    const line: Paragraph = model[kind] ?? { type: 'paragraph', inlines: [] };
+    const stamp = kind === 'header' ? model.watermark : undefined;
+    const part = (name: string, paragraph: Paragraph) => {
+      const ctx: WriteContext = { model, rels: [], imageIds: new Map(), drawingId };
+      // The watermark rides in the header's own paragraph, anchored to the
+      // page behind the text, so it adds no height to the header.
+      const xml = paragraphXml(
+        { ...paragraph, style: paragraph.style ?? (style as StyleId) },
+        ctx,
+      ).replace(/<\/w:p>$/, `${stamp ? anchoredImageXml(stamp, ctx) : ''}</w:p>`);
+      runningParts[`word/${name}.xml`] = `${XML_HEAD}<w:${tag} ${NS}>${xml}</w:${tag}>`;
+      if (ctx.rels.length > 0) runningParts[`word/_rels/${name}.xml.rels`] = relsXml(ctx.rels);
+      runningTypes.push(`/word/${name}.xml|${kind}`);
+    };
+    part(`${kind}1`, line);
+    if (rels.bare) part(`${kind}2`, { type: 'paragraph', inlines: [] });
   }
 
   const settingsXml =

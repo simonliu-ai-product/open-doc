@@ -19,11 +19,13 @@ import {
   hexColor,
   type Inline,
   type Paragraph,
+  PX_TO_EMU,
   PX_TO_HALF_POINTS,
   PX_TO_TWIPS,
   type StyleId,
 } from './docx/ooxml';
 import { downloadBlob, withRenderedPages } from './export-dom';
+import { elementToPng } from './export-image';
 import { type DocEntry, type FlowSection, isFlowSection } from './flow';
 import { DocPageProvider } from './page-context';
 import { nextFrame, waitForFonts } from './print-ready';
@@ -170,8 +172,34 @@ export async function buildDocDocx(
     margin: design.margin,
   };
 
-  const content = await withRenderedPages(pages, geometry, doc, (hosts, container) =>
-    docxFromPages(hosts, pageInfo(pages), container, walk),
+  let watermark: string | undefined;
+  const content = await withRenderedPages(
+    pages,
+    geometry,
+    doc,
+    async (hosts, container) => {
+      const result = await docxFromPages(hosts, pageInfo(pages), container, walk);
+      // Word has no stamp across the sheet, so the one the page drew is a
+      // picture behind the text, set in the header so every page carries it.
+      const mark = container.querySelector('[data-od-watermark]');
+      if (mark) {
+        try {
+          const { bytes } = await elementToPng(mark, doc);
+          watermark = 'watermark';
+          result.images.push({
+            name: watermark,
+            ext: 'png',
+            bytes,
+            width: geometry.width * PX_TO_EMU,
+            height: geometry.height * PX_TO_EMU,
+          });
+        } catch {
+          /* A document without its watermark is still the document. */
+        }
+      }
+      return result;
+    },
+    { includeWatermark: Boolean(doc.meta?.watermark) },
   );
   const header = await runningLineOf('header', doc, design, textWidth, walk);
   const footer = await runningLineOf('footer', doc, design, textWidth, walk);
@@ -210,6 +238,7 @@ export async function buildDocDocx(
     ...content,
     ...(header ? { header } : {}),
     ...(footer ? { footer } : {}),
+    ...(watermark ? { watermark } : {}),
   };
 
   const parts = buildDocxParts(model);
