@@ -28,6 +28,11 @@ describe('fontsFor', () => {
     });
   });
 
+  it('skips Apple system faces no app can pick by name', () => {
+    expect(fontsFor('ui-monospace, "SF Mono", Menlo, monospace', 'mono').ascii).toBe('Menlo');
+    expect(fontsFor('"SF Pro Text", Helvetica, sans-serif', 'sans').ascii).toBe('Helvetica');
+  });
+
   it('falls back by generic family when nothing is named', () => {
     expect(fontsFor('system-ui, sans-serif', 'sans').ascii).toBe('Arial');
     expect(fontsFor('serif', 'sans').ascii).toBe('Times New Roman');
@@ -366,6 +371,59 @@ describe('buildDocxParts', () => {
     expect(doc).toMatch(/<w:pgMar[^>]*\/><\/w:sectPr>.*One/);
     expect(doc).toMatch(/Two.*<w:pgMar[^>]*\/><w:cols w:num="2" w:space="420"\/><\/w:sectPr>/);
     expect(doc.match(/<w:cols /g)).toHaveLength(1);
+  });
+
+  it('shades a pill and rules a line above a paragraph', () => {
+    const doc = buildDocxParts({
+      ...MODEL,
+      blocks: [
+        {
+          type: 'paragraph',
+          ruleAbove: { color: 'e2e8f0', size: 6, gap: 210 },
+          inlines: [{ type: 'text', text: 'OPEN-DOC', shade: 'e9effd' }],
+        },
+      ],
+    })['word/document.xml'] as string;
+    expect(doc).toContain(
+      '<w:pBdr><w:top w:val="single" w:sz="6" w:space="11" w:color="e2e8f0"/></w:pBdr>',
+    );
+    expect(doc).toContain(
+      '<w:rPr><w:shd w:val="clear" w:color="auto" w:fill="e9effd"/></w:rPr><w:t xml:space="preserve">OPEN-DOC</w:t>',
+    );
+  });
+
+  it('gives a sheet’s own foot a footer of its section, and the rest an empty one', () => {
+    const parts = buildDocxParts({
+      ...MODEL,
+      footer: undefined,
+      blocks: [
+        {
+          type: 'paragraph',
+          inlines: [{ type: 'text', text: 'Cover' }],
+          sectionEnd: {
+            running: false,
+            foot: { type: 'paragraph', inlines: [{ type: 'text', text: 'Byline' }] },
+          },
+        },
+        { type: 'paragraph', inlines: [{ type: 'text', text: 'Body' }] },
+      ],
+    });
+    const doc = parts['word/document.xml'] as string;
+    const rels = parts['word/_rels/document.xml.rels'] as string;
+    const id = (target: string) =>
+      rels.match(new RegExp(`Id="(rId\\d+)"[^>]*Target="${target}"`))?.[1];
+    expect(parts['word/footer3.xml']).toContain('Byline');
+    // Set in the body's style, and placed a page margin above the sheet's edge.
+    expect(parts['word/footer3.xml']).not.toContain('w:val="Footer"');
+    expect(doc).toMatch(
+      new RegExp(
+        `<w:footerReference w:type="default" r:id="${id('footer3.xml')}"/>.*w:footer="1140".*Cover`,
+      ),
+    );
+    // Without a footer of its own, the next section would inherit the cover's.
+    expect(doc).toMatch(
+      new RegExp(`Body.*<w:footerReference w:type="default" r:id="${id('footer2.xml')}"/>`),
+    );
   });
 
   it('stamps the watermark behind the text from every header', () => {

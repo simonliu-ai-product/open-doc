@@ -27,6 +27,8 @@ export type TextRun = {
   /** Font size in half-points, only when it differs from the paragraph style's. */
   halfPoints?: number;
   vert?: 'superscript' | 'subscript';
+  /** Background behind the characters, `rrggbb` — an inline pill or badge. */
+  shade?: string;
 };
 
 export type Run =
@@ -78,6 +80,8 @@ export type Paragraph = {
   hanging?: number;
   /** Background behind the paragraph, `rrggbb` — a highlighted line of code. */
   shade?: string;
+  /** A rule above the paragraph and the gap between it and the text, twips. */
+  ruleAbove?: { color: string; size: number; gap: number };
   /** An exact line height, twips — a spacer that holds open a gap. */
   lineExact?: number;
   /**
@@ -105,6 +109,12 @@ export type SectionLayout = {
    * columns of a section only where a continuous break ends it.
    */
   continuous?: boolean;
+  /**
+   * A line the sheet laid out against its own foot — a cover's byline. It is
+   * this section's footer, so it sits at the foot of the page whatever came
+   * out above it.
+   */
+  foot?: Paragraph;
 };
 
 export type CellBorder = { color: string /** Eighths of a point. */; size: number };
@@ -187,6 +197,7 @@ export type DocxModel = {
   /** The last section's columns and start, as `SectionLayout`. */
   finalColumns?: SectionLayout['columns'];
   finalContinuous?: boolean;
+  finalFoot?: Paragraph;
   /** A picture behind the text of every page, the size of the sheet — `meta.watermark`. */
   watermark?: string;
   images: ImagePart[];
@@ -253,6 +264,13 @@ const GENERIC = new Set([
   'inherit',
 ]);
 
+/**
+ * Apple's system faces: a page draws in them, but no app outside the system can
+ * pick one by name, so Pages and Word would fall back to Courier or Times. The
+ * next family in the stack — Menlo, Helvetica — is the one that will be there.
+ */
+const SYSTEM_ONLY = /^(\.?sf ?(mono|pro|compact)|sfmono-|sfns)/i;
+
 const CJK_FONT =
   /noto (sans|serif) (tc|sc|jp|kr|hk|cjk)|pingfang|hiragino|jhenghei|yahei|正黑|明體|楷|source han|思源|yu gothic|yu mincho|meiryo|malgun|ms mincho|ms gothic|heiti|songti|kaiti|biaukai|dfkai|simsun|simhei|mingliu|gulim|batang|lxgw|霞鶩/i;
 
@@ -268,7 +286,9 @@ export function fontsFor(stack: string, fallback: 'sans' | 'serif' | 'mono'): Fo
     .split(',')
     .map((family) => family.trim().replace(/^['"]|['"]$/g, ''))
     .filter((family) => family !== '');
-  const real = families.filter((family) => !GENERIC.has(family.toLowerCase()));
+  const real = families.filter(
+    (family) => !GENERIC.has(family.toLowerCase()) && !SYSTEM_ONLY.test(family),
+  );
   const generic =
     families.find((family) => ['serif', 'monospace', 'ui-monospace'].includes(family)) ?? '';
   const kind = generic === 'serif' ? 'serif' : generic.includes('monospace') ? 'mono' : fallback;
@@ -388,6 +408,7 @@ function runPropsXml(run: TextRun, ctx: WriteContext): string {
   if (run.halfPoints)
     parts.push(`<w:sz w:val="${run.halfPoints}"/><w:szCs w:val="${run.halfPoints}"/>`);
   if (run.underline) parts.push('<w:u w:val="single"/>');
+  if (run.shade) parts.push(`<w:shd w:val="clear" w:color="auto" w:fill="${run.shade}"/>`);
   if (run.vert) parts.push(`<w:vertAlign w:val="${run.vert}"/>`);
   return parts.length > 0 ? `<w:rPr>${parts.join('')}</w:rPr>` : '';
 }
@@ -489,6 +510,14 @@ export function paragraphXml(paragraph: Paragraph, ctx: WriteContext): string {
   if (paragraph.list) {
     props.push(
       `<w:numPr><w:ilvl w:val="${paragraph.list.level}"/><w:numId w:val="${paragraph.list.numId}"/></w:numPr>`,
+    );
+  }
+  if (paragraph.ruleAbove) {
+    const { color, size, gap } = paragraph.ruleAbove;
+    // A border's space is in points, and Word allows no more than 31.
+    const space = Math.min(31, Math.round(gap / 20));
+    props.push(
+      `<w:pBdr><w:top w:val="single" w:sz="${size}" w:space="${space}" w:color="${color}"/></w:pBdr>`,
     );
   }
   if (paragraph.shade)
@@ -732,13 +761,19 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
   const bare =
     model.finalRunning === false ||
     model.blocks.some((block) => block.type === 'paragraph' && block.sectionEnd?.running === false);
+  // A section with a foot of its own changes the footer, so every other
+  // section needs a footer to point at, if only an empty one.
+  const feet =
+    Boolean(model.finalFoot) ||
+    model.blocks.some((block) => block.type === 'paragraph' && block.sectionEnd?.foot);
   const running = (kind: 'header' | 'footer') => {
     // The watermark is drawn from the header, so a document with one needs a
     // header even when it has no running line to put there.
-    if (!model[kind] && !(kind === 'header' && model.watermark)) return { full: null, bare: null };
+    const full = Boolean(model[kind]) || (kind === 'header' && Boolean(model.watermark));
+    const empty = full ? bare : kind === 'footer' && feet;
     return {
-      full: relFor(docCtx, `${REL_BASE}/${kind}`, `${kind}1.xml`),
-      bare: bare ? relFor(docCtx, `${REL_BASE}/${kind}`, `${kind}2.xml`) : null,
+      full: full ? relFor(docCtx, `${REL_BASE}/${kind}`, `${kind}1.xml`) : null,
+      bare: empty ? relFor(docCtx, `${REL_BASE}/${kind}`, `${kind}2.xml`) : null,
     };
   };
   const headerRels = running('header');
@@ -746,9 +781,18 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
 
   const { page } = model;
   const margin = Math.round(page.margin);
-  docCtx.section = ({ running: on, columns, continuous }) => {
+  const footParts: Array<{ name: string; paragraph: Paragraph }> = [];
+  docCtx.section = ({ running: on, columns, continuous, foot }) => {
     const header = on ? headerRels.full : headerRels.bare;
-    const footer = on ? footerRels.full : footerRels.bare;
+    let footer = on ? (footerRels.full ?? footerRels.bare) : footerRels.bare;
+    if (foot) {
+      const name = `footer${footParts.length + 3}`;
+      footParts.push({ name, paragraph: foot });
+      footer = relFor(docCtx, `${REL_BASE}/footer`, `${name}.xml`);
+    }
+    // The foot sat a page margin above the sheet's edge; a footer is placed by
+    // its distance from that edge.
+    const footerAt = foot ? margin : Math.round(margin / 2);
     const cols =
       columns && columns.count > 1
         ? `<w:cols w:num="${columns.count}" w:space="${Math.round(columns.gap)}"/>`
@@ -759,7 +803,7 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
       (footer ? `<w:footerReference w:type="default" r:id="${footer}"/>` : '') +
       (continuous ? '<w:type w:val="continuous"/>' : '') +
       `<w:pgSz w:w="${Math.round(page.width)}" w:h="${Math.round(page.height)}"${page.landscape ? ' w:orient="landscape"' : ''}/>` +
-      `<w:pgMar w:top="${margin}" w:right="${margin}" w:bottom="${margin}" w:left="${margin}" w:header="${Math.round(margin / 2)}" w:footer="${Math.round(margin / 2)}" w:gutter="0"/>` +
+      `<w:pgMar w:top="${margin}" w:right="${margin}" w:bottom="${margin}" w:left="${margin}" w:header="${Math.round(margin / 2)}" w:footer="${footerAt}" w:gutter="0"/>` +
       cols +
       '</w:sectPr>'
     );
@@ -769,6 +813,7 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
     running: model.finalRunning !== false,
     ...(model.finalColumns ? { columns: model.finalColumns } : {}),
     ...(model.finalContinuous ? { continuous: true } : {}),
+    ...(model.finalFoot ? { foot: model.finalFoot } : {}),
   });
   const documentXml = `${XML_HEAD}<w:document ${NS}><w:body>${body}${sectPr}</w:body></w:document>`;
 
@@ -806,7 +851,6 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
     ['header', headerRels, 'hdr', 'Header'],
     ['footer', footerRels, 'ftr', 'Footer'],
   ] as const) {
-    if (!rels.full) continue;
     const line: Paragraph = model[kind] ?? { type: 'paragraph', inlines: [] };
     const stamp = kind === 'header' ? model.watermark : undefined;
     const part = (name: string, paragraph: Paragraph) => {
@@ -821,8 +865,13 @@ export function buildDocxParts(model: DocxModel): Record<string, string | Uint8A
       if (ctx.rels.length > 0) runningParts[`word/_rels/${name}.xml.rels`] = relsXml(ctx.rels);
       runningTypes.push(`/word/${name}.xml|${kind}`);
     };
-    part(`${kind}1`, line);
+    if (rels.full) part(`${kind}1`, line);
     if (rels.bare) part(`${kind}2`, { type: 'paragraph', inlines: [] });
+    // A sheet's own foot is set in the body's style: its runs say only how
+    // they differ from that, not from the running footer's.
+    if (kind === 'footer') {
+      for (const foot of footParts) part(foot.name, { ...foot.paragraph, style: 'Normal' });
+    }
   }
 
   const settingsXml =
