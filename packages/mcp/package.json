@@ -51,7 +51,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@open-document/core": "^0.13.2"
+    "@open-document/core": "^0.13.3"
   },
   "devDependencies": {
     "@open-document/core": "workspace:*",
