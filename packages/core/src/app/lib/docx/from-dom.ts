@@ -63,6 +63,7 @@ export type WalkResult = {
   finalRunning: boolean;
   finalColumns?: SectionLayout['columns'];
   finalContinuous?: boolean;
+  finalFoot?: Paragraph;
 };
 
 type Ctx = WalkOptions & {
@@ -116,10 +117,14 @@ const INLINE_DISPLAYS = new Set([
 const STRUCTURE = 'p,h1,h2,h3,h4,h5,h6,table,ul,ol,pre,blockquote';
 
 /** Where each block sat on its sheet, for fixed pages whose layout is by position. */
-const placed = new WeakMap<Block, { top: number; bottom: number }>();
+type Box = { top: number; bottom: number; left: number; right: number };
 
-function place(block: Block, box: { top: number; bottom: number }) {
-  if (!placed.has(block)) placed.set(block, { top: box.top, bottom: box.bottom });
+const placed = new WeakMap<Block, Box>();
+
+function place(block: Block, box: Box) {
+  if (!placed.has(block)) {
+    placed.set(block, { top: box.top, bottom: box.bottom, left: box.left, right: box.right });
+  }
 }
 
 function isHidden(el: Element): boolean {
@@ -303,10 +308,30 @@ async function inlinesOf(
       );
       out.push({ type: 'link', href: node.getAttribute('href') as string, runs });
     } else {
-      out.push(...(await inlinesOf(Array.from(node.childNodes), base, ctx, linked)));
+      const inner = await inlinesOf(Array.from(node.childNodes), base, ctx, linked);
+      out.push(...shaded(node, inner));
     }
   }
   return out;
+}
+
+/**
+ * Words set on a tint of their own — a pill, a badge — keep it as a character
+ * background, and a pill's side padding as a space on either side.
+ */
+function shaded(el: Element, inlines: Inline[]): Inline[] {
+  const style = getComputedStyle(el);
+  if (!INLINE_DISPLAYS.has(style.display) || style.display === 'contents') return inlines;
+  const shade = hexColor(style.backgroundColor);
+  if (!shade) return inlines;
+  const tinted = inlines.map(
+    (inline): Inline =>
+      inline.type === 'text' ? { ...inline, shade: inline.shade ?? shade } : inline,
+  );
+  const first = tinted.find((inline): inline is TextRun => inline.type === 'text');
+  if (!first || (Number.parseFloat(style.paddingLeft) || 0) < 4) return tinted;
+  const pad: TextRun = { ...first, text: '\u00a0' };
+  return [pad, ...tinted, { ...pad }];
 }
 
 /** Trims the whitespace a browser would not draw: at either end, and doubled between runs. */
@@ -523,10 +548,20 @@ async function blockOfElement(el: Element, ctx: Ctx, out: Block[], style: StyleI
       inlines.push(...tidy(await inlinesOf([piece], ctx.baselines[style], ctx)));
     }
     if (inlines.some((inline) => inline.type !== 'tab')) {
+      const look = getComputedStyle(el);
+      const rule = border(look, 'Top');
       out.push({
         type: 'paragraph',
         inlines,
         rightTab: ctx.textWidth * PX_TO_TWIPS,
+        ...(rule
+          ? {
+              ruleAbove: {
+                ...rule,
+                gap: (Number.parseFloat(look.paddingTop) || 0) * PX_TO_TWIPS,
+              },
+            }
+          : {}),
         ...spacing(el),
         ...(style !== 'Normal' ? { style } : {}),
       });
@@ -829,10 +864,15 @@ async function tableOf(table: HTMLTableElement, ctx: Ctx): Promise<Table> {
         const edge = border(style, side);
         if (edge) borders[side.toLowerCase() as 'top'] = edge;
       }
+      const fill =
+        dataBarFill(style) ??
+        hexColor(style.backgroundColor) ??
+        hexColor(getComputedStyle(row).backgroundColor);
       cells.push({
         blocks: paragraphs,
         ...(cell.colSpan > 1 ? { span: cell.colSpan } : {}),
         borders,
+        ...(fill ? { fill } : {}),
         padding: {
           top: (Number.parseFloat(style.paddingTop) || 0) * PX_TO_TWIPS,
           left: (Number.parseFloat(style.paddingLeft) || 0) * PX_TO_TWIPS,
@@ -844,6 +884,31 @@ async function tableOf(table: HTMLTableElement, ctx: Ctx): Promise<Table> {
     out.rows.push({ header, cells });
   }
   return out;
+}
+
+/**
+ * A cell drawn with a bar behind its value — `linear-gradient(to right, tint
+ * n%, transparent n%)`, a data bar. Neither Word nor Pages can fill part of a
+ * cell, and Pages drops a picture pinned inside one, so the value is told by
+ * how deep the cell's tint is instead of how far it reaches.
+ */
+function dataBarFill(style: CSSStyleDeclaration): string | null {
+  const gradient = style.backgroundImage.match(
+    /^linear-gradient\(to right,\s*((?:rgba?|color)\([^)]*\))\s+([\d.]+)%/,
+  );
+  if (!gradient?.[1] || !gradient[2]) return null;
+  const tint = hexColor(gradient[1]);
+  const ratio = Math.min(1, Number(gradient[2]) / 100);
+  if (!tint || !(ratio > 0)) return null;
+  const depth = 0.25 + 0.75 * ratio;
+  return [0, 2, 4]
+    .map((at) => {
+      const channel = Number.parseInt(tint.slice(at, at + 2), 16);
+      return Math.round(255 - (255 - channel) * depth)
+        .toString(16)
+        .padStart(2, '0');
+    })
+    .join('');
 }
 
 async function figureOf(figure: Element, ctx: Ctx, out: Block[]) {
@@ -955,6 +1020,7 @@ export async function docxFromPages(
       first: index === 0,
     };
     const own: Block[] = [];
+    let foot: Paragraph | undefined;
     const flowBlocks = Array.from(host.querySelectorAll(`[${FLOW_BLOCK_ATTR}]`));
     const columnsHere = flowBlocks.length > 0 ? columnBoxOf(host) : null;
     if (flowBlocks.length > 0) {
@@ -1030,6 +1096,22 @@ export async function docxFromPages(
         }
         bottom = Math.max(bottom, box.bottom);
       }
+      // A last line laid out against the foot of the sheet — a cover's byline,
+      // pushed down by `justify-content: space-between` — becomes this page's
+      // footer: as flowed text its place would depend on how tall everything
+      // above it came out in Word, which is never quite what the page drew.
+      const last = own[own.length - 1];
+      const lastBox = last ? placed.get(last) : undefined;
+      if (
+        last?.type === 'paragraph' &&
+        lastBox &&
+        own.length > 1 &&
+        rect.bottom - options.margin - lastBox.bottom < 24 &&
+        (last.spacingBefore ?? 0) > 48 * PX_TO_TWIPS
+      ) {
+        own.pop();
+        foot = { ...last, spacingBefore: 0, spacingAfter: 0 };
+      }
       // Word sets a heading's line from the font's own height, taller than the
       // page's CSS line-height, so a sheet laid out to its last pixel — a
       // cover's byline at the foot — would spill its last lines onto a page of
@@ -1052,7 +1134,7 @@ export async function docxFromPages(
     // prints its own running lines, so it sits in a section without them. A
     // flow set in columns is a section of that many columns. The section
     // break itself starts the next page.
-    const layout: SectionLayout = { running: !ctx.page.fixed };
+    const layout: SectionLayout = { running: !ctx.page.fixed, ...(foot ? { foot } : {}) };
     if (!ctx.page.fixed && columnsHere) {
       layout.columns = { count: columnsHere.count, gap: columnsHere.gap * PX_TO_TWIPS };
     }
@@ -1060,7 +1142,9 @@ export async function docxFromPages(
       own.length > 0 &&
       blocks.length > 0 &&
       (layout.running !== previous.running ||
-        (layout.columns?.count ?? 1) !== (previous.columns?.count ?? 1));
+        (layout.columns?.count ?? 1) !== (previous.columns?.count ?? 1) ||
+        Boolean(layout.foot) ||
+        Boolean(previous.foot));
     // Columns fill one at a time to the foot of the page unless a continuous
     // break ends them, so the section after a set of columns starts on their
     // page and breaks to its own with the first paragraph instead.
@@ -1133,6 +1217,7 @@ export async function docxFromPages(
     finalRunning: previous.running,
     ...(previous.columns ? { finalColumns: previous.columns } : {}),
     ...(previous.continuous ? { finalContinuous: true } : {}),
+    ...(previous.foot ? { finalFoot: previous.foot } : {}),
   };
 }
 
