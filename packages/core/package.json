@@ -1,6 +1,6 @@
 {
   "name": "@open-document/core",
-  "version": "0.13.2",
+  "version": "0.13.3",
   "description": "Runtime and CLI for open-doc — write documents in docs/, we handle the pages, print layout, and export.",
   "type": "module",
   "exports": {
