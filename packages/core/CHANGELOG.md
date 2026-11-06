@@ -1,5 +1,11 @@
 # @open-document/core
 
+## 0.14.1
+
+### Patch Changes
+
+- [#86](https://github.com/simonliu-ai-product/open-doc/pull/86) [`2455a78`](https://github.com/simonliu-ai-product/open-doc/commit/2455a78cf1227f9ef8349162eca1f70541006eca) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - When the agent cannot run `open-doc check` itself — Codex, whose sandbox cannot start a browser — the dev server runs it once a turn that edited the document ends, and shows the result in the agent panel: a line when the document is clean, a card listing what it found otherwise, with "Ask the agent to fix" to hand those findings back.
+
 ## 0.14.0
 
 ### Minor Changes
