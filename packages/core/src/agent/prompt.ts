@@ -13,6 +13,8 @@ export type PromptOptions = {
   docsDir: string;
   /** The dev server's own origin, for the single-page preview. */
   origin?: string;
+  /** False when the agent's sandbox cannot start a browser, so it cannot check or preview. */
+  canOpenBrowser?: boolean;
 };
 
 export function systemPromptAppend(askInstruction: string, opts: PromptOptions): string {
@@ -24,7 +26,9 @@ export function systemPromptAppend(askInstruction: string, opts: PromptOptions):
     `The workspace is an open-doc project: documents live under ${opts.docsDir}/<id>/index.tsx and the dev server hot-reloads every edit, so the user sees changes immediately.`,
     'Use the project skills: create-doc to draft a new document, apply-comments to resolve @doc-comment markers left by the inspector, create-theme for themes, and doc-authoring as the technical reference before writing a page.',
     SECTION_BY_SECTION,
-    `After editing a document, run \`pnpm exec open-doc check <id>\` and fix what it reports. To look at one page as it prints, open ${preview} and wait for [data-od-preview-ready="true"].`,
+    opts.canOpenBrowser === false
+      ? 'Your sandbox cannot start a browser, so `open-doc check` and the page preview fail here: do not run them. Keep the file compiling after every write; the user sees each save on the page and can run the check themselves.'
+      : `After editing a document, run \`pnpm exec open-doc check <id>\` and fix what it reports. To look at one page as it prints, open ${preview} and wait for [data-od-preview-ready="true"].`,
     'Keep replies short and concrete: the panel is narrow. Prefer doing the work over describing it, and finish with a one-line summary of what changed.',
     askInstruction,
   ].join(' ');

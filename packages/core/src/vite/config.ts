@@ -83,6 +83,17 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
   return {
     base: config.base ?? '/',
     root: APP_ROOT,
+    // In the workspace, not beside `root` inside the core package: a sandboxed
+    // agent (Codex's workspace-write) may write only under the workspace, and
+    // the core package can sit outside it — a monorepo, a linked install.
+    // Headless runs keep their own, so a `check` beside the dev server does
+    // not re-optimize the deps under it.
+    cacheDir: path.join(
+      userCwd,
+      'node_modules',
+      '.vite',
+      opts.headless ? 'open-doc-headless' : 'open-doc',
+    ),
     configFile: false,
     envDir: userCwd,
     plugins: [

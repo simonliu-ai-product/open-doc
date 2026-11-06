@@ -42,6 +42,9 @@ export interface AgentProvider {
   cliCommand: string;
   askInstruction: string;
   canRewind: boolean;
+  // Whether the agent's own commands can start a browser. `open-doc check` and
+  // the page preview both drive Chromium, which Codex's macOS sandbox kills.
+  canOpenBrowser: boolean;
   models(): Promise<AgentModelOption[]>;
   run(opts: ProviderRunOptions): Promise<void>;
 }
