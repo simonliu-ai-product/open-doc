@@ -36,15 +36,31 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A release PR opened with GITHUB_TOKEN never triggers other workflows,
+      # so CI does not run on it and branch protection blocks the merge. A
+      # GitHub App token opens it as the App, and CI runs like on any PR.
+      # Without the App configured this step is skipped and GITHUB_TOKEN is
+      # used, as before.
+      - name: Create release App token
+        id: app-token
+        if: vars.RELEASE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v2
         with:
-          # v2 renamed every input; the v1 names are silently ignored.
+          # v2 renamed every input; the v1 names are silently ignored —
+          # including the token, which v2 reads from `github-token`, not env.
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
           version-script: pnpm version-packages
           publish-script: pnpm release
           commit-message: "chore: release packages"
           pr-title: "chore: release packages"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
