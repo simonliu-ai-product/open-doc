@@ -11,6 +11,7 @@ function fakeProvider(run: AgentProvider['run'], canRewind = true): AgentProvide
     cliCommand: 'fake',
     askInstruction: 'Ask with the fake tool.',
     canRewind,
+    canOpenBrowser: true,
     models: async () => [],
     run,
   };

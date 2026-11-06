@@ -24,6 +24,15 @@ describe('systemPromptAppend', () => {
   });
 });
 
+describe('systemPromptAppend without a browser', () => {
+  it('tells a sandboxed agent not to run the check or the preview', () => {
+    const out = systemPromptAppend('Ask.', { docsDir: 'docs', canOpenBrowser: false });
+    expect(out).toContain('cannot start a browser');
+    expect(out).toContain('do not run them');
+    expect(out).not.toContain('/preview?p=');
+  });
+});
+
 describe('buildTurnPrompt', () => {
   it('returns the text untouched without document context', () => {
     expect(buildTurnPrompt('hello', undefined)).toBe('hello');

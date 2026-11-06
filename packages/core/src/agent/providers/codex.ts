@@ -171,6 +171,7 @@ export function createCodexProvider(): AgentProvider {
     // questions travel as a tagged block in the final reply instead.
     askInstruction: TEXT_QUESTIONS_INSTRUCTION,
     canRewind: false,
+    canOpenBrowser: false,
     cliCommand: 'codex',
     models: readCodexModels,
     async run(opts: ProviderRunOptions): Promise<void> {

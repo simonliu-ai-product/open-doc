@@ -7,6 +7,9 @@ dist
 .turbo
 packages/cli/template/.agents/skills
 packages/core/e2e/.scratch
+# What the Codex CLI writes under the e2e CODEX_HOME beside its model list.
+packages/core/e2e/codex-home/*
+!packages/core/e2e/codex-home/models_cache.json
 playwright-report
 test-results
 # `open-doc export` writes here by default

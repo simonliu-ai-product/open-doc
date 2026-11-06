@@ -294,7 +294,10 @@ export function createAgentRunner(opts: {
         cwd: userCwd,
         writableRoots,
         prompt,
-        systemPromptAppend: systemPromptAppend(provider.askInstruction, promptOpts),
+        systemPromptAppend: systemPromptAppend(provider.askInstruction, {
+          ...promptOpts,
+          canOpenBrowser: provider.canOpenBrowser,
+        }),
         resume: session.providerSessionId,
         resumeAt,
         model: options.model ?? null,
