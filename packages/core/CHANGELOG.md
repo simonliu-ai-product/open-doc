@@ -1,5 +1,11 @@
 # @open-document/core
 
+## 0.14.2
+
+### Patch Changes
+
+- [#88](https://github.com/simonliu-ai-product/open-doc/pull/88) [`a9b14c7`](https://github.com/simonliu-ai-product/open-doc/commit/a9b14c7fba28d3cbbb0b3f5b17e81462bab21d7b) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Ship the agent and chart sources the viewer imports, so `open-doc dev` starts in a new workspace again.
+
 ## 0.14.1
 
 ### Patch Changes
