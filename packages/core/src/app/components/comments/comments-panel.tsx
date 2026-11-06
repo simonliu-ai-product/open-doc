@@ -1,4 +1,12 @@
-import { Check, ClipboardCopy, Crosshair, MessageSquare, MessageSquarePlus, X } from 'lucide-react';
+import {
+  Check,
+  ClipboardCopy,
+  Crosshair,
+  MessageSquare,
+  MessageSquarePlus,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useLocale, useT } from '../../lib/i18n';
 import { PanelIconButton, PanelShell } from '../panel/panel-shell';
@@ -150,6 +158,10 @@ export type CommentsPanelProps = {
   /** Waiting for that element. */
   picking: boolean;
   onClose: () => void;
+  /** Hand the notes to the agent panel, when an agent is connected. */
+  onApplyWithAgent?: () => void;
+  /** The agent the button hands the comments to, by name. */
+  agentName?: string;
 };
 
 /**
@@ -169,6 +181,8 @@ export function CommentsPanel({
   onNew,
   picking,
   onClose,
+  onApplyWithAgent,
+  agentName,
 }: CommentsPanelProps) {
   const t = useT();
   const [copied, setCopied] = useState(false);
@@ -220,7 +234,17 @@ export function CommentsPanel({
           </div>
         ) : (
           comments.length > 0 && (
-            <div className="border-border border-b px-3 py-2">
+            <div className="flex flex-col gap-1.5 border-border border-b px-3 py-2">
+              {onApplyWithAgent && (
+                <button
+                  type="button"
+                  onClick={onApplyWithAgent}
+                  className="flex h-8 w-full items-center justify-center gap-1.5 rounded bg-foreground text-background text-xs transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground/60"
+                >
+                  <Sparkles className="size-3.5" />
+                  {t('Apply with {agent}', { agent: agentName ?? t('Agent') })}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={copy}

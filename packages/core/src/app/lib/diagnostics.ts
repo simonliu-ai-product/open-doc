@@ -2,6 +2,7 @@ import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import type { PageGeometry } from './sdk';
 
 export type LayoutRule =
+  | 'render-error'
   | 'unresolved-ref'
   | 'duplicate-id'
   | 'heading-skip'
@@ -132,6 +133,18 @@ export function diagnosePages(
         tiny.push(el);
       }
       if (el instanceof HTMLImageElement && el.complete && el.naturalWidth === 0) broken.push(el);
+    }
+
+    // The document's own code threw on this sheet; nothing else on it is real.
+    const failed = frame.querySelector('[data-od-page-error]');
+    if (failed) {
+      findings.push({
+        page,
+        rule: 'render-error',
+        severity: 'error',
+        message: `The page throws while it renders: ${(failed.querySelector('[data-od-page-error-message]')?.textContent ?? '').trim()}`,
+      });
+      return;
     }
 
     const watermarkText = frame.querySelector('[data-od-watermark]')?.textContent?.trim() ?? '';

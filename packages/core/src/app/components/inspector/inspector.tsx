@@ -529,6 +529,8 @@ type Props = {
   exitRef: MutableRefObject<(() => void) | null>;
   controlsRef: MutableRefObject<InspectorControls | null>;
   onPendingChange: (count: number) => void;
+  /** The picked element by its source location, for the agent to know what "this" is. */
+  onSelectionChange?: (element: { loc: string; tag: string; text?: string } | null) => void;
 };
 
 export function Inspector({
@@ -544,6 +546,7 @@ export function Inspector({
   exitRef,
   controlsRef,
   onPendingChange,
+  onSelectionChange,
 }: Props) {
   const history = useHistory();
   const t = useT();
@@ -573,6 +576,20 @@ export function Inspector({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+  useEffect(() => {
+    if (!selected) {
+      onSelectionChangeRef.current?.(null);
+      return;
+    }
+    const text = (selected.anchor.textContent ?? '').replace(/\s+/g, ' ').trim();
+    onSelectionChangeRef.current?.({
+      loc: `${selected.line}:${selected.column}`,
+      tag: selected.tag,
+      ...(text ? { text: text.length > 80 ? `${text.slice(0, 79)}…` : text } : {}),
+    });
+  }, [selected]);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const entriesRef = useRef(new Map<HTMLElement, Entry>());
   const sessionStartRef = useRef<Segment[][]>([]);

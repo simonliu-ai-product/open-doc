@@ -94,7 +94,13 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
       openDocPlugin({ userCwd, config, coreVersion: CORE_VERSION }),
       themesPlugin({ userCwd, config }),
       designPlugin({ userCwd, docsDir }),
-      apiPlugin({ userCwd, docsDir, assetsDir, coreVersion: CORE_VERSION }),
+      apiPlugin({
+        userCwd,
+        docsDir,
+        assetsDir,
+        coreVersion: CORE_VERSION,
+        agent: !opts.headless && config.agent?.enabled !== false,
+      }),
       ...(opts.headless ? [] : [currentPlugin({ userCwd, docsDir })]),
       ...(opts.mcp
         ? [

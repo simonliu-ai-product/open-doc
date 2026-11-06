@@ -405,6 +405,12 @@ the foot of a page, type too small to print, an image that never loaded — each
 with the `line:column` in your source. Agents driving the MCP server call
 `check_layout` for the same report, and `render_page` for a PNG of one sheet.
 
+To **look** at one sheet while `open-doc dev` is running, open
+`http://localhost:5273/d/<id>/preview?p=<page>` (your dev server's origin, the
+page 1-based). It draws that sheet alone at true size with no viewer around it;
+wait for `[data-od-preview-ready="true"]` before you screenshot it — by then the
+fonts are in and the contents, figure numbers and references are counted.
+
 **Run it after writing a document and after any edit that changes how much text
 is on a page.** The checklist below is what you reason about; `check` is what
 confirms it.

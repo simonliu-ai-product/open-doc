@@ -71,3 +71,9 @@ export function validateMutationRequest(
 
   return { ok: true };
 }
+
+/** The agent runs commands in the workspace, so only this machine may drive it. */
+export function isLoopbackRequest(req: Connect.IncomingMessage): boolean {
+  const address = req.socket.remoteAddress ?? '';
+  return address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.');
+}

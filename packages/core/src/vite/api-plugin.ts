@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite';
+import { registerAgentRoutes } from './routes/agent.ts';
 import { registerAssetRoutes } from './routes/assets.ts';
 import { registerChangesRoutes } from './routes/changes.ts';
 import { type ApiPluginOptions, makeContext } from './routes/context.ts';
@@ -23,6 +24,7 @@ export function apiPlugin(opts: ApiPluginOptions): Plugin {
       registerEditRoutes(server, ctx);
       registerChangesRoutes(server, ctx);
       registerTemplateRoutes(server, ctx);
+      if (opts.agent !== false) registerAgentRoutes(server, ctx);
     },
   };
 }

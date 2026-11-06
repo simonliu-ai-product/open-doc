@@ -239,3 +239,60 @@ export async function deleteDocument(ctx: ApiContext, docId: string): Promise<vo
     }
   });
 }
+
+/** The title a blank document starts with; anything else means it has been written. */
+export const BLANK_DOC_TITLE = 'Untitled document';
+
+/**
+ * A blank document under a placeholder id (`untitled`, `untitled-2`, …) from the
+ * `blank` template, for the agent panel to draft into. It gets a real id from
+ * `renameDocDir` once something has been written.
+ */
+export async function createBlankDocument(ctx: ApiContext): Promise<{ id: string }> {
+  const { createFromTemplate } = await import('./templates.ts');
+  const taken = new Set(await listDocIds(ctx));
+  for (let n = 1; n < 1000; n++) {
+    const id = n === 1 ? 'untitled' : `untitled-${n}`;
+    if (taken.has(id)) continue;
+    const created = await createFromTemplate(ctx, { template: 'blank', docId: id });
+    return { id: created.id };
+  }
+  throw new OpsError(409, 'no free document id');
+}
+
+/**
+ * Moves a document to a new folder name — `desired`, else `desired-2`, … — and
+ * carries its folder assignment with it. The id is the folder, so this is the
+ * one operation that changes a document's id.
+ */
+export async function renameDocDir(
+  ctx: ApiContext,
+  docId: string,
+  desired: string,
+): Promise<{ id: string }> {
+  const from = docDir(ctx, docId);
+  if (!DOC_ID_RE.test(desired)) throw new OpsError(400, `invalid document id: ${desired}`);
+  if (!resolveEntry(ctx, docId)) throw new OpsError(404, `document not found: ${docId}`);
+  const taken = new Set(await listDocIds(ctx));
+  for (let n = 1; n < 1000; n++) {
+    const id = n === 1 ? desired : `${desired}-${n}`;
+    if (id === docId) return { id };
+    if (taken.has(id)) continue;
+    try {
+      await fs.rename(from, docDir(ctx, id));
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST' || code === 'ENOTEMPTY') continue;
+      throw err;
+    }
+    const manifest = await readManifest(ctx.manifestPath);
+    const folderId = manifest.assignments[docId];
+    if (folderId) {
+      delete manifest.assignments[docId];
+      manifest.assignments[id] = folderId;
+      await writeManifest(ctx.manifestPath, manifest);
+    }
+    return { id };
+  }
+  throw new OpsError(409, 'no free document id');
+}

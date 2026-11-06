@@ -1,6 +1,7 @@
 import type { ViteDevServer } from 'vite';
 import { validateMutationRequest } from '../../http/request-guard.ts';
 import {
+  createBlankDocument,
   deleteDocument,
   duplicateDocument,
   OpsError,
@@ -9,6 +10,7 @@ import {
 import { type ApiContext, json, readBody } from './context.ts';
 import { announceDocument } from './templates.ts';
 
+// POST   /__docs                a blank document under a placeholder id → { docId }
 // PATCH  /__docs/:id            rename the document's meta.title { title }
 // POST   /__docs/:id/duplicate  copy the folder to a fresh id { newId? }
 // DELETE /__docs/:id            delete the document folder from disk
@@ -23,6 +25,14 @@ export function registerDocRoutes(server: ViteDevServer, ctx: ApiContext): void 
     try {
       const duplicateMatch = url.pathname.match(/^\/([^/]+)\/duplicate$/);
       const idMatch = url.pathname.match(/^\/([^/]+)$/);
+
+      if (url.pathname === '/' && method === 'POST') {
+        const requestCheck = validateMutationRequest(req);
+        if (!requestCheck.ok) return json(res, requestCheck.status, { error: requestCheck.error });
+        const result = await createBlankDocument(ctx);
+        announceDocument(server, ctx, result.id);
+        return json(res, 200, { ok: true, docId: result.id });
+      }
 
       if (duplicateMatch && method === 'POST') {
         const requestCheck = validateMutationRequest(req);

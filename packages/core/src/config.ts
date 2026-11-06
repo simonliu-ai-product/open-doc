@@ -27,6 +27,14 @@ export type OpenDocDeployConfig = {
   gcp?: OpenDocGcpDeployConfig;
 };
 
+export type OpenDocAgentConfig = {
+  /**
+   * The agent panel in `open-doc dev`, driving the Codex CLI installed on this
+   * machine through its SDK. Defaults to true.
+   */
+  enabled?: boolean;
+};
+
 export type OpenDocConfig = {
   base?: string;
   /**
@@ -42,4 +50,5 @@ export type OpenDocConfig = {
   allowedHosts?: string[] | true;
   build?: OpenDocBuildConfig;
   deploy?: OpenDocDeployConfig;
+  agent?: OpenDocAgentConfig;
 };
