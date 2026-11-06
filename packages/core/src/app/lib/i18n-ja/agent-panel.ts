@@ -104,4 +104,12 @@ export const AGENT_PANEL: Record<string, string> = {
   'Waiting for you': 'あなたの回答待ち',
   'Draft with agent': 'エージェントで下書き',
   'Resize the agent panel': 'エージェントパネルの幅を変更',
+  'Checking the document…': 'ドキュメントをチェック中…',
+  'Could not check the document': 'ドキュメントをチェックできませんでした',
+  'Checked · no problems': 'チェック済み · 問題なし',
+  'Checked · no problems · {count} pages': 'チェック済み · 問題なし · {count} ページ',
+  'The check found {count} problem': 'チェックで {count} 件の問題が見つかりました',
+  'The check found {count} problems': 'チェックで {count} 件の問題が見つかりました',
+  '+{count} more': 'ほか {count} 件',
+  'Ask the agent to fix': 'エージェントに修正を依頼',
 };

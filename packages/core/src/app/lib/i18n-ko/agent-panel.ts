@@ -103,4 +103,12 @@ export const AGENT_PANEL: Record<string, string> = {
   'Waiting for you': '입력을 기다리는 중',
   'Draft with agent': '에이전트로 초안 작성',
   'Resize the agent panel': '에이전트 패널 너비 조절',
+  'Checking the document…': '문서를 검사하는 중…',
+  'Could not check the document': '문서를 검사할 수 없습니다',
+  'Checked · no problems': '검사 완료 · 문제 없음',
+  'Checked · no problems · {count} pages': '검사 완료 · 문제 없음 · {count}쪽',
+  'The check found {count} problem': '검사에서 문제 {count}개를 찾았습니다',
+  'The check found {count} problems': '검사에서 문제 {count}개를 찾았습니다',
+  '+{count} more': '그 외 {count}개',
+  'Ask the agent to fix': '에이전트에게 수정 요청',
 };

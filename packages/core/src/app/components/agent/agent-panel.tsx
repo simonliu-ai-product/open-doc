@@ -313,7 +313,12 @@ export function AgentPanel({
       ) : (
         <>
           {session && session.items.length > 0 ? (
-            <Transcript session={session} onRespond={onRespond} onEdit={onEdit} />
+            <Transcript
+              session={session}
+              onRespond={onRespond}
+              onEdit={onEdit}
+              onFix={(text) => send(text)}
+            />
           ) : isNewDoc ? (
             <NewDocState providerName={providerName} />
           ) : (

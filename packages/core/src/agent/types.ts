@@ -89,6 +89,20 @@ export type AgentItem =
       status: 'pending' | 'allowed' | 'denied';
     }
   | { kind: 'error'; id: string; ts: string; text: string }
+  // `open-doc check`, run by the dev server after a turn whose agent cannot
+  // start a browser itself.
+  | {
+      kind: 'check';
+      id: string;
+      ts: string;
+      docId: string;
+      status: 'running' | 'done' | 'failed';
+      pageCount: number | null;
+      // The first few findings; `total` counts them all.
+      findings: AgentCheckFinding[];
+      total: number;
+      error: string | null;
+    }
   | {
       kind: 'result';
       id: string;
@@ -97,6 +111,13 @@ export type AgentItem =
       costUsd: number | null;
       aborted: boolean;
     };
+
+export type AgentCheckFinding = {
+  page: number;
+  severity: 'error' | 'warn';
+  message: string;
+  loc?: string;
+};
 
 type AgentSessionStatus = 'idle' | 'running';
 

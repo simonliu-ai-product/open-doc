@@ -1,6 +1,6 @@
 import { UNTITLED_DOC_ID_RE } from '../editing/placeholder-id.ts';
 import { parseQuestions } from './provider.ts';
-import type { AgentQuestion, AgentTurnContext } from './types.ts';
+import type { AgentCheckFinding, AgentQuestion, AgentTurnContext } from './types.ts';
 
 const SECTION_BY_SECTION =
   'Write a new document section by section so the user can follow along on the page: first replace the file with the imports, meta (keeping its existing createdAt), design and the opening section only, then add each remaining section with its own separate edit, keeping the file compiling after every write.';
@@ -27,7 +27,7 @@ export function systemPromptAppend(askInstruction: string, opts: PromptOptions):
     'Use the project skills: create-doc to draft a new document, apply-comments to resolve @doc-comment markers left by the inspector, create-theme for themes, and doc-authoring as the technical reference before writing a page.',
     SECTION_BY_SECTION,
     opts.canOpenBrowser === false
-      ? 'Your sandbox cannot start a browser, so `open-doc check` and the page preview fail here: do not run them. Keep the file compiling after every write; the user sees each save on the page and can run the check themselves.'
+      ? 'Your sandbox cannot start a browser, so `open-doc check` and the page preview fail here: do not run them. open-doc runs the check itself once your turn ends and shows the user what it finds, so keep the file compiling after every write.'
       : `After editing a document, run \`pnpm exec open-doc check <id>\` and fix what it reports. To look at one page as it prints, open ${preview} and wait for [data-od-preview-ready="true"].`,
     'Keep replies short and concrete: the panel is narrow. Prefer doing the work over describing it, and finish with a one-line summary of what changed.',
     askInstruction,
@@ -101,6 +101,21 @@ export function stripDocSlug(text: string): string {
     .replace(DOC_SLUG_RE, '\n')
     .replace(/\s*<doc-slug>[^<]*$/i, '')
     .trimEnd();
+}
+
+/** What the panel's "fix" button sends after a check the dev server ran. */
+export function checkFixPrompt(
+  docId: string,
+  findings: AgentCheckFinding[],
+  total: number,
+): string {
+  const lines = findings.map(
+    (f) =>
+      `- ${f.page > 0 ? `page ${f.page}` : 'document'} [${f.severity}] ${f.message}${f.loc ? ` (at ${f.loc})` : ''}`,
+  );
+  const more =
+    total > findings.length ? `\n- …and ${total - findings.length} more of the same kind` : '';
+  return `\`open-doc check\` found these problems in the document "${docId}". Fix them, keeping the content and the design otherwise as it is:\n${lines.join('\n')}${more}`;
 }
 
 export function applyCommentsPrompt(docId: string): string {

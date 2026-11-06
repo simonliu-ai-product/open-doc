@@ -102,4 +102,12 @@ export const AGENT_PANEL: Record<string, string> = {
   'Waiting for you': '等待你的回覆',
   'Draft with agent': '用 Agent 起草',
   'Resize the agent panel': '調整 Agent 面板寬度',
+  'Checking the document…': '正在檢查文件…',
+  'Could not check the document': '無法檢查文件',
+  'Checked · no problems': '已檢查 · 沒有問題',
+  'Checked · no problems · {count} pages': '已檢查 · 沒有問題 · 共 {count} 頁',
+  'The check found {count} problem': '檢查發現 {count} 個問題',
+  'The check found {count} problems': '檢查發現 {count} 個問題',
+  '+{count} more': '還有 {count} 個',
+  'Ask the agent to fix': '請 agent 修正',
 };

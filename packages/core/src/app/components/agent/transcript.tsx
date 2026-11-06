@@ -1,10 +1,10 @@
-import { Check, ChevronRight, CircleAlert, Copy, Pencil } from 'lucide-react';
+import { Check, ChevronRight, CircleAlert, Copy, LoaderCircle, Pencil } from 'lucide-react';
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAutoGrow } from '@/lib/use-auto-grow';
 import { format, plural, useLocale } from '@/lib/use-locale';
 import { cn } from '@/lib/utils';
-import { stripDocSlug } from '../../../agent/prompt';
+import { checkFixPrompt, stripDocSlug } from '../../../agent/prompt';
 import type { AgentItem, AgentQuestion, AgentSession, RespondPayload } from '../../../agent/types';
 import { AgentMarkdown } from './agent-markdown';
 
@@ -12,10 +12,13 @@ export function Transcript({
   session,
   onRespond,
   onEdit,
+  onFix,
 }: {
   session: AgentSession;
   onRespond: (itemId: string, payload: RespondPayload) => Promise<void>;
   onEdit: (itemId: string, text: string) => Promise<void>;
+  /** Sends a message asking the agent to fix what a check found. */
+  onFix: (text: string) => Promise<void>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -23,15 +26,20 @@ export function Transcript({
   const lastText = lastItem?.kind === 'assistant' ? lastItem.text.length : 0;
   const running = session.status === 'running';
   const replies = replyTexts(session.items, running);
+  // Only the newest check offers a fix; an older one was already acted on or
+  // describes a file that has changed since.
+  const lastCheckId = [...session.items].reverse().find((i) => i.kind === 'check')?.id;
 
   // Follow the stream while the user is parked at the bottom; stop once they
   // scroll up to read, like a terminal.
+  // `lastItem` too: an item can grow in place — a check that finishes turns a
+  // one-line "checking" into a card — without the transcript getting longer.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run as the transcript grows or streams
   useLayoutEffect(() => {
     const node = scrollRef.current;
     if (!node || !stickRef.current) return;
     node.scrollTop = node.scrollHeight;
-  }, [session.items.length, lastText, session.status]);
+  }, [session.items.length, lastText, session.status, lastItem]);
 
   return (
     <div
@@ -54,6 +62,7 @@ export function Transcript({
                 replyText={replies.get(block.item.id)}
                 onRespond={(payload) => onRespond(block.item.id, payload)}
                 onEdit={(text) => onEdit(block.item.id, text)}
+                onFix={block.item.id === lastCheckId && !running ? onFix : undefined}
               />
             )}
           </li>
@@ -105,12 +114,14 @@ function TranscriptItem({
   replyText,
   onRespond,
   onEdit,
+  onFix,
 }: {
   item: AgentItem;
   running: boolean;
   replyText?: string;
   onRespond: (payload: RespondPayload) => Promise<void>;
   onEdit: (text: string) => Promise<void>;
+  onFix?: (text: string) => Promise<void>;
 }) {
   switch (item.kind) {
     case 'user':
@@ -126,6 +137,8 @@ function TranscriptItem({
       return <ErrorItem text={item.text} />;
     case 'result':
       return <ResultItem item={item} />;
+    case 'check':
+      return <CheckItem item={item} onFix={onFix} />;
     default:
       return null;
   }
@@ -413,6 +426,101 @@ function ErrorItem({ text }: { text: string }) {
       <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-foreground/85">
         {text}
       </pre>
+    </div>
+  );
+}
+
+const CHECK_SHOWN = 5;
+
+function CheckItem({
+  item,
+  onFix,
+}: {
+  item: Extract<AgentItem, { kind: 'check' }>;
+  onFix?: (text: string) => Promise<void>;
+}) {
+  const t = useLocale();
+  const [busy, runBusy] = useBusy();
+
+  if (item.status === 'running') {
+    return (
+      <p className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground" data-agent-check>
+        <LoaderCircle aria-hidden className="size-3 animate-spin motion-reduce:animate-none" />
+        <span className="agent-shimmer">{t.agent.checkRunning}</span>
+      </p>
+    );
+  }
+  if (item.status === 'failed') {
+    return (
+      <p className="text-[11.5px] leading-relaxed text-muted-foreground" data-agent-check>
+        <span className="text-foreground/80">{t.agent.checkFailed}</span>
+        {item.error && item.error !== 'interrupted' && (
+          <span className="mt-0.5 block break-words font-mono text-[10.5px]">{item.error}</span>
+        )}
+      </p>
+    );
+  }
+  if (item.total === 0) {
+    return (
+      <p className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground" data-agent-check>
+        <Check aria-hidden className="size-3" />
+        {item.pageCount !== null
+          ? format(t.agent.checkCleanPages, { count: item.pageCount })
+          : t.agent.checkClean}
+      </p>
+    );
+  }
+
+  const shown = item.findings.slice(0, CHECK_SHOWN);
+  const hidden = item.total - shown.length;
+  return (
+    <div
+      className="rounded-[8px] border border-hairline bg-background px-3 py-2.5"
+      data-agent-check
+    >
+      <p className="text-[11.5px] text-muted-foreground">
+        {format(plural(item.total, t.agent.checkFound), { count: item.total })}
+      </p>
+      <ul className="mt-1.5 flex flex-col gap-1">
+        {shown.map((f, n) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed report, never reordered
+          <li key={n} className="flex gap-1.5 text-[12px] leading-snug">
+            <span
+              aria-hidden
+              className={cn(
+                'mt-[0.45em] size-1.5 shrink-0 rounded-full',
+                f.severity === 'error' ? 'bg-destructive' : 'bg-muted-foreground/50',
+              )}
+            />
+            <span className="min-w-0">
+              {f.page > 0 && (
+                <span className="mr-1 font-mono text-[10.5px] text-muted-foreground">
+                  {format(t.agent.contextPage, { n: f.page })}
+                </span>
+              )}
+              {f.message}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {format(t.agent.checkMore, { count: hidden })}
+        </p>
+      )}
+      {onFix && (
+        <div className="mt-2.5 flex justify-end">
+          <Button
+            size="xs"
+            disabled={busy}
+            onClick={() =>
+              runBusy(() => onFix(checkFixPrompt(item.docId, item.findings, item.total)))
+            }
+          >
+            {t.agent.checkFix}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

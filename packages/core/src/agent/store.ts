@@ -59,6 +59,9 @@ function closePending(item: AgentItem): AgentItem {
   if (item.kind === 'question' && item.status === 'pending')
     return { ...item, status: 'cancelled' };
   if (item.kind === 'permission' && item.status === 'pending') return { ...item, status: 'denied' };
+  if (item.kind === 'check' && item.status === 'running') {
+    return { ...item, status: 'failed', error: 'interrupted' };
+  }
   return item;
 }
 
