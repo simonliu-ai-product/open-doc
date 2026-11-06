@@ -27,10 +27,16 @@ import {
   Pencil,
   Plus,
   Rows3,
+  Sparkles,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { applyCommentsPrompt } from '../../agent/prompt';
+import type { AgentTurnContext } from '../../agent/types';
+import { AgentDockFrame } from '../components/agent/agent-dock';
+import { AgentPanel } from '../components/agent/agent-panel';
+import { AgentPresence } from '../components/agent/agent-presence';
 import { ChangesOverlay, elementsOf } from '../components/changes/changes-overlay';
 import { ChangesPanel } from '../components/changes/changes-panel';
 import { type ChangeItem, itemsOf, useChanges } from '../components/changes/use-changes';
@@ -51,6 +57,13 @@ import { EditSaveCard } from '../components/panel/edit-save-card';
 import { RecordPicker } from '../components/record-picker';
 import { ThemeToggle } from '../components/theme-toggle';
 import { Menu, MenuItem } from '../components/ui/menu';
+import {
+  requestAgent,
+  setDockOpen as setAgentDockOpen,
+  useAgentActivity,
+  useAgentDock,
+  useAgentStatus,
+} from '../lib/agent/use-agent';
 import { useAgentBridge } from '../lib/agent-bridge';
 import { exportDocAsDocx } from '../lib/export-docx';
 import { exportDocAsHtml } from '../lib/export-html';
@@ -78,6 +91,8 @@ import {
   type ViewMode,
   writeViewMode,
 } from '../lib/view-mode';
+
+type PickedElement = { loc: string; tag: string; text?: string };
 
 type DownloadFormat = 'pdf' | 'html' | 'png' | 'svg' | 'docx';
 
@@ -216,16 +231,23 @@ export function Doc() {
   const [customRange, setCustomRange] = useState('');
   // One dock on the right, one panel in it at a time; the element panel takes
   // it back whenever an element is picked.
-  const [dock, setDock] = useState<'design' | 'changes' | 'comments' | null>(null);
+  // The agent's half of it is app-wide, as in open-slide: the comments panel,
+  // a new document and a reload all open it from outside this route.
+  const [panel, setPanel] = useState<'design' | 'changes' | 'comments' | null>(null);
+  const { open: agentOpen } = useAgentDock();
+  const dock = agentOpen ? 'agent' : panel;
   const designOpen = dock === 'design';
   const changesOpen = dock === 'changes';
   const commentsOpen = dock === 'comments';
+  const setDock = useCallback((next: 'design' | 'changes' | 'comments' | 'agent' | null) => {
+    setAgentDockOpen(next === 'agent');
+    setPanel(next === 'agent' ? null : next);
+  }, []);
   const toggleDock = useCallback(
-    (panel: 'design' | 'changes' | 'comments') =>
-      setDock((open) => (open === panel ? null : panel)),
-    [],
+    (next: 'design' | 'changes' | 'comments' | 'agent') => setDock(dock === next ? null : next),
+    [dock, setDock],
   );
-  const closeDock = useCallback(() => setDock(null), []);
+  const closeDock = useCallback(() => setDock(null), [setDock]);
   const [editing, setEditingState] = useState(readEditing);
   // The dev server reloads every open viewer when a document is added or
   // removed anywhere in the workspace. Edit mode is per tab and survives that.
@@ -291,6 +313,34 @@ export function Doc() {
     () => new Set([...commentPlacement.values()].flat()),
     [commentPlacement],
   );
+  // The agent's dock exists whenever the dev server answers for it; until an
+  // agent is connected it explains how to connect one.
+  const agentStatus = useAgentStatus();
+  const agentAvailable = agentStatus.enabled;
+  const [pickedElement, setPickedElement] = useState<PickedElement | null>(null);
+  const agentContext = useMemo<AgentTurnContext>(() => {
+    const [line, column] = (pickedElement?.loc ?? '').split(':').map(Number);
+    return {
+      ...(docId ? { docId } : {}),
+      ...(doc?.meta?.title ? { docTitle: doc.meta.title } : {}),
+      ...(pages.length > 0 ? { pageNumber: currentPage, totalPages: pages.length } : {}),
+      pendingComments: commentList.length,
+      selection:
+        pickedElement && line && column !== undefined && !Number.isNaN(column)
+          ? { line, column, tagName: pickedElement.tag, text: pickedElement.text ?? '' }
+          : null,
+    };
+  }, [docId, doc?.meta?.title, pages.length, currentPage, commentList.length, pickedElement]);
+  // While an agent writes this document section by section, follow the pages
+  // as they appear so the reader watches it grow.
+  const scrollToPageRef = useRef<(page: number) => void>(() => {});
+  const agentActivity = useAgentActivity(docId ?? '');
+  const agentWriting = agentActivity !== null;
+  const seenPageCount = useRef(pages.length);
+  useEffect(() => {
+    if (agentWriting && pages.length > seenPageCount.current) scrollToPageRef.current(pages.length);
+    seenPageCount.current = pages.length;
+  }, [agentWriting, pages.length]);
   const [activeComment, setActiveComment] = useState<string | null>(null);
   const selectComment = useCallback((comment: DocComment) => {
     setActiveComment(comment.id);
@@ -315,7 +365,7 @@ export function Doc() {
   const pickElement = useCallback(() => {
     setDock(null);
     setPicking(false);
-  }, []);
+  }, [setDock]);
   const cancelPick = useCallback(() => setPicking(false), []);
   useEffect(() => {
     if (!editing) {
@@ -460,6 +510,7 @@ export function Doc() {
     const frame = pagesRef.current?.children[page - 1];
     frame?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+  scrollToPageRef.current = scrollToPage;
 
   // Land the heading near the top of the reading pane, not centred — the reader
   // wants what follows the heading, and centring buries half of it.
@@ -670,6 +721,19 @@ export function Doc() {
           icon: MessageSquare,
           run: () => toggleDock('comments'),
         },
+        ...(agentAvailable
+          ? [
+              {
+                id: 'agent',
+                group: t('Actions'),
+                label: agentOpen ? t('Close the agent panel') : t('Ask the agent'),
+                hint: 'A',
+                keywords: 'agent codex ai chat',
+                icon: Sparkles,
+                run: () => toggleDock('agent'),
+              },
+            ]
+          : []),
       );
     }
     return [
@@ -716,11 +780,14 @@ export function Doc() {
       } else if (import.meta.env.DEV && (e.key === 'm' || e.key === 'M')) {
         e.preventDefault();
         toggleDock('comments');
+      } else if (agentAvailable && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault();
+        toggleDock('agent');
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [toggleFullscreen, toggleDock]);
+  }, [toggleFullscreen, toggleDock, agentAvailable]);
 
   if (state.status === 'error') {
     return (
@@ -840,7 +907,7 @@ export function Doc() {
                 title={t('Design tokens (D)')}
                 onClick={() => toggleDock('design')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                  'flex flex-none items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
                   designOpen && 'bg-accent',
                 )}
               >
@@ -867,7 +934,7 @@ export function Doc() {
                 title={`${t('Changes since the last commit')} (C)`}
                 onClick={() => toggleDock('changes')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                  'flex flex-none items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
                   changesOpen && 'bg-accent',
                 )}
               >
@@ -897,7 +964,7 @@ export function Doc() {
                 title={`${t('Comments')} (M)`}
                 onClick={() => toggleDock('comments')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                  'flex flex-none items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
                   commentsOpen && 'bg-accent',
                 )}
               >
@@ -914,6 +981,24 @@ export function Doc() {
                 )}
               </button>
             )}
+            {agentAvailable && (
+              <button
+                type="button"
+                aria-pressed={agentOpen}
+                aria-label={t('Agent')}
+                aria-keyshortcuts="A"
+                title={`${t('Agent')} (A)`}
+                onClick={() => toggleDock('agent')}
+                className="flex size-8 flex-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
+              >
+                <Sparkles
+                  className={cn(
+                    'size-4',
+                    agentWriting && 'animate-pulse motion-reduce:animate-none',
+                  )}
+                />
+              </button>
+            )}
 
             <CopyLink />
 
@@ -928,7 +1013,7 @@ export function Doc() {
                 <button
                   type="button"
                   disabled={download !== null}
-                  className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-70 aria-expanded:opacity-90"
+                  className="flex flex-none items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-2.5 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-70 aria-expanded:opacity-90"
                   {...props}
                 >
                   {download ? (
@@ -1069,6 +1154,16 @@ export function Doc() {
                 onShownChange={setCardShown}
               />
             )}
+            {agentActivity && (
+              // Over the pages, not in their scroll: the ring and the pill stay put
+              // while the reader scrolls through what the agent writes.
+              <div
+                data-agent-provider={agentActivity.provider}
+                className="pointer-events-none absolute inset-0 md:my-2 md:mr-2 md:rounded-xl [&_button]:pointer-events-auto"
+              >
+                <AgentPresence activity={agentActivity} revision={pages} />
+              </div>
+            )}
           </div>
           {editing && docId && (
             // Keyed by document: a selection, or an editor carried across a
@@ -1088,9 +1183,15 @@ export function Doc() {
               exitRef={leaveEditRef}
               controlsRef={editControlsRef}
               onPendingChange={setTextPending}
+              onSelectionChange={setPickedElement}
             />
           )}
           {designOpen && <DesignPanel onClose={closeDock} />}
+          {agentOpen && (
+            <AgentDockFrame>
+              <AgentPanel context={agentContext} onClose={closeDock} />
+            </AgentDockFrame>
+          )}
           {commentsOpen && docId && (
             <CommentsPanel
               docId={docId}
@@ -1114,6 +1215,12 @@ export function Doc() {
               onNew={startComment}
               picking={picking}
               onClose={closeDock}
+              {...(agentStatus.connected && agentStatus.providerName
+                ? {
+                    agentName: agentStatus.providerName,
+                    onApplyWithAgent: () => requestAgent({ text: applyCommentsPrompt(docId) }),
+                  }
+                : {})}
             />
           )}
           {changesOpen && (

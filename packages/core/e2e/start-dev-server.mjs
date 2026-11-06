@@ -35,6 +35,12 @@ const child = spawn(
     '127.0.0.1',
     ...process.argv.slice(2),
   ],
-  { cwd: scratchDir, stdio: 'inherit', env: { ...process.env } },
+  {
+    cwd: scratchDir,
+    stdio: 'inherit',
+    // The model list a signed-in `codex` caches for its own picker, so the
+    // panel's menu does not depend on this machine's ~/.codex.
+    env: { ...process.env, CODEX_HOME: path.join(here, 'codex-home') },
+  },
 );
 child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

@@ -14,10 +14,12 @@ import {
   PencilLine,
   Plus,
   Search,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
+import { ProviderLogo } from '../components/agent/provider-logo';
 import {
   CARD_GRID,
   CardText,
@@ -31,12 +33,14 @@ import { PageFrame } from '../components/page-frame';
 import { DOC_DND_MIME } from '../components/sidebar/folder-item';
 import { ALL_DOCS_ID, DRAFT_ID } from '../components/sidebar/sidebar';
 import { Menu, MenuItem, MenuSeparator } from '../components/ui/menu';
+import { useAgentStatus, useCreateDoc } from '../lib/agent/use-agent';
 import { coverContent } from '../lib/doc-preview';
 import { docCreatedAt, docIds, docThemes, docTitles } from '../lib/docs';
 import { type Translate, useLocale, useT } from '../lib/i18n';
 import { pageLang, resolvePageGeometry } from '../lib/sdk';
 import { findTheme } from '../lib/themes';
 import { useDocModule } from '../lib/use-doc-module';
+import { format, useLocale as useAgentLocale } from '../lib/use-locale';
 import type { HomeOutletContext } from './home-shell';
 
 /** Sheet and date, the two facts that tell documents apart at a glance. */
@@ -99,14 +103,17 @@ export function Home() {
   const inFolder =
     ctx.selectedId !== ALL_DOCS_ID && ctx.selectedId !== DRAFT_ID ? ctx.selectedId : null;
   const newButton = import.meta.env.DEV && (
-    <button
-      type="button"
-      onClick={() => setCreating(true)}
-      className="flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
-    >
-      <Plus className="size-3.5" />
-      {t('New document')}
-    </button>
+    <>
+      <DraftWithAgentButton />
+      <button
+        type="button"
+        onClick={() => setCreating(true)}
+        className="flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
+      >
+        <Plus className="size-3.5" />
+        {t('New document')}
+      </button>
+    </>
   );
 
   const setSort = (next: SortKey) => {
@@ -423,5 +430,33 @@ function DocCard({
         )}
       </div>
     </div>
+  );
+}
+
+// Offered even before an agent is connected: the blank document opens the
+// agent panel, which walks a first-time user through connecting one.
+function DraftWithAgentButton() {
+  const t = useAgentLocale();
+  const { enabled, provider } = useAgentStatus();
+  const start = useCreateDoc();
+  if (!enabled) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => void start()}
+      title={
+        provider
+          ? format(t.agent.createDocWith, { provider: provider.name })
+          : t.agent.quickCreateHint
+      }
+      className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
+    >
+      {provider ? (
+        <ProviderLogo provider={provider.id} className="size-3.5" />
+      ) : (
+        <Sparkles className="size-3.5" />
+      )}
+      {t.agent.createDoc}
+    </button>
   );
 }

@@ -75,6 +75,7 @@ export {
   resolvePageGeometry,
 } from './app/lib/sdk.ts';
 export type {
+  OpenDocAgentConfig,
   OpenDocBuildConfig,
   OpenDocConfig,
   OpenDocDeployConfig,

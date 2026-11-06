@@ -2,6 +2,7 @@ import config from 'virtual:open-doc/config';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { AssetsPage } from './routes/assets';
 import { Doc } from './routes/doc';
+import { DocPreview } from './routes/doc-preview';
 import { Home } from './routes/home';
 import { HomeShell } from './routes/home-shell';
 import { ThemeDetailPage, ThemesGalleryPage } from './routes/themes';
@@ -21,6 +22,7 @@ export function App() {
           <Route path="/" element={<NotFound />} />
         )}
         <Route path="/d/:docId" element={<Doc />} />
+        <Route path="/d/:docId/preview" element={<DocPreview />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

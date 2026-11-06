@@ -1,0 +1,20 @@
+{
+  "models": [
+    {
+      "slug": "gpt-5-codex",
+      "display_name": "GPT-5 Codex",
+      "priority": 1,
+      "supported_reasoning_levels": [
+        { "effort": "low" },
+        { "effort": "medium" },
+        { "effort": "high" }
+      ]
+    },
+    {
+      "slug": "gpt-5-mini",
+      "display_name": "GPT-5 Mini",
+      "priority": 2,
+      "supported_reasoning_levels": []
+    }
+  ]
+}

@@ -380,6 +380,13 @@ pnpm dev              # open-doc dev → http://localhost:5273`}</Code>
         interface between English, 繁體中文, 简体中文, 日本語 and 한국어, and between light and
         dark. ⌘K offers both too.
       </li>
+      <li>
+        <strong>Agent</strong> — with the Codex CLI installed and signed in on this computer, press
+        A (or the Agent button) to open a panel beside the pages. Describe a change and Codex edits
+        the source while the page reloads under it; it knows the page you are on and the element you
+        picked, and the Comments panel can hand it every pending note at once. "Draft with agent" on
+        the home page opens a blank document and writes it section by section from your brief.
+      </li>
     </ul>
 
     <h1 style={h1}>4. Reading a document</h1>

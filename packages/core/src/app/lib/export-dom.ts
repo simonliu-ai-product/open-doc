@@ -6,6 +6,7 @@
 
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { PageErrorBoundary } from '../components/page-error-boundary';
 import { SheetWatermark } from '../components/page-frame';
 import { designToCssVars } from './design';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
@@ -72,7 +73,7 @@ export async function withRenderedPages<T>(
         createElement(
           DocPageProvider,
           { index: i, total: pages.length },
-          page.content,
+          createElement(PageErrorBoundary, { index: i }, page.content),
           opts.includeWatermark
             ? createElement(SheetWatermark, { text: doc.meta?.watermark })
             : null,

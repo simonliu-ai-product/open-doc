@@ -4,6 +4,7 @@ import { type DesignSystem, designToCssVars } from '../lib/design';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from '../lib/outline';
 import { DocPageProvider } from '../lib/page-context';
 import type { PageGeometry } from '../lib/sdk';
+import { PageErrorBoundary } from './page-error-boundary';
 
 type Props = {
   index: number;
@@ -107,7 +108,7 @@ export function PageFrame({
         }
       >
         <DocPageProvider index={index} total={total}>
-          {children}
+          <PageErrorBoundary index={index}>{children}</PageErrorBoundary>
           <SheetWatermark text={watermark} />
         </DocPageProvider>
       </div>
