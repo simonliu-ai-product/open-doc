@@ -2,8 +2,10 @@ import fs from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { ViteDevServer } from 'vite';
+import { checkItemResult, shouldCheckAfterTurn } from '../../agent/check-after-turn.ts';
 import { detectPackageManager } from '../../agent/install.ts';
 import { extractDocSlug, stripDocSlug } from '../../agent/prompt.ts';
+import type { AgentProvider } from '../../agent/provider.ts';
 import { createProviders } from '../../agent/providers/index.ts';
 import {
   type AgentRunner,
@@ -12,7 +14,7 @@ import {
   type TurnSettings,
 } from '../../agent/runner.ts';
 import { agentStatus, installSdk } from '../../agent/status.ts';
-import { createSessionStore, type SessionStore } from '../../agent/store.ts';
+import { createSessionStore, newId, type SessionStore } from '../../agent/store.ts';
 import {
   type AgentStreamEvent,
   type AgentTurnContext,
@@ -25,6 +27,7 @@ import { UNTITLED_DOC_ID_RE } from '../../editing/placeholder-id.ts';
 import { isLoopbackRequest, validateMutationRequest } from '../../http/request-guard.ts';
 import { BLANK_DOC_TITLE, renameDocDir, resolveEntry } from '../../ops/documents.ts';
 import { slugify } from '../../ops/import.ts';
+import { checkLayout } from '../../ops/layout.ts';
 import { DOC_ID_RE } from '../open-doc-plugin.ts';
 import { type ApiContext, BodyTooLargeError, json, readBody } from './context.ts';
 import { announceDocument } from './templates.ts';
@@ -127,6 +130,59 @@ async function renamePlaceholderDoc(
   broadcast({ type: 'doc-renamed', from: docId, to: renamed.id });
 }
 
+// An agent whose sandbox cannot start a browser cannot run `open-doc check`;
+// the dev server is not sandboxed, so it runs the check for it and the result
+// lands in the transcript. Reuses this server, so the browser stays warm.
+async function checkAfterTurn(
+  server: ViteDevServer,
+  ctx: ApiContext,
+  store: SessionStore,
+  providers: Record<string, AgentProvider>,
+  turn: TurnEnd,
+): Promise<void> {
+  const session = store.get(turn.sessionId);
+  const docId = session?.docId;
+  if (!session || !docId) return;
+  // A new turn on the same document would be checked half-written.
+  if (store.list().some((s) => s.docId === docId && s.status === 'running')) return;
+  const entry = resolveEntry(ctx, docId);
+  const entryMtimeMs = entry ? ((await fs.stat(entry).catch(() => null))?.mtimeMs ?? null) : null;
+  const check = shouldCheckAfterTurn({
+    session,
+    userItemId: turn.userItemId,
+    canOpenBrowser: providers[session.provider]?.canOpenBrowser ?? true,
+    entryMtimeMs,
+  });
+  if (!check) return;
+
+  const item = store.appendItem(session.id, {
+    kind: 'check',
+    id: newId('c'),
+    ts: new Date().toISOString(),
+    docId,
+    status: 'running',
+    pageCount: null,
+    findings: [],
+    total: 0,
+    error: null,
+  });
+  const origin = server.resolvedUrls?.local?.[0]?.replace(/\/$/, '');
+  try {
+    const report = await checkLayout(
+      { ...ctx, ...(origin ? { serverOrigin: origin } : {}) },
+      docId,
+    );
+    if (!store.get(session.id)) return;
+    store.updateItem(session.id, item.id, 'check', { status: 'done', ...checkItemResult(report) });
+  } catch (err) {
+    if (!store.get(session.id)) return;
+    store.updateItem(session.id, item.id, 'check', {
+      status: 'failed',
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 function parseRespond(raw: unknown): RespondPayload | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -180,7 +236,10 @@ export function registerAgentRoutes(server: ViteDevServer, ctx: ApiContext): voi
     },
     store,
     providers,
-    onTurnEnd: (turn) => renamePlaceholderDoc(server, ctx, store, broadcast, turn),
+    onTurnEnd: async (turn) => {
+      await renamePlaceholderDoc(server, ctx, store, broadcast, turn);
+      await checkAfterTurn(server, ctx, store, providers, turn);
+    },
   });
 
   store.subscribe(broadcast);

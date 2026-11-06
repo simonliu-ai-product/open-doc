@@ -245,6 +245,69 @@ test.describe('agent panel', () => {
     expect(sent[0]).toMatchObject({ text: 'Make the cover title red', edit: 'u-1' });
   });
 
+  test('shows the check the dev server ran after a turn, and hands its findings back', async ({
+    page,
+  }) => {
+    await mockStatus(page, () => ({ cliFound: true, ready: true, sdkVersion: '0.0.0' }));
+    const ts = new Date().toISOString();
+    const session = {
+      id: 's-check',
+      provider: 'codex',
+      title: 'Tighten page two',
+      createdAt: ts,
+      updatedAt: ts,
+      status: 'idle',
+      docId: 'alpha',
+      providerSessionId: null,
+      items: [
+        { kind: 'user', id: 'u-1', ts, text: 'Tighten page two' },
+        { kind: 'assistant', id: 'a-1', ts, text: 'Tightened it.', streaming: false },
+        { kind: 'result', id: 'r-1', ts, durationMs: 4000, costUsd: null, aborted: false },
+        {
+          kind: 'check',
+          id: 'c-1',
+          ts,
+          docId: 'alpha',
+          status: 'done',
+          pageCount: 3,
+          findings: [
+            { page: 2, severity: 'error', message: 'Text runs past the page edge', loc: '40:6' },
+            { page: 3, severity: 'warn', message: 'Type smaller than 8pt' },
+          ],
+          total: 7,
+          error: null,
+        },
+      ],
+    };
+    const { items: _items, providerSessionId: _p, ...summary } = session;
+    await page.route('**/__agent/sessions', (route) =>
+      route.fulfill({ json: { sessions: [summary] } }),
+    );
+    await page.route('**/__agent/sessions/s-check', (route) => route.fulfill({ json: session }));
+    const sent: Record<string, unknown>[] = [];
+    await page.route('**/__agent/sessions/s-check/messages', (route) => {
+      sent.push(route.request().postDataJSON());
+      return route.fulfill({ status: 202, json: { ok: true } });
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('open-doc:agent-session', 's-check');
+      localStorage.setItem('open-doc:agent-dock', '1');
+    });
+
+    await openDoc(page, 'alpha');
+    const card = page.locator('[data-agent-dock] [data-agent-check]');
+    await expect(card).toContainText('The check found 7 problems');
+    await expect(card).toContainText('Text runs past the page edge');
+    await expect(card).toContainText('+5 more');
+
+    await card.getByRole('button', { name: 'Ask the agent to fix' }).click();
+    await expect.poll(() => sent.length).toBe(1);
+    const text = String(sent[0].text);
+    expect(text).toContain('open-doc check');
+    expect(text).toContain('- page 2 [error] Text runs past the page edge (at 40:6)');
+    expect(text).toContain('5 more');
+  });
+
   test('opening the panel on another document starts a new conversation', async ({ page }) => {
     await mockStatus(page, (p) =>
       p.id === 'codex'

@@ -119,6 +119,26 @@ describe('createSessionStore', () => {
     expect(again?.items[2]).toMatchObject({ streaming: false });
   });
 
+  it('closes out a check the dev server was running when it stopped', async () => {
+    const file = path.join(dir, 'sessions.json');
+    const store = createSessionStore({ file });
+    const s = store.create('codex', 'report');
+    store.appendItem(s.id, {
+      kind: 'check',
+      id: 'c-1',
+      ts: new Date().toISOString(),
+      docId: 'report',
+      status: 'running',
+      pageCount: null,
+      findings: [],
+      total: 0,
+      error: null,
+    });
+    await store.flush();
+    const check = createSessionStore({ file }).get(s.id)?.items[0];
+    expect(check).toMatchObject({ kind: 'check', status: 'failed', error: 'interrupted' });
+  });
+
   it('drops a saved session for an agent no longer offered', async () => {
     const file = path.join(dir, 'sessions.json');
     const at = new Date().toISOString();
