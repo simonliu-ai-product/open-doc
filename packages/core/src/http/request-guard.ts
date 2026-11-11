@@ -17,16 +17,21 @@ function firstCommaToken(value: string | null): string | null {
   return first?.trim() || null;
 }
 
-function requestProto(req: Connect.IncomingMessage): 'http' | 'https' {
+/**
+ * `null` when nothing says which scheme the browser used: a plain socket with no
+ * `x-forwarded-proto`. Cloud Shell's Web Preview terminates TLS and forwards the
+ * host without the proto, so the page is https while the socket is http.
+ */
+function requestProto(req: Connect.IncomingMessage): 'http' | 'https' | null {
   const forwarded = firstCommaToken(headerValue(req, 'x-forwarded-proto'))?.toLowerCase();
   if (forwarded === 'http' || forwarded === 'https') return forwarded;
-  return 'encrypted' in req.socket && req.socket.encrypted ? 'https' : 'http';
+  return 'encrypted' in req.socket && req.socket.encrypted ? 'https' : null;
 }
 
-function normalizedOrigin(origin: string): string | null {
+function parsedOrigin(origin: string): { scheme: string; host: string } | null {
   try {
     const url = new URL(origin);
-    return `${url.protocol}//${url.host}`.toLowerCase();
+    return { scheme: url.protocol.slice(0, -1).toLowerCase(), host: url.host.toLowerCase() };
   } catch {
     return null;
   }
@@ -58,14 +63,19 @@ export function validateMutationRequest(
     return { ok: false, status: 403, error: 'opaque origin is not allowed' };
   }
 
-  const actualOrigin = normalizedOrigin(originRaw);
-  if (!actualOrigin) return { ok: false, status: 403, error: 'invalid origin header' };
+  const actual = parsedOrigin(originRaw);
+  if (!actual) return { ok: false, status: 403, error: 'invalid origin header' };
 
   const host = firstCommaToken(headerValue(req, 'x-forwarded-host')) ?? headerValue(req, 'host');
   if (!host) return { ok: false, status: 400, error: 'missing host header' };
 
-  const expectedOrigin = `${requestProto(req)}://${host}`.toLowerCase();
-  if (actualOrigin !== expectedOrigin) {
+  // One host:port serves one scheme, so when the scheme is unknown the host
+  // alone still pins the request to this server.
+  const proto = requestProto(req);
+  const schemeOk = proto
+    ? actual.scheme === proto
+    : actual.scheme === 'http' || actual.scheme === 'https';
+  if (!schemeOk || actual.host !== host.toLowerCase()) {
     return { ok: false, status: 403, error: 'origin mismatch' };
   }
 
