@@ -60,7 +60,7 @@ function ok(value: unknown) {
  * An OpsError is a refusal the caller can act on (404 wrong id, 409 stale
  * write), so it comes back as a tool error rather than a transport failure.
  */
-async function run(fn: () => Promise<unknown>) {
+async function runTool(fn: () => Promise<unknown>) {
   try {
     return ok(await fn());
   } catch (err) {
@@ -78,7 +78,17 @@ export function registerTools(
   server: McpServer,
   ctx: ApiContext,
   onFileChange?: FileChangeTap,
+  /**
+   * Awaited before every tool call. The stdio entry uses it to settle which
+   * workspace `ctx` points at, and to refuse the call when there is none.
+   */
+  ensureWorkspace?: () => Promise<void>,
 ): void {
+  const run = (fn: () => Promise<unknown>) =>
+    runTool(async () => {
+      await ensureWorkspace?.();
+      return fn();
+    });
   const docEntry = (docId: string) => path.join(ctx.docsRoot, docId, 'index.tsx');
   const notify = (event: 'add' | 'change' | 'unlink', filePath: string) => {
     onFileChange?.(event, filePath);

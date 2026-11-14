@@ -22,6 +22,8 @@ Read the matching reference **before** using a primitive:
 | Tables, stat rows, `<Chart>`, `<Sparkline>`, `<Callout>` | rendering data or callouts | `references/tables-and-charts.md` |
 | Assets + `<ImagePlaceholder>` | importing images or leaving a placeholder | `references/assets.md` |
 | Footnotes, `<Figure>`, `<Ref>`, `<DataTable>`, `<Cite>`, `<Bibliography>`, `<CodeBlock>` | notes, figures, cross-references, citations, code blocks, or `.csv` | `references/long-form.md` |
+| `<Diagram>` and `.mmd` diagrams | drawing a flow, architecture, or sequence | `references/diagrams.md` |
+| Exports, `open-doc diff`, Word output, Inspect mode, Design panel | telling the user what they can do next, or an export / review step | `references/runtime.md` |
 
 ## Themes
 
@@ -145,58 +147,18 @@ Bare elements on the sheet start from a base drawn from the design, not from a b
 
 ## Footnotes, numbering, and data
 
-Four primitives resolve themselves from the rendered pages, the same way the
-contents list does. Read `references/long-form.md` before using any of them.
+These primitives resolve themselves from the rendered pages, the same way the
+contents list does. Read the reference in brackets before using one.
 
-- **`<Footnote>`** — numbered by position, printed at the foot of the page its
-  marker landed on, and its height is taken out of that page's budget before the
-  packer breaks. On a fixed page, add `<Footnotes />` where they should print.
-- **`<Figure caption id>`** — a numbered figure (or `kind="table"`), caption and
-  content in one unbreakable block. `<ListOfFigures />` / `<ListOfTables />`
-  build the lists.
-- **`<Ref to="id" />`** — "Figure 3", plus the page when the target is elsewhere.
-- **`<Cite id="…" source="…" />` & `<Bibliography />`** — academic/report citations numbered in order of first appearance (`[1]`), deduplicated by `id`, and listed by `<Bibliography />`.
-- **`<DataTable rows={…} splittable summaryRow>`** — a print-shaped table from an imported `.csv` (supports automatic multi-page splitting with repeated headers when `splittable` is set, plus `summaryRow`, `dataBar`, `'currency'`, and `'delta'` formats).
-- **`<CodeBlock code={…} lang="ts" lineNumbers highlightLines={[…]} caption="…" />`** — zero-dependency syntax-highlighted code block with optional line numbers, highlighted lines, and figure numbering when given `caption`.
-- **`<Callout type="note|tip|warning|danger" title="…">`** — semantic callout box styled with `--od-*` tokens.
-- **`<Diagram chart={…} caption>`** — an architecture, flow, or sequence drawing from an imported `.mmd`. Given a caption it numbers as a figure, like `<Figure>`.
-- **`<Chart data x y caption>` & `<Sparkline data={…} />`** — `bar`, `horizontal-bar`, `line`, `area`, or `pie` charts from rows, plus inline SVG `<Sparkline>` for tables and stat cards. See `references/tables-and-charts.md`.
+- **`<Footnote>`** — numbered by position, printed at the foot of its page, its height taken out of that page's budget. On a fixed page, add `<Footnotes />` where they print. (`long-form.md`)
+- **`<Figure caption id>`**, **`<Ref to="id" />`**, `<ListOfFigures />` / `<ListOfTables />` — numbered figures and tables, and references to them with the page. (`long-form.md`)
+- **`<Cite id source />`** & **`<Bibliography />`** — citations numbered by first appearance. (`long-form.md`)
+- **`<DataTable rows>`** from an imported `.csv`, splittable across pages; **`<CodeBlock code lang>`** with line numbers and highlights. (`long-form.md`)
+- **`<Chart>`**, **`<Sparkline>`**, **`<Callout type>`** — charts from rows and semantic callouts. (`tables-and-charts.md`)
+- **`<Diagram chart caption>`** — flowcharts and sequence diagrams written as `.mmd` text, compiled to SVG in the document's own ink. Never use an image of a diagram that can be written. (`diagrams.md`)
 
 `meta.labels` sets what they are called (`圖`, `表`) — the numbering itself is
 structural.
-
-## Diagrams
-
-Write the drawing as Mermaid-flavoured text in `docs/<id>/<name>.mmd`, import
-it, and hand it to `<Diagram>`:
-
-```mermaid
-%% docs/my-doc/architecture.mmd
-flowchart TD
-  Client[使用者] -->|HTTPS| Gate{驗證}
-  Gate -->|通過| App[應用伺服器]
-  Gate -.->|拒絕| Deny([401])
-  App --> DB[資料庫]
-```
-
-```tsx
-import { Diagram } from '@open-document/core';
-import architecture from './architecture.mmd';
-
-<Diagram chart={architecture} caption="請求路徑" width={420} />
-```
-
-It is compiled to SVG at build time and drawn with the document's own theme
-variables, so it prints with the same ink and faces as the prose around it.
-Never reach for an image of a diagram when the diagram can be written.
-
-Supported:
-- `flowchart`/`graph` with `TD` or `LR`; nodes as `A[box]`, `A(round)`, `A([stadium])`, `A[(database)]`, `A{decision}`, `A((circle))`; links `-->`, `---`, `-.->`, `==>` with optional `|labels|`; chains `A --> B --> C`; `subgraph id [Title] ... end` clusters; `%%` comments. A link back to an earlier step is drawn round the side, clear of the steps in between.
-- `sequenceDiagram` with `participant Id as Label`, message arrows (`->>`, `-->>`, `->`, `-->`), and `Note over A,B: text` (or `Note left of` / `Note right of`).
-- Anything else in Mermaid's syntax is not supported, and a bad diagram fails the build with the line to fix.
-
-Keep `width` inside the text block: a drawing wider than the column is a layout
-fault, and `open-doc check` reports it as one.
 
 ## Table of contents
 
@@ -356,19 +318,9 @@ A document is not a slide deck. Long-form copy is the point — but it still has
 - Cite numbers with their source and date inline (`Q3 billing export, 2026-08-01`) — a report that can't be traced gets ignored.
 - Don't invent data. If a number must come from the user, leave `<ImagePlaceholder>` for a chart or an explicit `TODO:` marker in the copy and tell them at hand-off.
 
-## Runtime behavior you get for free
+## Writing for the viewer's editors
 
-- Home page lists every folder under `docs/` with a live thumbnail of page 1.
-- Document view: vertical scroll of real-size pages, a left rail that switches between page thumbnails, the outline, and the document's assets, zoom (actual size / fit width / fit page), page counter, and fullscreen reading (`F`).
-- Export PDF (print pipeline, correct `@page` size) and export HTML (self-contained, printable).
-- Hot reload: edit `index.tsx` and the pages update live.
-- **Assets panel** (`/assets` in the dev UI): upload, rename, and delete files in the global `assets/` folder or any document's `assets/` folder, with an "unused" badge and a copy-ready import line. Files you reference in source are what it scans, so an import you write by hand shows up there immediately.
-- **Inspect mode** (the "Inspect" button, dev only): click any element on a page to edit its text in place — the change is written straight back into `docs/<id>/index.tsx` — or leave a note for the agent, which is stored as a `@doc-comment` marker and processed by the `apply-comments` skill.
-- **Download menu** — PDF (true page size) and self-contained HTML.
-- **Headless render** — `open-doc export <id> --format pdf|html|png|docx` produces the same output from a script, and `open-doc check <id>` reports layout faults. Both drive the real viewer in a headless browser, so what they produce is what the Download menu produces. A PDF exported this way also carries the outline as bookmarks and is tagged for screen readers — the same headings the sidebar and `<TableOfContents />` list, so a heading marked `data-od-outline="skip"` stays out and `data-od-heading` sets the bookmark's text. (The Download menu prints through the browser's dialog, which writes no bookmarks.)
-- **What changed** — `open-doc diff <id> [--since <rev>]` (MCP: `diff_document`) renders the document as it is and as it was at a git revision (default `HEAD`), pairs the pages by content, and lists each page as same, changed, added or removed, with the lines of text that moved. It also writes `out/<id>-diff.html`, a self-contained before/after report with the changed regions outlined — hand that to a reviewer. Run it before handing back an edit, so your summary of what changed is what actually changed on the page.
-- **Word (DOCX)** — for review that runs in Word. It carries structure, not page breaks: headings become Word heading styles, `<TableOfContents />` a TOC field, `<Footnote>` real footnotes, a `flow()` header and footer a Word header and footer with page-number fields, and the theme's CJK font the East Asian font. Write headings as real `h1`–`h3` and tables as `<table>`/`<DataTable>` so they arrive as structure; anything drawn with boxes (a chart made of `div`s) arrives as a picture, and absolutely positioned layouts on fixed pages flow as plain paragraphs.
-- **Design panel** (the "Design" button in the document view, dev only): live-tweaks the `design` const — palette, fonts, type scale, margin, leading, radius — previewing on the real pages and writing the values back into `docs/<id>/index.tsx` on save.
+The viewer, exports, `open-doc check` / `export` / `diff`, the Inspect mode and the Design panel come with the framework — `references/runtime.md` lists what each does. Two of them edit your source, so write it in the shape they can read.
 
 ### Writing for the inspector
 

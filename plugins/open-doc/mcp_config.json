@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "open-doc": {
+      "command": "npx",
+      "args": ["-y", "-p", "@open-document/mcp@latest", "open-doc-mcp"]
+    }
+  }
+}

@@ -16,6 +16,18 @@ open-doc dev --mcp
 
 把 client 指向 `http://localhost:5273/mcp` 即可。沒有 session handshake——每次呼叫都是獨立的，這正是 2026-07-28 revision 所預期的無狀態形態。`legacy: 'stateless'` 保持開啟，因此 2025 世代的 client 也由同一個端點服務。
 
+## 透過 stdio
+
+給會自己啟動 MCP server 的 client（Antigravity plugin、Claude Code、Gemini CLI），套件另外提供 `open-doc-mcp` 執行檔，工具完全相同：
+
+```json
+{ "command": "npx", "args": ["-y", "-p", "@open-document/mcp@latest", "open-doc-mcp"] }
+```
+
+它作用的工作區依序是：`--cwd`（或 `OPEN_DOC_CWD`）、client 回報的第一個 root、啟動目錄或其上層——只要該處有 `open-doc.config.*` 或依賴 `@open-document/core`。找到之前每個工具都會拒絕執行，所以絕不會寫進不是 open-doc 工作區的資料夾。加上 `--server-origin http://localhost:5273`（或 `OPEN_DOC_SERVER_ORIGIN`）可讓算繪類工具沿用正在執行的 dev server。
+
+[`plugins/open-doc`](../../plugins/open-doc) 的 Antigravity plugin 用的就是這個。
+
 ## 工具
 
 | 工具 | 用途 |

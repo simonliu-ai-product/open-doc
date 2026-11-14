@@ -16,6 +16,18 @@ open-doc dev --mcp
 
 Point a client at `http://localhost:5273/mcp`. There is no session handshake — every call is independent, which is the stateless shape the 2026-07-28 revision expects. `legacy: 'stateless'` is left on, so 2025-era clients are served from the same endpoint.
 
+## Over stdio
+
+For clients that launch their own MCP servers (Antigravity plugins, Claude Code, Gemini CLI), the package ships an `open-doc-mcp` bin with the same tools:
+
+```json
+{ "command": "npx", "args": ["-y", "-p", "@open-document/mcp@latest", "open-doc-mcp"] }
+```
+
+It works on the workspace given by `--cwd` (or `OPEN_DOC_CWD`), else the first root the client reports, else the launch directory or one of its parents — whichever holds an `open-doc.config.*` or depends on `@open-document/core`. Until it finds one, every tool refuses, so it never writes into a folder that is not an open-doc workspace. Pass `--server-origin http://localhost:5273` (or `OPEN_DOC_SERVER_ORIGIN`) to let the rendering tools reuse a running dev server.
+
+The Antigravity plugin in [`plugins/open-doc`](../../plugins/open-doc) uses exactly this.
+
 ## Tools
 
 | Tool | What it does |
