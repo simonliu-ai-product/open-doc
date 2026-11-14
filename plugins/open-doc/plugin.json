@@ -1,0 +1,18 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "open-doc",
+  "displayName": "open-doc",
+  "version": "0.1.0",
+  "description": "Write print-ready documents as React — reports, proposals, memos — with A4 pagination, themes, and PDF export, in an open-doc workspace.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Write a two-page project proposal in docs/ using one of the themes",
+    "Check the layout of this document and fix anything that overflows the page",
+    "Apply the comments I left on the document"
+  ],
+  "author": { "name": "Simon Liu", "url": "https://github.com/LiuYuWei" },
+  "homepage": "https://github.com/simonliu-ai-product/open-doc",
+  "repository": "https://github.com/simonliu-ai-product/open-doc",
+  "license": "MIT",
+  "keywords": ["documents", "pdf", "react", "print", "reports"]
+}
