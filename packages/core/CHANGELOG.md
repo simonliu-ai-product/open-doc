@@ -1,5 +1,11 @@
 # @open-document/core
 
+## 0.14.3
+
+### Patch Changes
+
+- [#90](https://github.com/simonliu-ai-product/open-doc/pull/90) [`34e84f6`](https://github.com/simonliu-ai-product/open-doc/commit/34e84f65d340b6cd4af6bfc7077fc72829f3f364) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Accept edits from a page served over https by a proxy that forwards the host but not the scheme, so saving comments, text and design works in Cloud Shell's Web Preview.
+
 ## 0.14.2
 
 ### Patch Changes
