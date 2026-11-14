@@ -46,4 +46,26 @@ describe('Antigravity plugin', () => {
     expect(args).toContain(`${pkg.name}@latest`);
     expect(Object.keys(pkg.bin)).toContain(args.at(-1));
   });
+
+  // Antigravity reads plugin.json and mcp_config.json; Claude Code reads
+  // .claude-plugin/plugin.json, pointed at the same MCP file.
+  it('serves Claude Code from the same folder and the repo marketplace', () => {
+    const claude = JSON.parse(
+      readFileSync(path.join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8'),
+    ) as { name: string; version: string; mcpServers: string };
+    const antigravity = JSON.parse(readFileSync(path.join(PLUGIN, 'plugin.json'), 'utf8')) as {
+      name: string;
+      version: string;
+    };
+    expect(claude.mcpServers).toBe('./mcp_config.json');
+    expect(claude.name).toBe(antigravity.name);
+    expect(claude.version).toBe(antigravity.version);
+
+    const marketplace = JSON.parse(
+      readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'),
+    ) as { plugins: { name: string; source: string }[] };
+    expect(marketplace.plugins).toContainEqual(
+      expect.objectContaining({ name: claude.name, source: './plugins/open-doc' }),
+    );
+  });
 });
