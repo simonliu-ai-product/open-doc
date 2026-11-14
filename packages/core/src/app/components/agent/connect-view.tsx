@@ -22,14 +22,19 @@ function needsCli(p: AgentProviderStatus): boolean {
   return p.auth === 'sdk' && !p.cliFound && !p.ready;
 }
 
+// Nothing the panel can do for it yet: a CLI to install or a key to add.
+function needsSetup(p: AgentProviderStatus): boolean {
+  return needsCli(p) || (p.auth === 'api-key' && !p.keyFound);
+}
+
 export function ConnectView({ onConnected }: { onConnected?: () => void } = {}) {
   const t = useLocale();
   const { status, loading, enabled } = useAgentStatus();
   const { installing, connectErrors } = useAgentState();
   const [checking, setChecking] = useState(false);
   const providers = status?.providers ?? [];
-  const needCli = providers.length > 0 && providers.every(needsCli);
-  const anyMissing = providers.some(needsCli);
+  const needCli = providers.some(needsCli) && providers.every(needsSetup);
+  const anyMissing = providers.some(needsSetup);
 
   const checkAgain = async () => {
     setChecking(true);

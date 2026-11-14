@@ -417,7 +417,11 @@ function ModelMenu({
 }) {
   const t = useLocale();
   const [open, setOpen] = useState(false);
-  const providers = status?.enabled ? status.providers : [];
+  // A key-based agent without its key is set up from the manage view; it is
+  // not a choice here, so a Codex-only workspace keeps its single list.
+  const providers = status?.enabled
+    ? status.providers.filter((p) => p.auth !== 'api-key' || p.keyFound)
+    : [];
   const [tab, setTab] = useState<AgentProviderId | null>(providerId);
   const shownId = tab ?? providerId ?? providers[0]?.id ?? null;
   const shown = providers.find((p) => p.id === shownId) ?? null;

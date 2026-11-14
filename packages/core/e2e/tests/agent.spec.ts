@@ -39,11 +39,19 @@ test.describe('agent panel', () => {
     expect(body.enabled).toBe(true);
     // Claude Code is not offered: Anthropic does not allow a third-party
     // product to run on a reader's claude.ai login.
-    expect(body.providers.map((p) => p.id)).toEqual(['codex']);
+    expect(body.providers.map((p) => p.id)).toEqual(['codex', 'antigravity']);
     const codex = body.providers[0];
     expect(codex.sdkPackage).toBe('@openai/codex-sdk');
     expect(codex.cliCommand).toBe('codex');
     expect(typeof codex.ready).toBe('boolean');
+    // Antigravity runs on a Gemini API key and preview terms, never a sign-in,
+    // and the status says only whether a key exists, never the key.
+    const antigravity = body.providers[1] as ProviderStatus & Record<string, unknown>;
+    expect(antigravity.auth).toBe('api-key');
+    expect(antigravity.preview).toBe(true);
+    expect(typeof antigravity.keyFound).toBe('boolean');
+    expect(antigravity.consent).toMatchObject({ accepted: false });
+    expect(JSON.stringify(antigravity)).not.toMatch(/AIza/);
   });
 
   test('sessions can be created, listed, read and deleted', async ({ request }) => {
