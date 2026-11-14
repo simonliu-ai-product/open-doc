@@ -1,5 +1,16 @@
 # @open-document/mcp
 
+## 0.9.0
+
+### Minor Changes
+
+- [#94](https://github.com/simonliu-ai-product/open-doc/pull/94) [`c2fb00d`](https://github.com/simonliu-ai-product/open-doc/commit/c2fb00db3f976e7c545027dbf180542567bee81f) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Add an `open-doc-mcp` bin that serves the same tools over stdio, for clients that launch their own MCP servers — the open-doc plugin in `plugins/open-doc` among them, which installs into Antigravity (`agy plugin install https://github.com/simonliu-ai-product/open-doc`) and Claude Code (`/plugin install open-doc --marketplace simonliu-ai-product/open-doc`). It works on the workspace given by `--cwd`, else the client's roots, else the launch directory or one of its parents, and every tool refuses until it finds one. The `doc-authoring` skill moves its runtime feature list and its diagram guide into `references/runtime.md` and `references/diagrams.md`, so the skill body fits what Antigravity loads.
+
+### Patch Changes
+
+- Updated dependencies [[`c2fb00d`](https://github.com/simonliu-ai-product/open-doc/commit/c2fb00db3f976e7c545027dbf180542567bee81f)]:
+  - @open-document/core@0.15.1
+
 ## 0.8.3
 
 ### Patch Changes
