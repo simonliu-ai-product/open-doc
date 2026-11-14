@@ -1,3 +1,4 @@
+import path from 'node:path';
 import {
   answersPrompt,
   buildTurnPrompt,
@@ -289,9 +290,12 @@ export function createAgentRunner(opts: {
 
     const promptOpts = promptOptions();
     const prompt = buildTurnPrompt(promptText, context, promptOpts.docsDir);
+    const docId = context?.docId ?? session.docId;
     void provider
       .run({
         cwd: userCwd,
+        docsDir: promptOpts.docsDir,
+        docDir: docId ? path.join(userCwd, promptOpts.docsDir, docId) : null,
         writableRoots,
         prompt,
         systemPromptAppend: systemPromptAppend(provider.askInstruction, {

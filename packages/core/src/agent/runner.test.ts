@@ -40,7 +40,7 @@ function setup(run: AgentProvider['run'], onTurnEnd?: (turn: TurnEnd) => void, c
     userCwd: '/ws',
     writableRoots: ['/ws/docs'],
     store,
-    providers: { codex: provider },
+    providers: { codex: provider, antigravity: provider },
     onTurnEnd,
   });
   return { store, runner };

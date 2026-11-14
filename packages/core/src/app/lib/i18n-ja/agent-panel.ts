@@ -112,4 +112,53 @@ export const AGENT_PANEL: Record<string, string> = {
   'The check found {count} problems': 'チェックで {count} 件の問題が見つかりました',
   '+{count} more': 'ほか {count} 件',
   'Ask the agent to fix': 'エージェントに修正を依頼',
+  'Preview version': 'プレビュー版',
+  'Its behavior, models and prices may change.': '動作、モデル、料金は変更される場合があります。',
+  'GEMINI_API_KEY found': 'GEMINI_API_KEY が見つかりました',
+  'GEMINI_API_KEY not set': 'GEMINI_API_KEY が未設定です',
+  'Add GEMINI_API_KEY to .env in this workspace, or to the environment the dev server runs in, then check again. The key stays on this machine.':
+    'このワークスペースの .env、または dev server を実行する環境変数に GEMINI_API_KEY を追加してから、もう一度確認してください。キーはこのマシンの外に出ません。',
+  'Set GEMINI_API_KEY and accept the preview terms to use {name}.':
+    '{name} を使うには、GEMINI_API_KEY を設定してプレビュー版の利用条件に同意してください。',
+  'Review terms': '利用条件を読む',
+  'Before you use {name}': '{name} を使う前に',
+  'Read these terms. The panel runs {name} only after you accept them.':
+    '以下の利用条件をお読みください。同意するまで、パネルは {name} を実行しません。',
+  'I have read and agree to these terms': '利用条件を読み、同意します',
+  Accept: '同意する',
+  'Terms accepted · {version}': '利用条件に同意済み · {version}',
+  'Withdraw consent': '同意を取り消す',
+  'Could not save your answer': '回答を保存できませんでした',
+  'Antigravity here is a Google preview (antigravity-preview-09-2026). Its behavior, models, prices and availability may change or stop without notice, and this integration is itself an early prototype.':
+    'ここでの Antigravity は Google のプレビュー版（antigravity-preview-09-2026）です。動作、モデル、料金、提供状況は予告なく変更・終了される場合があり、この連携自体も初期のプロトタイプです。',
+  'Usage is billed to the key in GEMINI_API_KEY at Gemini API rates. One turn is capped at 500,000 tokens. The cost shown after a turn is an estimate; your Google bill is what counts.':
+    '利用料金は Gemini API の料金で、GEMINI_API_KEY のキーに請求されます。1 ターンの上限は 500,000 トークンです。ターン後に表示される金額は見積もりで、実際の金額は Google の請求に従います。',
+  'open-doc uses only your API key. It never uses your Antigravity or Google account sign-in, and the key is never sent to the browser.':
+    'open-doc が使うのは API キーだけです。Antigravity や Google アカウントのログインは使わず、キーがブラウザに送られることもありません。',
+  'You can withdraw your consent at any time from Manage agents.':
+    '同意は「エージェントを管理」からいつでも取り消せます。',
+  "With local mode on, open-doc downloads Google's gemini-api CLI (v0.4.6, checksum-verified) into node_modules/.open-doc and runs it while the dev server runs. The agent's file tools then work directly on this project folder on your computer, with shell commands disabled.":
+    'ローカルモードをオンにすると、open-doc は Google の gemini-api CLI（v0.4.6、checksum 検証済み）を node_modules/.open-doc にダウンロードし、dev server の実行中に起動します。エージェントのファイルツールは、このコンピューター上のプロジェクトフォルダで直接動作し、シェルコマンドは無効になります。',
+  "Without local mode, every turn uploads the open document's folder and the workspace's .agents/skills to a Google cloud sandbox. In both modes your messages and the files the agent reads are sent to Google through the Gemini API, so do not use it on documents you may not share with Google. The Gemini API terms apply, and on the free tier Google may use the data to improve its products.":
+    'ローカルモードでない場合、ターンごとに開いているドキュメントのフォルダとワークスペースの .agents/skills を Google のクラウド sandbox にアップロードします。どちらのモードでも、メッセージとエージェントが読むファイルは Gemini API 経由で Google に送られるため、Google と共有できないドキュメントには使わないでください。Gemini API の利用規約が適用され、無料枠ではデータが Google のサービス改善に使われる場合があります。',
+  "In the cloud sandbox, the agent's edits are copied back into the document's folder when a turn ends; a file you changed during the turn is not overwritten, and deletions are not copied back. In local mode the agent edits your files directly. Either way, review the changes before you rely on them.":
+    'クラウド sandbox では、ターン終了時にエージェントの編集がドキュメントのフォルダに書き戻されます。ターン中に変更したファイルは上書きされず、削除は反映されません。ローカルモードではエージェントがファイルを直接編集します。どちらの場合も、変更は確認してから使ってください。',
+  'Runs on this computer · edits appear live':
+    'このコンピューターで実行 · 編集がすぐに表示されます',
+  'Runs in a Google cloud sandbox · edits arrive when a turn ends':
+    'Google のクラウド sandbox で実行 · 編集はターン終了時に反映されます',
+  'Run on this computer': 'このコンピューターで実行する',
+  'Setting up local mode': 'ローカルモードを設定中',
+  "Recommended. Downloads Google's gemini-api CLI into this project; no Docker or terminal needed.":
+    'おすすめ。Google の gemini-api CLI をこのプロジェクトにダウンロードします。Docker やターミナルは不要です。',
+  'Local mode is not available on this system yet.':
+    'このシステムではまだローカルモードを使えません。',
+  'Could not set up local mode': 'ローカルモードを設定できませんでした',
+  'Try {name}': '{name} を試す',
+  'Gemini edits this document right on your computer, and you watch each change land on the page.':
+    'Gemini がこのコンピューター上でドキュメントを直接編集し、変更はすぐにページに反映されます。',
+  Enable: '有効にする',
+  'Not now': 'あとで',
+  'Accept the preview terms to use {name}.':
+    'プレビュー版の利用条件に同意すると {name} を使えます。',
 };

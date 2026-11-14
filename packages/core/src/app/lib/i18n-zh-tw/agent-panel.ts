@@ -110,4 +110,50 @@ export const AGENT_PANEL: Record<string, string> = {
   'The check found {count} problems': '檢查發現 {count} 個問題',
   '+{count} more': '還有 {count} 個',
   'Ask the agent to fix': '請 agent 修正',
+  'Preview version': '預覽版',
+  'Its behavior, models and prices may change.': '行為、模型與價格都可能變動。',
+  'GEMINI_API_KEY found': '已找到 GEMINI_API_KEY',
+  'GEMINI_API_KEY not set': '尚未設定 GEMINI_API_KEY',
+  'Add GEMINI_API_KEY to .env in this workspace, or to the environment the dev server runs in, then check again. The key stays on this machine.':
+    '請在這個工作區的 .env，或 dev server 執行的環境變數中加入 GEMINI_API_KEY，再重新檢查。金鑰只會留在這台電腦。',
+  'Set GEMINI_API_KEY and accept the preview terms to use {name}.':
+    '設定 GEMINI_API_KEY 並同意預覽版條款後，才能使用 {name}。',
+  'Review terms': '閱讀條款',
+  'Before you use {name}': '使用 {name} 之前',
+  'Read these terms. The panel runs {name} only after you accept them.':
+    '請閱讀以下條款。同意之後，面板才會執行 {name}。',
+  'I have read and agree to these terms': '我已閱讀並同意以上條款',
+  Accept: '同意',
+  'Terms accepted · {version}': '已同意條款 · {version}',
+  'Withdraw consent': '撤回同意',
+  'Could not save your answer': '無法儲存你的選擇',
+  'Antigravity here is a Google preview (antigravity-preview-09-2026). Its behavior, models, prices and availability may change or stop without notice, and this integration is itself an early prototype.':
+    '這裡的 Antigravity 是 Google 的預覽版（antigravity-preview-09-2026）。它的行為、模型、價格與可用性可能隨時變動或停止，而且這個整合本身也還是早期雛形。',
+  'Usage is billed to the key in GEMINI_API_KEY at Gemini API rates. One turn is capped at 500,000 tokens. The cost shown after a turn is an estimate; your Google bill is what counts.':
+    '費用會以 Gemini API 的價格，計入 GEMINI_API_KEY 對應的帳戶。每個 turn 上限 500,000 tokens。turn 結束後顯示的費用是估算值，實際以 Google 帳單為準。',
+  'open-doc uses only your API key. It never uses your Antigravity or Google account sign-in, and the key is never sent to the browser.':
+    'open-doc 只使用你的 API key，不會使用你的 Antigravity 或 Google 帳號登入，金鑰也不會傳到瀏覽器。',
+  'You can withdraw your consent at any time from Manage agents.':
+    '你可以隨時在「管理 agent」撤回同意。',
+  "With local mode on, open-doc downloads Google's gemini-api CLI (v0.4.6, checksum-verified) into node_modules/.open-doc and runs it while the dev server runs. The agent's file tools then work directly on this project folder on your computer, with shell commands disabled.":
+    '開啟本機模式後，open-doc 會把 Google 的 gemini-api CLI（v0.4.6，已驗證 checksum）下載到 node_modules/.open-doc，並在 dev server 執行期間啟動它。之後 agent 的檔案工具會直接在你電腦上的這個專案資料夾裡作業，而且停用 shell 指令。',
+  "Without local mode, every turn uploads the open document's folder and the workspace's .agents/skills to a Google cloud sandbox. In both modes your messages and the files the agent reads are sent to Google through the Gemini API, so do not use it on documents you may not share with Google. The Gemini API terms apply, and on the free tier Google may use the data to improve its products.":
+    '未開啟本機模式時，每個 turn 都會把目前文件的資料夾與工作區的 .agents/skills 上傳到 Google 的雲端 sandbox。兩種模式下，你的訊息和 agent 讀取的檔案都會透過 Gemini API 傳給 Google，不能交給 Google 的文件請不要使用。使用時適用 Gemini API 的服務條款；免費層的資料可能會被 Google 用來改善產品。',
+  "In the cloud sandbox, the agent's edits are copied back into the document's folder when a turn ends; a file you changed during the turn is not overwritten, and deletions are not copied back. In local mode the agent edits your files directly. Either way, review the changes before you rely on them.":
+    '在雲端 sandbox 中，agent 的修改會在 turn 結束時寫回文件資料夾；turn 進行中你改過的檔案不會被覆蓋，刪除檔案也不會同步回來。本機模式下，agent 會直接修改你的檔案。不論哪種模式，依賴這些修改之前請先檢查。',
+  'Runs on this computer · edits appear live': '在這台電腦執行 · 修改即時顯示',
+  'Runs in a Google cloud sandbox · edits arrive when a turn ends':
+    '在 Google 雲端 sandbox 執行 · turn 結束時才同步修改',
+  'Run on this computer': '改為在這台電腦執行',
+  'Setting up local mode': '正在設定本機模式',
+  "Recommended. Downloads Google's gemini-api CLI into this project; no Docker or terminal needed.":
+    '建議使用。會把 Google 的 gemini-api CLI 下載到這個專案，不需要 Docker 或終端機。',
+  'Local mode is not available on this system yet.': '這個系統目前還不支援本機模式。',
+  'Could not set up local mode': '無法設定本機模式',
+  'Try {name}': '試用 {name}',
+  'Gemini edits this document right on your computer, and you watch each change land on the page.':
+    'Gemini 會直接在你的電腦上編輯這份文件，每一處修改都會即時出現在頁面上。',
+  Enable: '啟用',
+  'Not now': '稍後再說',
+  'Accept the preview terms to use {name}.': '同意預覽版條款後即可使用 {name}。',
 };

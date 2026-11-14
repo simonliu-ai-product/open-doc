@@ -1,3 +1,4 @@
+import { Orbit } from 'lucide-react';
 import type { SVGProps } from 'react';
 import type { AgentProviderId } from '../../../agent/types';
 
@@ -19,5 +20,8 @@ export function ProviderLogo({
   provider,
   ...props
 }: { provider: AgentProviderId } & SVGProps<SVGSVGElement>) {
+  if (provider === 'antigravity') {
+    return <Orbit data-provider={provider} aria-hidden="true" {...props} />;
+  }
   return <OpenAILogo data-provider={provider} {...props} />;
 }
