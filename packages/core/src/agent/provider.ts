@@ -1,5 +1,12 @@
 import path from 'node:path';
-import type { AgentEffort, AgentModelOption, AgentProviderId, AgentQuestion } from './types.ts';
+import type {
+  AgentEffort,
+  AgentModelOption,
+  AgentProviderAuth,
+  AgentProviderId,
+  AgentQuestion,
+  AgentRuntime,
+} from './types.ts';
 
 export type ProviderEvent =
   | { type: 'session-id'; id: string }
@@ -20,6 +27,9 @@ export type PermissionRequest = { tool: string; title: string; detail: string | 
 
 export type ProviderRunOptions = {
   cwd: string;
+  docsDir: string;
+  // The open document's folder; null when the turn has no document.
+  docDir: string | null;
   // Directories the agent may write to without asking: the deck and asset
   // folders. Edits anywhere else (configs, package.json) need approval.
   writableRoots: string[];
@@ -45,6 +55,19 @@ export interface AgentProvider {
   // Whether the agent's own commands can start a browser. `open-doc check` and
   // the page preview both drive Chromium, which Codex's macOS sandbox kills.
   canOpenBrowser: boolean;
+  auth?: AgentProviderAuth;
+  preview?: boolean;
+  // Set when the user must accept terms before a turn runs; bump it when the
+  // terms change so everyone accepts the new text.
+  consentVersion?: string;
+  // For 'api-key' agents, which have no SDK to resolve.
+  hasKey?(cwd: string): Promise<boolean>;
+  // Where the agent's tools run, for agents that can run either in the cloud
+  // or on this machine once `install` has fetched what that needs.
+  runtime?(cwd: string): Promise<AgentRuntime>;
+  install?(cwd: string): Promise<void>;
+  // Stops anything the provider started that outlives a turn.
+  dispose?(): void;
   models(): Promise<AgentModelOption[]>;
   run(opts: ProviderRunOptions): Promise<void>;
 }

@@ -3,6 +3,7 @@ import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { ViteDevServer } from 'vite';
 import { checkItemResult, shouldCheckAfterTurn } from '../../agent/check-after-turn.ts';
+import { setConsent } from '../../agent/consent.ts';
 import { detectPackageManager } from '../../agent/install.ts';
 import { extractDocSlug, stripDocSlug } from '../../agent/prompt.ts';
 import type { AgentProvider } from '../../agent/provider.ts';
@@ -34,6 +35,7 @@ import { announceDocument } from './templates.ts';
 
 // GET    /__agent/status                      → AgentStatus
 // POST   /__agent/install                     { provider } → { ok }
+// POST   /__agent/consent                     { provider, version, accept } → { ok }
 // GET    /__agent/sessions                    → { sessions: AgentSessionSummary[] }
 // POST   /__agent/sessions                    { provider, docId? } → AgentSession
 // GET    /__agent/sessions/:id                → AgentSession
@@ -247,6 +249,7 @@ export function registerAgentRoutes(server: ViteDevServer, ctx: ApiContext): voi
     clearInterval(heartbeat);
     for (const stream of streams) stream.end();
     runner.stopAll();
+    for (const provider of Object.values(providers)) provider.dispose?.();
     void store.flush();
   });
 
@@ -291,6 +294,13 @@ export function registerAgentRoutes(server: ViteDevServer, ctx: ApiContext): voi
         const body = (await readBody(req, AGENT_BODY_LIMIT)) as { provider?: unknown };
         if (!isAgentProviderId(body.provider)) return json(res, 400, { error: 'invalid provider' });
         const provider = providers[body.provider];
+        if (provider.install) {
+          await provider.install(ctx.userCwd);
+          return json(res, 200, { ok: true });
+        }
+        if (provider.auth === 'api-key') {
+          return json(res, 400, { error: `${provider.name} needs an API key, not an install` });
+        }
         const pm = await detectPackageManager(ctx.userCwd);
         const pkg = provider.sdkPackage;
         let install = installsInFlight.get(pkg);
@@ -299,6 +309,26 @@ export function registerAgentRoutes(server: ViteDevServer, ctx: ApiContext): voi
           installsInFlight.set(pkg, install);
         }
         await install;
+        return json(res, 200, { ok: true });
+      }
+
+      if (method === 'POST' && url.pathname === '/consent') {
+        const guard = validateMutationRequest(req, { requireJsonBody: true });
+        if (!guard.ok) return json(res, guard.status, { error: guard.error });
+        const body = (await readBody(req, AGENT_BODY_LIMIT)) as {
+          provider?: unknown;
+          version?: unknown;
+          accept?: unknown;
+        };
+        if (!isAgentProviderId(body.provider)) return json(res, 400, { error: 'invalid provider' });
+        const version = providers[body.provider].consentVersion;
+        if (!version) return json(res, 400, { error: 'this agent has no terms to accept' });
+        // The panel echoes the version it showed, so terms changed under an
+        // open panel are never accepted unread.
+        if (body.accept === true && body.version !== version) {
+          return json(res, 409, { error: 'the terms changed; reload to read the new version' });
+        }
+        await setConsent(ctx.userCwd, body.provider, body.accept === true ? version : null);
         return json(res, 200, { ok: true });
       }
 

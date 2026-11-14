@@ -1,6 +1,8 @@
-// Codex only: Anthropic does not allow a third-party product to run on a reader's
-// claude.ai login, so Claude Code is not offered here. A new agent is one more id.
-export const AGENT_PROVIDER_IDS = ['codex'] as const;
+// Anthropic does not allow a third-party product to run on a reader's claude.ai
+// login, so Claude Code is not offered here. Antigravity runs on the user's own
+// Gemini API key, never their Antigravity sign-in, for the same reason. A new
+// agent is one more id.
+export const AGENT_PROVIDER_IDS = ['codex', 'antigravity'] as const;
 
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 
@@ -33,6 +35,22 @@ export type AgentProviderStatus = {
   cliVersion: string | null;
   ready: boolean;
   models: AgentModelOption[];
+  // 'sdk' agents connect by installing their SDK beside a signed-in CLI;
+  // 'api-key' agents need a key in the environment and nothing installed.
+  auth: AgentProviderAuth;
+  preview: boolean;
+  keyFound: boolean | null;
+  // Terms the user accepts before the panel may run this agent.
+  consent: { version: string; accepted: boolean } | null;
+  runtime: AgentRuntime | null;
+};
+
+export type AgentProviderAuth = 'sdk' | 'api-key';
+
+export type AgentRuntime = {
+  mode: 'local' | 'cloud';
+  localSupported: boolean;
+  localVersion: string | null;
 };
 
 export type AgentStatus = {

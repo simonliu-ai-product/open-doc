@@ -365,6 +365,19 @@ export async function installProvider(provider: AgentProviderId): Promise<void> 
   }
 }
 
+export async function setProviderConsent(
+  provider: AgentProviderId,
+  version: string,
+  accept: boolean,
+): Promise<void> {
+  await request('/__agent/consent', post({ provider, version, accept }));
+  if (accept) {
+    writeStorage(PROVIDER_KEY, provider);
+    setState({ provider });
+  }
+  await refreshStatus();
+}
+
 let autoConnecting: Promise<void> | null = null;
 
 export function autoConnect(): Promise<void> {
@@ -372,7 +385,7 @@ export function autoConnect(): Promise<void> {
   const status = state.status;
   if (!status?.enabled) return Promise.resolve();
   const pending = status.providers.filter(
-    (p) => p.cliFound && !p.ready && !state.connectErrors[p.id],
+    (p) => p.auth === 'sdk' && p.cliFound && !p.ready && !state.connectErrors[p.id],
   );
   if (pending.length === 0) return Promise.resolve();
   autoConnecting = (async () => {

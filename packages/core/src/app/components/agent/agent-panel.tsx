@@ -44,11 +44,12 @@ import type {
   AgentEffort,
   AgentModelOption,
   AgentProviderId,
+  AgentProviderStatus,
   AgentTurnContext,
   RespondPayload,
 } from '../../../agent/types';
 import { Composer, ContextChip } from './composer';
-import { ConnectView } from './connect-view';
+import { ConnectView, PreviewBadge, ProviderConsent } from './connect-view';
 import { HistoryView } from './history-view';
 import { ProviderLogo } from './provider-logo';
 import { Transcript } from './transcript';
@@ -77,6 +78,19 @@ export function AgentPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const running = session?.status === 'running';
   const showConnect = !loading && (!connected || manage);
+  // An agent that only waits for its terms is offered right in the chat, so
+  // trying it never means finding the manage view first.
+  // Kept while its setup runs too: accepting flips the terms to accepted at
+  // once, and the card must stay to show local mode getting ready.
+  const [enablingId, setEnablingId] = useState<AgentProviderId | null>(null);
+  const pendingAgent =
+    status?.providers.find(
+      (p) =>
+        p.id === enablingId ||
+        (p.auth === 'api-key' && p.keyFound && p.consent && !p.consent.accepted),
+    ) ?? null;
+  const [dismissedPromo, setDismissedPromo] = useState(readPromoHidden);
+  const promoHidden = pendingAgent !== null && dismissedPromo === pendingAgent.id;
 
   useEffect(() => {
     if (status) void autoConnect();
@@ -290,7 +304,13 @@ export function AgentPanel({
         <p className="px-4 py-5 text-[12px] text-muted-foreground">{t.agent.statusLoading}…</p>
       ) : showConnect ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <ConnectView />
+          <ConnectView
+            onConnected={() => {
+              setManage(false);
+              setView('chat');
+              setActiveSession(null);
+            }}
+          />
         </div>
       ) : view === 'history' ? (
         <HistoryView
@@ -323,6 +343,23 @@ export function AgentPanel({
             <NewDocState providerName={providerName} />
           ) : (
             <EmptyState
+              promo={
+                pendingAgent && !promoHidden ? (
+                  <EnableAgentCard
+                    provider={pendingAgent}
+                    onStart={() => setEnablingId(pendingAgent.id)}
+                    onCancel={() => setEnablingId(null)}
+                    onEnabled={() => {
+                      setEnablingId(null);
+                      setActiveSession(null);
+                    }}
+                    onDismiss={() => {
+                      setDismissedPromo(pendingAgent.id);
+                      writePromoHidden(pendingAgent.id);
+                    }}
+                  />
+                ) : null
+              }
               pendingComments={pendingComments}
               hasDoc={Boolean(context.docId)}
               onCreate={createDoc}
@@ -387,6 +424,7 @@ function ModelMenu({
   const choice = shown?.ready ? resolveModelChoice(shown.models, modelChoices[shown.id]) : null;
   const selectedModel = shown?.id === providerId ? (model ?? choice?.model) : choice?.model;
   const selectedEffort = shown?.id === providerId ? effort : (choice?.effort ?? null);
+  const current = providers.find((p) => p.id === providerId) ?? null;
 
   return (
     <Popover
@@ -406,6 +444,7 @@ function ModelMenu({
           <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/50" />
         )}
         <span className="truncate">{model ? modelLabel(model, t) : t.agent.title}</span>
+        {current?.preview && <PreviewBadge />}
         {effort && (
           <span className="shrink-0 font-normal text-muted-foreground">
             {t.agent.efforts[effort]}
@@ -424,26 +463,37 @@ function ModelMenu({
                 aria-selected={p.id === shownId}
                 onClick={() => setTab(p.id)}
                 className={cn(
-                  'flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[5px] text-[12px] font-medium text-muted-foreground outline-none transition-colors duration-100 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30',
+                  'flex h-7 min-w-0 flex-1 basis-0 items-center justify-center gap-1.5 rounded-[5px] px-2 text-[12px] font-medium text-muted-foreground outline-none transition-colors duration-100 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30',
                   p.id === shownId && 'bg-background text-foreground shadow-edge',
                 )}
               >
                 <ProviderLogo provider={p.id} className="size-3.5 shrink-0" />
-                {p.name}
+                <span className="truncate">{p.name}</span>
               </button>
             ))}
           </div>
         )}
 
+        {shown?.preview && (
+          <p className="mb-1 flex items-start gap-1.5 px-2 pt-1 text-[11px] leading-relaxed text-muted-foreground">
+            <PreviewBadge className="mt-px" />
+            <span>{t.agent.previewHint}</span>
+          </p>
+        )}
+
         {shown && !shown.ready ? (
           <div className="flex flex-col items-start gap-2 px-2 py-2.5">
             <p className="text-[12px] leading-relaxed text-muted-foreground">
-              {shown.cliFound
-                ? format(t.agent.connectInstallHint, {
-                    pkg: shown.sdkPackage,
-                    pm: status?.packageManager ?? 'npm',
+              {shown.auth === 'api-key'
+                ? format(shown.keyFound ? t.agent.notReadyTerms : t.agent.notReadyApiKey, {
+                    name: shown.name,
                   })
-                : format(t.agent.cliHint, { name: shown.name })}
+                : shown.cliFound
+                  ? format(t.agent.connectInstallHint, {
+                      pkg: shown.sdkPackage,
+                      pm: status?.packageManager ?? 'npm',
+                    })
+                  : format(t.agent.cliHint, { name: shown.name })}
             </p>
             <Button
               size="xs"
@@ -570,6 +620,7 @@ function NewDocState({ providerName }: { providerName: string }) {
 }
 
 function EmptyState({
+  promo,
   pendingComments,
   hasDoc,
   onCreate,
@@ -577,6 +628,7 @@ function EmptyState({
   onTheme,
   onEdit,
 }: {
+  promo: ReactNode;
   pendingComments: number;
   hasDoc: boolean;
   onCreate: () => void;
@@ -586,42 +638,47 @@ function EmptyState({
 }) {
   const t = useLocale();
   return (
-    <div className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto px-4 py-5">
-      <span className="eyebrow">{t.agent.title}</span>
-      <h2 className="mt-1.5 font-heading text-[15px] font-semibold tracking-tight">
-        {t.agent.emptyTitle}
-      </h2>
-      <p className="mt-1 text-[12.5px] text-muted-foreground">{t.agent.emptyHint}</p>
-      <div className="mt-4 flex flex-col gap-1.5">
-        {hasDoc && pendingComments > 0 && (
+    // `justify-end` would clip whatever overflows the top, so a long card (the
+    // terms) is pushed down with an auto margin instead and still scrolls.
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5">
+      <div className="mt-auto">
+        <span className="eyebrow">{t.agent.title}</span>
+        <h2 className="mt-1.5 font-heading text-[15px] font-semibold tracking-tight">
+          {t.agent.emptyTitle}
+        </h2>
+        <p className="mt-1 text-[12.5px] text-muted-foreground">{t.agent.emptyHint}</p>
+        <div className="mt-4 flex flex-col gap-1.5">
+          {promo}
+          {hasDoc && pendingComments > 0 && (
+            <QuickAction
+              icon={<MessageSquare />}
+              label={`${t.agent.quickApply} · ${format(plural(pendingComments, t.agent.pendingComments), { count: pendingComments })}`}
+              hint={t.agent.quickApplyHint}
+              tone="brand"
+              onClick={onApply}
+            />
+          )}
+          {hasDoc && (
+            <QuickAction
+              icon={<Pencil />}
+              label={t.agent.quickEdit}
+              hint={t.agent.quickEditHint}
+              onClick={onEdit}
+            />
+          )}
           <QuickAction
-            icon={<MessageSquare />}
-            label={`${t.agent.quickApply} · ${format(plural(pendingComments, t.agent.pendingComments), { count: pendingComments })}`}
-            hint={t.agent.quickApplyHint}
-            tone="brand"
-            onClick={onApply}
+            icon={<Presentation />}
+            label={t.agent.quickCreate}
+            hint={t.agent.quickCreateHint}
+            onClick={onCreate}
           />
-        )}
-        {hasDoc && (
           <QuickAction
-            icon={<Pencil />}
-            label={t.agent.quickEdit}
-            hint={t.agent.quickEditHint}
-            onClick={onEdit}
+            icon={<Palette />}
+            label={t.agent.quickTheme}
+            hint={t.agent.quickThemeHint}
+            onClick={onTheme}
           />
-        )}
-        <QuickAction
-          icon={<Presentation />}
-          label={t.agent.quickCreate}
-          hint={t.agent.quickCreateHint}
-          onClick={onCreate}
-        />
-        <QuickAction
-          icon={<Palette />}
-          label={t.agent.quickTheme}
-          hint={t.agent.quickThemeHint}
-          onClick={onTheme}
-        />
+        </div>
       </div>
     </div>
   );
@@ -691,5 +748,82 @@ function BetaBadge() {
         <p className="mt-1 text-[11.5px] text-background/70 leading-relaxed">{t.agent.betaHint}</p>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+const PROMO_KEY = 'open-doc:agent-promo-hidden';
+
+function readPromoHidden(): string | null {
+  try {
+    return localStorage.getItem(PROMO_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writePromoHidden(id: string): void {
+  try {
+    localStorage.setItem(PROMO_KEY, id);
+  } catch {}
+}
+
+function EnableAgentCard({
+  provider,
+  onStart,
+  onCancel,
+  onEnabled,
+  onDismiss,
+}: {
+  provider: AgentProviderStatus;
+  onStart: () => void;
+  onCancel: () => void;
+  onEnabled: () => void;
+  onDismiss: () => void;
+}) {
+  const t = useLocale();
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      data-agent-enable={provider.id}
+      className="mb-1.5 rounded-[8px] border border-border bg-card p-3 shadow-edge"
+    >
+      <h3 className="flex items-center gap-1.5 font-heading text-[13px] font-semibold tracking-tight">
+        <ProviderLogo provider={provider.id} className="size-3.5 shrink-0" />
+        {format(t.agent.enableTitle, { name: provider.name })}
+        {provider.preview && <PreviewBadge />}
+      </h3>
+      {open ? (
+        <div className="mt-3 border-t border-border pt-3">
+          <ProviderConsent
+            provider={provider}
+            onCancel={() => {
+              setOpen(false);
+              onCancel();
+            }}
+            onDone={onEnabled}
+          />
+        </div>
+      ) : (
+        <>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+            {t.agent.enableHint}
+          </p>
+          <div className="mt-2.5 flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                setOpen(true);
+                onStart();
+              }}
+            >
+              {t.agent.enable}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onDismiss}>
+              {t.agent.enableLater}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

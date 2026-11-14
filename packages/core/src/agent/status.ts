@@ -1,3 +1,4 @@
+import { hasConsent } from './consent.ts';
 import { commandVersion, findOnPath, resolveWorkspacePackage } from './detect.ts';
 import { type PackageManager, runCommand } from './install.ts';
 import type { AgentProvider } from './provider.ts';
@@ -9,6 +10,34 @@ async function providerStatus(
   userCwd: string,
   provider: AgentProvider,
 ): Promise<AgentProviderStatus> {
+  const consent = provider.consentVersion
+    ? {
+        version: provider.consentVersion,
+        accepted: await hasConsent(userCwd, provider.id, provider.consentVersion),
+      }
+    : null;
+  const runtime = provider.runtime ? await provider.runtime(userCwd) : null;
+  const shared = { preview: provider.preview === true, consent, runtime };
+  if (provider.auth === 'api-key') {
+    const [keyFound, models] = await Promise.all([
+      provider.hasKey ? provider.hasKey(userCwd) : Promise.resolve(false),
+      provider.models(),
+    ]);
+    return {
+      id: provider.id,
+      name: provider.name,
+      sdkPackage: '',
+      sdkVersion: null,
+      cliCommand: '',
+      cliFound: false,
+      cliVersion: null,
+      ready: keyFound && consent?.accepted !== false,
+      models,
+      auth: 'api-key',
+      keyFound,
+      ...shared,
+    };
+  }
   const sdk = resolveWorkspacePackage(userCwd, provider.sdkPackage);
   const cliPath = findOnPath(provider.cliCommand);
   const [cliVersion, models] = await Promise.all([
@@ -23,8 +52,11 @@ async function providerStatus(
     cliCommand: provider.cliCommand,
     cliFound: cliPath !== null,
     cliVersion,
-    ready: sdk !== null,
+    ready: sdk !== null && consent?.accepted !== false,
     models,
+    auth: 'sdk',
+    keyFound: null,
+    ...shared,
   };
 }
 

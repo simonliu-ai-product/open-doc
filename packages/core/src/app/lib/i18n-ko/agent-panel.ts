@@ -111,4 +111,52 @@ export const AGENT_PANEL: Record<string, string> = {
   'The check found {count} problems': '검사에서 문제 {count}개를 찾았습니다',
   '+{count} more': '그 외 {count}개',
   'Ask the agent to fix': '에이전트에게 수정 요청',
+  'Preview version': '프리뷰 버전',
+  'Its behavior, models and prices may change.': '동작, 모델, 가격이 바뀔 수 있습니다.',
+  'GEMINI_API_KEY found': 'GEMINI_API_KEY 찾음',
+  'GEMINI_API_KEY not set': 'GEMINI_API_KEY 설정 안 됨',
+  'Add GEMINI_API_KEY to .env in this workspace, or to the environment the dev server runs in, then check again. The key stays on this machine.':
+    '이 워크스페이스의 .env 또는 dev server를 실행하는 환경 변수에 GEMINI_API_KEY를 추가한 뒤 다시 확인하세요. 키는 이 컴퓨터 밖으로 나가지 않습니다.',
+  'Set GEMINI_API_KEY and accept the preview terms to use {name}.':
+    '{name}을(를) 사용하려면 GEMINI_API_KEY를 설정하고 프리뷰 이용 약관에 동의하세요.',
+  'Review terms': '약관 읽기',
+  'Before you use {name}': '{name} 사용 전 확인',
+  'Read these terms. The panel runs {name} only after you accept them.':
+    '아래 약관을 읽어 주세요. 동의하기 전에는 패널이 {name}을(를) 실행하지 않습니다.',
+  'I have read and agree to these terms': '약관을 읽었으며 동의합니다',
+  Accept: '동의',
+  'Terms accepted · {version}': '약관 동의함 · {version}',
+  'Withdraw consent': '동의 철회',
+  'Could not save your answer': '선택을 저장하지 못했습니다',
+  'Antigravity here is a Google preview (antigravity-preview-09-2026). Its behavior, models, prices and availability may change or stop without notice, and this integration is itself an early prototype.':
+    '여기서 사용하는 Antigravity는 Google의 프리뷰 버전(antigravity-preview-09-2026)입니다. 동작, 모델, 가격, 제공 여부가 예고 없이 바뀌거나 중단될 수 있으며, 이 연동 자체도 초기 프로토타입입니다.',
+  'Usage is billed to the key in GEMINI_API_KEY at Gemini API rates. One turn is capped at 500,000 tokens. The cost shown after a turn is an estimate; your Google bill is what counts.':
+    '사용 요금은 Gemini API 가격으로 GEMINI_API_KEY의 키에 청구됩니다. 한 턴의 상한은 500,000토큰입니다. 턴이 끝난 뒤 표시되는 비용은 추정치이며, 실제 금액은 Google 청구서를 따릅니다.',
+  'open-doc uses only your API key. It never uses your Antigravity or Google account sign-in, and the key is never sent to the browser.':
+    'open-doc은 API 키만 사용합니다. Antigravity나 Google 계정 로그인은 사용하지 않으며, 키는 브라우저로 전송되지 않습니다.',
+  'You can withdraw your consent at any time from Manage agents.':
+    '동의는 「에이전트 관리」에서 언제든 철회할 수 있습니다.',
+  "With local mode on, open-doc downloads Google's gemini-api CLI (v0.4.6, checksum-verified) into node_modules/.open-doc and runs it while the dev server runs. The agent's file tools then work directly on this project folder on your computer, with shell commands disabled.":
+    '로컬 모드를 켜면 open-doc이 Google의 gemini-api CLI(v0.4.6, checksum 검증 완료)를 node_modules/.open-doc에 내려받아 dev server가 실행되는 동안 실행합니다. 그러면 에이전트의 파일 도구가 이 컴퓨터의 프로젝트 폴더에서 바로 작업하며, 셸 명령은 비활성화됩니다.',
+  "Without local mode, every turn uploads the open document's folder and the workspace's .agents/skills to a Google cloud sandbox. In both modes your messages and the files the agent reads are sent to Google through the Gemini API, so do not use it on documents you may not share with Google. The Gemini API terms apply, and on the free tier Google may use the data to improve its products.":
+    '로컬 모드가 아니면 턴마다 열려 있는 문서의 폴더와 워크스페이스의 .agents/skills를 Google 클라우드 sandbox에 업로드합니다. 두 모드 모두 메시지와 에이전트가 읽는 파일이 Gemini API를 통해 Google로 전송되므로, Google과 공유할 수 없는 문서에는 사용하지 마세요. Gemini API 약관이 적용되며, 무료 등급에서는 데이터가 Google 제품 개선에 사용될 수 있습니다.',
+  "In the cloud sandbox, the agent's edits are copied back into the document's folder when a turn ends; a file you changed during the turn is not overwritten, and deletions are not copied back. In local mode the agent edits your files directly. Either way, review the changes before you rely on them.":
+    '클라우드 sandbox에서는 턴이 끝날 때 에이전트의 수정 내용이 문서 폴더에 다시 기록됩니다. 턴 중에 바꾼 파일은 덮어쓰지 않으며, 삭제는 반영되지 않습니다. 로컬 모드에서는 에이전트가 파일을 직접 수정합니다. 어느 쪽이든 변경 사항은 확인한 뒤 사용하세요.',
+  'Runs on this computer · edits appear live': '이 컴퓨터에서 실행 · 수정 내용이 바로 표시됨',
+  'Runs in a Google cloud sandbox · edits arrive when a turn ends':
+    'Google 클라우드 sandbox에서 실행 · 턴이 끝날 때 반영됨',
+  'Run on this computer': '이 컴퓨터에서 실행',
+  'Setting up local mode': '로컬 모드 설정 중',
+  "Recommended. Downloads Google's gemini-api CLI into this project; no Docker or terminal needed.":
+    '권장. Google의 gemini-api CLI를 이 프로젝트에 내려받습니다. Docker나 터미널이 필요 없습니다.',
+  'Local mode is not available on this system yet.':
+    '이 시스템에서는 아직 로컬 모드를 사용할 수 없습니다.',
+  'Could not set up local mode': '로컬 모드를 설정하지 못했습니다',
+  'Try {name}': '{name} 사용해 보기',
+  'Gemini edits this document right on your computer, and you watch each change land on the page.':
+    'Gemini가 이 컴퓨터에서 문서를 바로 수정하고, 변경 사항이 페이지에 즉시 반영됩니다.',
+  Enable: '사용',
+  'Not now': '나중에',
+  'Accept the preview terms to use {name}.':
+    '프리뷰 약관에 동의하면 {name}을(를) 사용할 수 있습니다.',
 };

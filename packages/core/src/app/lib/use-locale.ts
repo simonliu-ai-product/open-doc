@@ -123,6 +123,49 @@ const AGENT = {
   presenceEditing: '{provider} is editing',
   presenceThinking: 'Thinking',
   presenceWaiting: 'Waiting for you',
+  preview: 'Preview version',
+  previewHint: 'Its behavior, models and prices may change.',
+  keyFound: 'GEMINI_API_KEY found',
+  keyMissing: 'GEMINI_API_KEY not set',
+  keyHint:
+    'Add GEMINI_API_KEY to .env in this workspace, or to the environment the dev server runs in, then check again. The key stays on this machine.',
+  notReadyApiKey: 'Set GEMINI_API_KEY and accept the preview terms to use {name}.',
+  termsReview: 'Review terms',
+  termsTitle: 'Before you use {name}',
+  termsIntro: 'Read these terms. The panel runs {name} only after you accept them.',
+  terms: {
+    preview:
+      'Antigravity here is a Google preview (antigravity-preview-09-2026). Its behavior, models, prices and availability may change or stop without notice, and this integration is itself an early prototype.',
+    local:
+      "With local mode on, open-doc downloads Google's gemini-api CLI (v0.4.6, checksum-verified) into node_modules/.open-doc and runs it while the dev server runs. The agent's file tools then work directly on this project folder on your computer, with shell commands disabled.",
+    upload:
+      "Without local mode, every turn uploads the open document's folder and the workspace's .agents/skills to a Google cloud sandbox. In both modes your messages and the files the agent reads are sent to Google through the Gemini API, so do not use it on documents you may not share with Google. The Gemini API terms apply, and on the free tier Google may use the data to improve its products.",
+    billing:
+      'Usage is billed to the key in GEMINI_API_KEY at Gemini API rates. One turn is capped at 500,000 tokens. The cost shown after a turn is an estimate; your Google bill is what counts.',
+    writeBack:
+      "In the cloud sandbox, the agent's edits are copied back into the document's folder when a turn ends; a file you changed during the turn is not overwritten, and deletions are not copied back. In local mode the agent edits your files directly. Either way, review the changes before you rely on them.",
+    auth: 'open-doc uses only your API key. It never uses your Antigravity or Google account sign-in, and the key is never sent to the browser.',
+    withdraw: 'You can withdraw your consent at any time from Manage agents.',
+  },
+  termsAgree: 'I have read and agree to these terms',
+  termsAccept: 'Accept',
+  termsAccepted: 'Terms accepted · {version}',
+  termsWithdraw: 'Withdraw consent',
+  toastTermsFailed: 'Could not save your answer',
+  runtimeLocal: 'Runs on this computer · edits appear live',
+  runtimeCloud: 'Runs in a Google cloud sandbox · edits arrive when a turn ends',
+  runtimeEnable: 'Run on this computer',
+  runtimeEnabling: 'Setting up local mode',
+  runtimeHint:
+    "Recommended. Downloads Google's gemini-api CLI into this project; no Docker or terminal needed.",
+  runtimeUnsupported: 'Local mode is not available on this system yet.',
+  toastLocalFailed: 'Could not set up local mode',
+  enableTitle: 'Try {name}',
+  enableHint:
+    'Gemini edits this document right on your computer, and you watch each change land on the page.',
+  enable: 'Enable',
+  enableLater: 'Not now',
+  notReadyTerms: 'Accept the preview terms to use {name}.',
 };
 
 type Strings<T> = { [K in keyof T]: T[K] extends string ? string : Strings<T[K]> };
