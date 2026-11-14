@@ -44,9 +44,23 @@ Skills ship with the scaffolder:
 
 ### 🔌 An MCP server, so any agent framework can drive it
 
-`open-doc dev --mcp` mounts an MCP endpoint next to the UI — 23 tools covering documents, surgical text edits, layout checks and page screenshots, Markdown import, export, themes, assets, and folders. It is stateless Streamable HTTP, so a client just points at `http://localhost:5273/mcp` with no session handshake.
+`open-doc dev --mcp` mounts an MCP endpoint next to the UI — 26 tools covering documents, surgical text edits, layout checks and page screenshots, Markdown import, export, themes, assets, and folders. It is stateless Streamable HTTP, so a client just points at `http://localhost:5273/mcp` with no session handshake. For clients that launch their own servers, the same tools run over stdio with `npx -p @open-document/mcp open-doc-mcp`.
 
 The tools and the browser share one implementation, so `write_document` / `write_text` take the content you last read and refuse a stale write with `409` rather than overwriting whoever got there first. See [packages/mcp](packages/mcp).
+
+### 🧩 A plugin for Claude Code and Antigravity
+
+Install open-doc into your agent once and every workspace gets the skills and the MCP server — no per-project setup:
+
+```bash
+# Claude Code
+/plugin install open-doc --marketplace simonliu-ai-product/open-doc
+
+# Google Antigravity (IDE, App, or the agy CLI)
+agy plugin install https://github.com/simonliu-ai-product/open-doc
+```
+
+Your agent does the writing; the browser stays where you read, comment, and tweak the design. They meet in the files — comments are `@doc-comment` markers in the source, and the page you are on is in `current.json` — so a note left on the page becomes the agent's next edit. See [plugins/open-doc](plugins/open-doc).
 
 ### 🧭 Outline, contents, and page numbers that maintain themselves
 
@@ -164,7 +178,7 @@ cd my-docs
 pnpm dev
 ```
 
-Open http://localhost:5273. From there, drive it through your agent — or edit `docs/<id>/index.tsx` directly.
+Open http://localhost:5273. From there, drive it through your agent — or edit `docs/<id>/index.tsx` directly. The workspace already carries the skills; install the [plugin](#-a-plugin-for-claude-code-and-antigravity) to add the MCP server too.
 
 | Command | What it does |
 | --- | --- |
@@ -202,7 +216,8 @@ pnpm + Turbo monorepo.
 | --- | --- |
 | [packages/core](packages/core) | `@open-document/core` — runtime (document browser, page viewer, outline, export), Vite plugin, and the `open-doc` dev/build/preview CLI. |
 | [packages/cli](packages/cli) | `@open-document/cli` — `npx @open-document/cli init` scaffolder + project template. |
-| [packages/mcp](packages/mcp) | `@open-document/mcp` — MCP server over Streamable HTTP. Opt-in; `open-doc dev --mcp` mounts it at `/mcp`. |
+| [packages/mcp](packages/mcp) | `@open-document/mcp` — MCP server over Streamable HTTP (`open-doc dev --mcp` mounts it at `/mcp`) or stdio (`open-doc-mcp`). |
+| [plugins/open-doc](plugins/open-doc) | The agent plugin for Claude Code and Antigravity: the skills and the stdio MCP server. `.claude-plugin/marketplace.json` lists it for Claude Code. |
 | [apps/demo](apps/demo) | Example workspace consuming `@open-document/core` via `workspace:*`. Dogfood target. |
 
 ## Development
