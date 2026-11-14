@@ -44,9 +44,23 @@ Scaffolder 內建這些 skill：
 
 ### 🔌 MCP server，任何 agent framework 都能接
 
-`open-doc dev --mcp` 會在 UI 旁邊掛上 MCP 端點——23 個工具，涵蓋文件、精準的文字編輯、版面檢查與單頁截圖、Markdown 匯入、匯出、themes、assets 與資料夾。它是無狀態的 Streamable HTTP，client 直接指向 `http://localhost:5273/mcp` 即可，不需要 session handshake。
+`open-doc dev --mcp` 會在 UI 旁邊掛上 MCP 端點——26 個工具，涵蓋文件、精準的文字編輯、版面檢查與單頁截圖、Markdown 匯入、匯出、themes、assets 與資料夾。它是無狀態的 Streamable HTTP，client 直接指向 `http://localhost:5273/mcp` 即可，不需要 session handshake。給會自己啟動 server 的 client，同一組工具也能用 `npx -p @open-document/mcp open-doc-mcp` 走 stdio。
 
 這些工具和瀏覽器共用同一份實作，所以 `write_document` / `write_text` 會接收你上次讀到的內容，遇到已被改動的檔案時回 `409` 拒絕寫入，而不是覆蓋掉先到的人。詳見 [packages/mcp](packages/mcp)。
+
+### 🧩 Claude Code 與 Antigravity 的 plugin
+
+把 open-doc 裝進你的 agent 一次，每個工作區就都有 skills 和 MCP server，不用逐個專案設定：
+
+```bash
+# Claude Code
+/plugin install open-doc --marketplace simonliu-ai-product/open-doc
+
+# Google Antigravity（IDE、App 或 agy CLI）
+agy plugin install https://github.com/simonliu-ai-product/open-doc
+```
+
+寫的工作交給 agent；瀏覽器仍是你閱讀、留言、調整設計的地方。兩邊透過檔案接力——留言是原始碼裡的 `@doc-comment` 標記，你正在看的頁面記在 `current.json`——所以在頁面上留的一句話，就是 agent 的下一個修改。詳見 [plugins/open-doc](plugins/open-doc)。
 
 ### 🧭 會自己維護的大綱、目錄與頁碼
 
@@ -164,7 +178,7 @@ cd my-docs
 pnpm dev
 ```
 
-開啟 http://localhost:5273。接著就透過你的 agent 操作它——或直接編輯 `docs/<id>/index.tsx`。
+開啟 http://localhost:5273。接著就透過你的 agent 操作它——或直接編輯 `docs/<id>/index.tsx`。工作區已經內建 skills；再裝 [plugin](#-claude-code-與-antigravity-的-plugin) 就連 MCP server 也一起有。
 
 | 指令 | 作用 |
 | --- | --- |
@@ -202,7 +216,8 @@ pnpm + Turbo monorepo。
 | --- | --- |
 | [packages/core](packages/core) | `@open-document/core` — runtime（文件瀏覽器、頁面檢視器、大綱、匯出）、Vite plugin，以及 `open-doc` dev/build/preview CLI。 |
 | [packages/cli](packages/cli) | `@open-document/cli` — `npx @open-document/cli init` scaffolder 與專案範本。 |
-| [packages/mcp](packages/mcp) | `@open-document/mcp` — 走 Streamable HTTP 的 MCP server。選用；`open-doc dev --mcp` 會把它掛在 `/mcp`。 |
+| [packages/mcp](packages/mcp) | `@open-document/mcp` — MCP server，走 Streamable HTTP（`open-doc dev --mcp` 掛在 `/mcp`）或 stdio（`open-doc-mcp`）。 |
+| [plugins/open-doc](plugins/open-doc) | Claude Code 與 Antigravity 的 agent plugin：skills 與 stdio MCP server。`.claude-plugin/marketplace.json` 讓 Claude Code 找得到它。 |
 | [apps/demo](apps/demo) | 透過 `workspace:*` 使用 `@open-document/core` 的範例工作區。Dogfood 目標。 |
 
 ## 開發
