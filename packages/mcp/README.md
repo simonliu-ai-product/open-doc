@@ -33,7 +33,10 @@ The Antigravity plugin in [`plugins/open-doc`](../../plugins/open-doc) uses exac
 | Tool | What it does |
 | --- | --- |
 | `list_documents` | Every document with id, title, theme, folder. Start here. |
-| `read_document` | Full TSX source of one document. |
+| `read_document` | TSX source of one document, whole or `fromLine`–`toLine`. |
+| `outline_document` | Line count, top-level blocks with their line ranges, and h1–h3 with their lines — no source. |
+| `search_document` | Every source line containing some exact text, with its line number. |
+| `edit_document` | Exact find-and-replace in the source; `find` must occur once unless `all` is set. |
 | `create_document` | Write a new `docs/<id>/index.tsx`. Refuses a taken id. |
 | `write_document` | Replace the source. Pass `expected` for a conflict check. |
 | `rename_document` | Rewrite `meta.title`. The id never changes. |
@@ -67,6 +70,8 @@ For edits, prefer `read_text` → `write_text` over rewriting the file: it touch
 Starting from Markdown the user already has? `import_markdown` writes the whole document — `flow()` body, cover, contents, images — and you refine from there.
 
 ## Concurrent edits
+
+Long document? Every tool result an agent reads is sent again on each later model call, so read the outline, then only the lines you change: `outline_document` → `read_document` with `fromLine`/`toLine` (or `search_document`) → `edit_document`. Rewrite with `write_document` only when most of the file changes.
 
 `write_document` and `write_text` both accept `expected` — the content you last read. If disk no longer matches, the call is refused with `409` instead of overwriting whatever the other agent (or the person in the browser) just did. Read, then write with `expected`; on a 409, re-read and reconcile.
 
