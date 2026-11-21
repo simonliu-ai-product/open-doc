@@ -88,10 +88,10 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
     // the core package can sit outside it — a monorepo, a linked install.
     // Headless runs keep their own, so a `check` beside the dev server does
     // not re-optimize the deps under it.
+    // A host serving the workspace from a shared core (one the workspace did
+    // not install) points this elsewhere, so no node_modules appears in it.
     cacheDir: path.join(
-      userCwd,
-      'node_modules',
-      '.vite',
+      process.env.OPEN_DOC_CACHE_DIR || path.join(userCwd, 'node_modules', '.vite'),
       opts.headless ? 'open-doc-headless' : 'open-doc',
     ),
     configFile: false,
@@ -126,10 +126,16 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
         : []),
     ],
     resolve: {
-      alias: {
-        '@': APP_ROOT,
-        '@assets': assetsAbs,
-      },
+      alias: [
+        { find: '@', replacement: APP_ROOT },
+        { find: '@assets', replacement: assetsAbs },
+        // Documents may sit in a workspace with no install, or with another
+        // core version than the one serving them, so always hand them the
+        // running core. With a normal install the two are the same copy.
+        { find: /^@open-document\/core$/, replacement: path.join(PKG_ROOT, 'dist', 'index.js') },
+      ],
+      // Likewise one react: the running core's, not a second copy beside the docs.
+      dedupe: ['react', 'react-dom'],
     },
     optimizeDeps: {
       entries: [path.join(APP_ROOT, 'main.tsx')],
