@@ -36,7 +36,7 @@ The Antigravity plugin in [`plugins/open-doc`](../../plugins/open-doc) uses exac
 | `read_document` | TSX source of one document, whole or `fromLine`–`toLine`. |
 | `outline_document` | Line count, top-level blocks with their line ranges, and h1–h3 with their lines — no source. |
 | `search_document` | Every source line containing some exact text, with its line number. |
-| `edit_document` | Exact find-and-replace in the source; `find` must occur once unless `all` is set. |
+| `edit_document` | Exact find-and-replace in the source; `find` must occur once (within `fromLine`–`toLine` when given) unless `all` is set. |
 | `create_document` | Write a new `docs/<id>/index.tsx`. Refuses a taken id. |
 | `write_document` | Replace the source. Pass `expected` for a conflict check. |
 | `rename_document` | Rewrite `meta.title`. The id never changes. |

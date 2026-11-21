@@ -102,4 +102,23 @@ describe('editDocument', () => {
       editDocument(ctx, 'q4', 'Q4', 'Q1', { expectedHash: '0000000000000000' }),
     ).rejects.toBeInstanceOf(OpsError);
   });
+  it('looks only within fromLine–toLine, and says where an ambiguous text is', async () => {
+    await expect(editDocument(ctx, 'q4', "'#fff'", "'#111'")).rejects.toThrow(/lines 3, 6/);
+    const r = await editDocument(ctx, 'q4', "'#fff'", "'#111'", { fromLine: 5, toLine: 13 });
+    expect(r.replaced).toBe(1);
+    const src = (await readDocument(ctx, 'q4')).source;
+    expect(src).toContain("palette: { bg: '#fff'");
+    expect(src).toContain("background: '#111'");
+    expect(src.split('\n').length).toBe(DOC.split('\n').length);
+  });
+  it('matches text copied with its JSON escapes', async () => {
+    const r = await editDocument(
+      ctx,
+      'q4',
+      '<h2>1. 摘要</h2>\\n    <p>Ship',
+      '<h2>1. Summary</h2>\\n    <p>Ship',
+    );
+    expect(r).toMatchObject({ replaced: 1, unescaped: true });
+    expect((await readDocument(ctx, 'q4')).source).toContain('<h2>1. Summary</h2>\n    <p>Ship');
+  });
 });

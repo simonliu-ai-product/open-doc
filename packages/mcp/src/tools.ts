@@ -159,12 +159,19 @@ export function registerTools(
     {
       title: 'Replace exact text in the source',
       description:
-        'Change one exact piece of a document’s source: `find` (copied exactly from read_document or search_document, spacing and quotes included) becomes `replace`. `find` must occur once, unless `all` is set to change every occurrence. Use it for small changes instead of rewriting the whole file with write_document.',
+        'Change one exact piece of a document’s source: `find` (copied exactly from read_document or search_document, spacing and quotes included) becomes `replace`. `find` must occur once — pass fromLine/toLine (the range you read) when the same text appears elsewhere — unless `all` is set to change every occurrence. Use it for small changes instead of rewriting the whole file with write_document.',
       inputSchema: z.object({
         docId: z.string(),
         find: z.string().describe('the exact text to change'),
         replace: z.string().describe('what it becomes'),
         all: z.boolean().optional().describe('change every occurrence, not just one'),
+        fromLine: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('look for `find` only from this line (1-based), e.g. the range you read'),
+        toLine: z.number().int().positive().optional().describe('…to this line, inclusive'),
         expectedHash: z
           .string()
           .optional()
@@ -173,9 +180,14 @@ export function registerTools(
           ),
       }),
     },
-    ({ docId, find, replace, all, expectedHash }) =>
+    ({ docId, find, replace, all, expectedHash, fromLine, toLine }) =>
       run(async () => {
-        const res = await editDocument(ctx, docId, find, replace, { all, expectedHash });
+        const res = await editDocument(ctx, docId, find, replace, {
+          all,
+          expectedHash,
+          fromLine,
+          toLine,
+        });
         notify('change', docEntry(docId));
         return res;
       }),

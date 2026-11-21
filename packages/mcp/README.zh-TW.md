@@ -36,7 +36,7 @@ open-doc dev --mcp
 | `read_document` | 單一文件的 TSX 原始碼，整份或 `fromLine`–`toLine`。 |
 | `outline_document` | 行數、頂層區塊與所在行數、h1–h3 與所在行，不含原始碼。 |
 | `search_document` | 原始碼中含有某段文字的每一行與行號。 |
-| `edit_document` | 原始碼的精確尋找取代；`find` 須剛好出現一次，設 `all` 則全部取代。 |
+| `edit_document` | 原始碼的精確尋找取代；`find` 須剛好出現一次（有給 `fromLine`–`toLine` 時只在範圍內找），設 `all` 則全部取代。 |
 | `create_document` | 寫入新的 `docs/<id>/index.tsx`。id 已存在則拒絕。 |
 | `write_document` | 覆寫原始碼。帶 `expected` 可啟用衝突檢查。 |
 | `rename_document` | 改寫 `meta.title`。文件 id 永遠不變。 |

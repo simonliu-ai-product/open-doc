@@ -140,18 +140,27 @@ export async function searchDocument(
   return { id: docId, hash: hashSource(source), matches, total };
 }
 
+/** Text a model copied out of a JSON string, escapes and all: `\\n`, `\\t`, `\\"` back to what they stand for. */
+function unescapeCopied(text: string): string {
+  return text.replace(/\\(["\\nt])/g, (_m, c: string) => (c === 'n' ? '\n' : c === 't' ? '\t' : c));
+}
+
+const occurrences = (text: string, find: string) => text.split(find).length - 1;
+
 /**
- * Replaces `find` with `replace` in the source. `find` must occur exactly once,
- * unless `all` is set, which replaces every occurrence. Refused when the file
- * changed since `expectedHash` was read.
+ * Replaces `find` with `replace` in the source. `find` must occur exactly once
+ * (within `fromLine`–`toLine` when given), unless `all` is set, which replaces
+ * every occurrence. Text copied with its JSON escapes (`\\n` for a line break)
+ * is matched as what it stands for when only that reading occurs. Refused when
+ * the file changed since `expectedHash` was read.
  */
 export async function editDocument(
   ctx: ApiContext,
   docId: string,
   find: string,
   replace: string,
-  opts: { all?: boolean; expectedHash?: string } = {},
-): Promise<{ id: string; replaced: number; hash: string }> {
+  opts: { all?: boolean; expectedHash?: string; fromLine?: number; toLine?: number } = {},
+): Promise<{ id: string; replaced: number; hash: string; unescaped?: true }> {
   if (!find)
     throw new OpsError(400, '`find` is empty: copy the exact text to change from the source');
   const entry = resolveEntry(ctx, docId);
@@ -159,21 +168,58 @@ export async function editDocument(
   return withFileLock(entry, async () => {
     const source = await fs.readFile(entry, 'utf8');
     assertExpectedSource(source, { expectedHash: opts.expectedHash });
-    const count = source.split(find).length - 1;
+    const lines = source.split('\n');
+    const from = Math.max(1, Math.floor(opts.fromLine ?? 1));
+    const to = Math.min(lines.length, Math.floor(opts.toLine ?? lines.length));
+    if (from > to)
+      throw new OpsError(
+        400,
+        `lines ${from}–${to} are outside the document (${lines.length} lines)`,
+      );
+    const scope = lines.slice(from - 1, to).join('\n');
+    let needle = find;
+    let replacement = replace;
+    let count = occurrences(scope, needle);
+    let unescaped = false;
+    if (count === 0) {
+      const plain = unescapeCopied(find);
+      if (plain !== find && occurrences(scope, plain) > 0) {
+        needle = plain;
+        replacement = unescapeCopied(replace);
+        count = occurrences(scope, plain);
+        unescaped = true;
+      }
+    }
+    const where =
+      opts.fromLine !== undefined || opts.toLine !== undefined ? ` in lines ${from}–${to}` : '';
     if (count === 0) {
       throw new OpsError(
         404,
-        '`find` is not in the document: copy it exactly, spacing and quotes included',
+        `\`find\` is not in the document${where}: copy it exactly, spacing and quotes included`,
       );
     }
     if (count > 1 && !opts.all) {
+      const at: number[] = [];
+      scope.split('\n').forEach((l, i) => {
+        if (l.includes(needle.split('\n')[0] ?? needle)) at.push(from + i);
+      });
       throw new OpsError(
         409,
-        `\`find\` occurs ${count} times: include more of the text around it so it occurs once, or pass all to change every one`,
+        `\`find\` occurs ${count} times${where} (lines ${at.slice(0, 12).join(', ')}${at.length > 12 ? ', …' : ''}): pass fromLine/toLine around the one you mean, include more of the text around it, or pass all to change every one`,
       );
     }
-    const next = opts.all ? source.split(find).join(replace) : source.replace(find, () => replace);
+    const changed = opts.all
+      ? scope.split(needle).join(replacement)
+      : scope.replace(needle, () => replacement);
+    const next = [...lines.slice(0, from - 1), ...changed.split('\n'), ...lines.slice(to)].join(
+      '\n',
+    );
     await fs.writeFile(entry, next, 'utf8');
-    return { id: docId, replaced: opts.all ? count : 1, hash: hashSource(next) };
+    return {
+      id: docId,
+      replaced: opts.all ? count : 1,
+      hash: hashSource(next),
+      ...(unescaped ? { unescaped: true as const } : {}),
+    };
   });
 }
