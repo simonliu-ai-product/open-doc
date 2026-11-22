@@ -41,15 +41,15 @@ export type GeneratedDocument = {
  * JSX text is written literally; only these characters have to be escaped —
  * and an `&` that would read as an HTML entity (`&copy;`), which JSX decodes.
  */
-function jsxText(text: string): string {
+export function jsxText(text: string): string {
   return text.replace(/[{}<>]|&(?=#?\w+;)/g, (char) => `{'${char}'}`);
 }
 
-function jsString(value: string): string {
+export function jsString(value: string): string {
   return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;
 }
 
-function attr(value: string): string {
+export function attr(value: string): string {
   return `"${value.replace(/"/g, '&quot;')}"`;
 }
 

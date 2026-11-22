@@ -14,6 +14,8 @@ export type {
 export { DataTable } from './app/components/data-table.tsx';
 export type { DiagramProps, DiagramSource } from './app/components/diagram.tsx';
 export { Diagram } from './app/components/diagram.tsx';
+export type { TableSliceRange } from './app/components/flow-page.tsx';
+export { useTableSlice } from './app/components/flow-page.tsx';
 export type { FootnoteProps, FootnotesProps } from './app/components/footnote.tsx';
 export { Footnote, Footnotes } from './app/components/footnote.tsx';
 export type { ImagePlaceholderProps } from './app/components/image-placeholder.tsx';

@@ -137,7 +137,7 @@ open-doc import notes.md --id q3-notes --contents
 
 Most reports start life as Markdown. The importer turns one into a real document — `flow()` body, cover page, self-filling contents, GFM tables through styled `Th`/`Td`, local images copied into the document's own `assets/` — and the output is ordinary authored TSX, so the outline, the inspector, and the design panel all work on it exactly as on a hand-written page.
 
-A Word file goes the same way: `open-doc import report.docx` reads headings from Word's heading styles, lists, tables, links and embedded pictures, and lists anything it could not keep (text boxes, footnotes, comments, tracked changes).
+A Word file comes in looking like the Word page: `open-doc import form.docx` keeps Word's page size and margins, alignment and indents, fonts, sizes and colours, tables on their own column widths with merged cells, borders and shading, fill-in blanks and page breaks — while heading styles stay real headings. It lists anything it could not keep (text boxes, footnotes, comments, tracked changes); `--plain` imports the structure only, in the house style, like Markdown.
 
 ### 🗂️ A workspace, not a file list
 

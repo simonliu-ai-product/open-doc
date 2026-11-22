@@ -735,7 +735,7 @@ export function registerTools(
     {
       title: 'Import Word document',
       description:
-        'Turns a Word .docx file into a real document under docs/, the same way import_markdown does — headings from Word’s heading styles, lists, tables, links, embedded pictures copied into the document’s assets. `warnings` lists what Word had that the document could not hold (text boxes, footnotes, comments, tracked changes); tell the user about them.',
+        'Turns a Word .docx file into a real document under docs/ that looks like the Word page: page size and margins, alignment, indents, fonts, sizes, colours, tables with their column widths, merged cells, borders and shading, fill-in blanks, page breaks. Headings in Word heading styles stay real headings. Pass `plain: true` for structure only in the house style (with a cover), like import_markdown. `warnings` lists what Word had that the document could not hold (text boxes, footnotes, comments, tracked changes); tell the user about them.',
       inputSchema: z.object({
         file: z.string().describe('path to a .docx file inside the workspace'),
         docId: z.string().optional().describe('defaults to a slug of the title'),
@@ -751,8 +751,15 @@ export function registerTools(
         theme: z.string().optional(),
         pageSize: z.enum(PAGE_SIZE_NAMES).optional(),
         orientation: z.enum(ORIENTATIONS).optional(),
-        cover: z.boolean().optional().describe('open with a title page; defaults to true'),
-        contents: z.boolean().optional().describe('add a self-filling contents page'),
+        plain: z
+          .boolean()
+          .optional()
+          .describe('structure only in the house style instead of the Word page look'),
+        cover: z
+          .boolean()
+          .optional()
+          .describe('with plain: open with a title page; defaults to true'),
+        contents: z.boolean().optional().describe('with plain: add a self-filling contents page'),
       }),
     },
     (args) =>

@@ -14,14 +14,14 @@ export interface ImportOptions {
   orientation?: string;
   cover?: boolean;
   contents?: boolean;
+  plain?: boolean;
 }
 
 export async function importDoc(file: string, opts: ImportOptions = {}): Promise<void> {
   const ctx = await cliContext();
   const relative = path.relative(ctx.userCwd, path.resolve(ctx.userCwd, file));
 
-  const read = /\.docx$/i.test(file) ? importDocx : importMarkdown;
-  const result = await read(ctx, {
+  const common = {
     file: relative,
     ...(opts.id !== undefined ? { docId: opts.id } : {}),
     ...(opts.title !== undefined ? { title: opts.title } : {}),
@@ -33,7 +33,10 @@ export async function importDoc(file: string, opts: ImportOptions = {}): Promise
     ...(opts.orientation !== undefined ? { orientation: opts.orientation } : {}),
     ...(opts.cover !== undefined ? { cover: opts.cover } : {}),
     ...(opts.contents !== undefined ? { contents: opts.contents } : {}),
-  });
+  };
+  const result = /\.docx$/i.test(file)
+    ? await importDocx(ctx, { ...common, ...(opts.plain ? { plain: true } : {}) })
+    : await importMarkdown(ctx, common);
 
   process.stdout.write(
     `${chalk.green('✓')} ${chalk.bold(result.title)} → ${result.entry} ${chalk.dim(`(${result.blocks} blocks)`)}\n`,

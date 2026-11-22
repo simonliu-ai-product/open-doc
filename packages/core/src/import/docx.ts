@@ -1,7 +1,10 @@
-import { strFromU8, unzipSync } from 'fflate';
 import { isSafeHref } from '../app/lib/href.ts';
+import { DocxError, num, on, openDocx, resolvePart, val } from './docx-package.ts';
 import type { Block, Inline, ParsedMarkdown, TableAlign } from './markdown.ts';
-import { child, descendants, elements, parseXml, textContent, type XmlElement } from './xml.ts';
+
+export { DocxError };
+
+import { child, descendants, elements, textContent, type XmlElement } from './xml.ts';
 
 /**
  * Reads a Word document into the same blocks Markdown import produces, so one
@@ -19,8 +22,6 @@ export type ParsedDocx = ParsedMarkdown & {
   text: string;
   warnings: string[];
 };
-
-export class DocxError extends Error {}
 
 type Style = {
   id: string;
@@ -57,9 +58,6 @@ type Para = {
 
 type Item = { kind: 'para'; para: Para } | { kind: 'block'; block: Block };
 
-type Rel = { target: string; external: boolean; type: string };
-
-const W_NS_FALSE = new Set(['0', 'false', 'off', 'none']);
 const MONO_FONT_RE =
   /courier|consolas|menlo|monaco|mono|source code|lucida console|inconsolata|fira code|cascadia/i;
 const UNSHOWABLE_IMAGE_RE = /\.(?:emf|wmf|tiff?|wdp)$/i;
@@ -82,43 +80,6 @@ const WARNINGS: Record<string, (n: number) => string> = {
   nestedTable: (n) => `${n} nested table(s) flattened to text`,
   altChunk: (n) => `${n} embedded document part(s) not imported`,
 };
-
-function on(el: XmlElement | undefined): boolean | undefined {
-  if (!el) return undefined;
-  const value = el.attrs['w:val'];
-  return value === undefined || !W_NS_FALSE.has(value.toLowerCase());
-}
-
-function val(el: XmlElement | undefined): string | undefined {
-  return el?.attrs['w:val'];
-}
-
-function num(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function resolvePart(baseDir: string, target: string): string {
-  if (target.startsWith('/')) return target.slice(1);
-  const parts = baseDir ? baseDir.split('/') : [];
-  for (const segment of target.split('/')) {
-    if (segment === '..') parts.pop();
-    else if (segment !== '.' && segment !== '') parts.push(segment);
-  }
-  return parts.join('/');
-}
-
-function dirOf(part: string): string {
-  const slash = part.lastIndexOf('/');
-  return slash === -1 ? '' : part.slice(0, slash);
-}
-
-function relsPathFor(part: string): string {
-  const dir = dirOf(part);
-  const base = part.slice(dir.length ? dir.length + 1 : 0);
-  return `${dir ? `${dir}/` : ''}_rels/${base}.rels`;
-}
 
 function readStyles(xml: XmlElement | undefined): Map<string, Style> {
   const styles = new Map<string, Style>();
@@ -179,47 +140,8 @@ function readNumbering(xml: XmlElement | undefined): Numbering {
   return out;
 }
 
-function readRels(xml: XmlElement | undefined): Map<string, Rel> {
-  const rels = new Map<string, Rel>();
-  if (!xml) return rels;
-  for (const el of elements(xml, 'Relationship')) {
-    rels.set(el.attrs.Id ?? '', {
-      target: el.attrs.Target ?? '',
-      external: el.attrs.TargetMode === 'External',
-      type: el.attrs.Type ?? '',
-    });
-  }
-  return rels;
-}
-
 export function parseDocx(bytes: Uint8Array): ParsedDocx {
-  let files: Record<string, Uint8Array>;
-  try {
-    files = unzipSync(bytes);
-  } catch {
-    throw new DocxError(
-      'not a Word .docx file — an older .doc must be saved as .docx (Word: File › Save As)',
-    );
-  }
-
-  const xmlPart = (name: string): XmlElement | undefined => {
-    const data = files[name];
-    return data ? parseXml(strFromU8(data)) : undefined;
-  };
-
-  const packageRels = readRels(xmlPart('_rels/.rels'));
-  const officeDoc = [...packageRels.values()].find((rel) => rel.type.endsWith('/officeDocument'));
-  const mainPart = officeDoc ? resolvePart('', officeDoc.target) : 'word/document.xml';
-  const document = xmlPart(mainPart);
-  const body = child(document, 'w:body');
-  if (!body) throw new DocxError('not a Word document: the file has no document body');
-
-  const mainDir = dirOf(mainPart);
-  const rels = readRels(xmlPart(relsPathFor(mainPart)));
-  const partOf = (suffix: string, fallback: string) => {
-    const rel = [...rels.values()].find((entry) => entry.type.endsWith(suffix));
-    return xmlPart(rel ? resolvePart(mainDir, rel.target) : `${mainDir}/${fallback}`);
-  };
+  const { files, body, mainDir, rels, partOf } = openDocx(bytes);
   const styles = readStyles(partOf('/styles', 'styles.xml'));
   const numbering = readNumbering(partOf('/numbering', 'numbering.xml'));
   const footnotes = partOf('/footnotes', 'footnotes.xml');

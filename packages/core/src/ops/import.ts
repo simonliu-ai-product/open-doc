@@ -4,9 +4,17 @@ import path from 'node:path';
 import { isOrientation, isPageSizeName, ORIENTATIONS, PAGE_SIZE_NAMES } from '../app/lib/sdk.ts';
 import { validateAssetName } from '../files/assets.ts';
 import { DocxError, parseDocx } from '../import/docx.ts';
+import { readDocxLayout } from '../import/docx-layout.ts';
 import { detectLang } from '../import/lang.ts';
-import { type ParsedMarkdown, parseMarkdown } from '../import/markdown.ts';
-import { collectImageSources, generateDocumentSource, type ImportImage } from '../import/to-tsx.ts';
+import { collectLayoutImages, generateLayoutSource } from '../import/layout-to-tsx.ts';
+import { parseMarkdown } from '../import/markdown.ts';
+import {
+  collectImageSources,
+  type GeneratedDocument,
+  type GenerateOptions,
+  generateDocumentSource,
+  type ImportImage,
+} from '../import/to-tsx.ts';
 import { DOC_ID_RE } from '../vite/open-doc-plugin.ts';
 import type { ApiContext } from '../vite/routes/context.ts';
 import { createDocument, listDocIds, OpsError } from './documents.ts';
@@ -73,8 +81,17 @@ function identFor(index: number): string {
 
 type StagedAsset = { filename: string; from: string } | { filename: string; data: Uint8Array };
 
+type CommonOptions = Omit<ImportMarkdownOptions, 'markdown' | 'file'>;
+
 type ImportSource = {
-  parsed: ParsedMarkdown;
+  /** Front matter the source carries: title, pageSize, orientation. */
+  frontmatter: Record<string, string>;
+  imageSources: string[];
+  generate: (
+    docId: string,
+    images: Map<string, ImportImage>,
+    lang: string | undefined,
+  ) => GeneratedDocument;
   /** Text to detect the language from when nothing names one. */
   text: string;
   fallbackName: string;
@@ -112,7 +129,10 @@ export async function importMarkdown(
   const baseDir = sourceFile ? path.dirname(sourceFile) : ctx.userCwd;
 
   return writeImport(ctx, opts, {
-    parsed,
+    frontmatter: parsed.frontmatter,
+    imageSources: collectImageSources(parsed.blocks),
+    generate: (docId, images, lang) =>
+      generateDocumentSource(parsed, markdownOptions(opts, docId, images, lang)),
     // Front matter wins inside the generator; detection is the fallback for
     // a file that does not say.
     text: parsed.frontmatter.lang ? '' : markdown,
@@ -129,6 +149,11 @@ export async function importMarkdown(
 export type ImportDocxOptions = Omit<ImportMarkdownOptions, 'markdown' | 'file'> & {
   /** Path to a `.docx` file, relative to the workspace root. */
   file: string;
+  /**
+   * Structure only — headings, lists, tables in the house style, with a cover —
+   * instead of Word's own page look. `cover` and `contents` apply only then.
+   */
+  plain?: boolean;
 };
 
 /**
@@ -147,6 +172,43 @@ export async function importDocx(ctx: ApiContext, opts: ImportDocxOptions): Prom
     throw new OpsError(404, `file not found: ${opts.file}`);
   }
 
+  const fallbackName = path.basename(sourceFile).replace(/\.docx$/i, '');
+  try {
+    if (!opts.plain) {
+      const layout = readDocxLayout(bytes);
+      if (layout.sections.every((section) => section.blocks.length === 0)) {
+        throw new OpsError(422, 'the Word document has no text');
+      }
+      return await writeImport(ctx, opts, {
+        frontmatter: layout.title ? { title: layout.title } : {},
+        imageSources: collectLayoutImages(layout),
+        generate: (docId, images, lang) =>
+          generateLayoutSource(layout, {
+            docId,
+            ...(opts.title !== undefined ? { title: opts.title } : {}),
+            ...(opts.subtitle !== undefined ? { subtitle: opts.subtitle } : {}),
+            ...(opts.author !== undefined ? { author: opts.author } : {}),
+            ...(opts.theme !== undefined ? { theme: opts.theme } : {}),
+            ...(opts.pageSize !== undefined ? { pageSize: opts.pageSize } : {}),
+            ...(opts.orientation !== undefined ? { orientation: opts.orientation } : {}),
+            ...(lang ? { lang } : {}),
+            createdAt: new Date().toISOString(),
+            images,
+          }),
+        text: layout.text,
+        fallbackName,
+        resolveImage: (src) => {
+          const data = layout.media.get(src);
+          return data ? { name: path.posix.basename(src), data } : null;
+        },
+        warnings: layout.warnings,
+      });
+    }
+  } catch (err) {
+    if (err instanceof DocxError) throw new OpsError(422, err.message);
+    throw err;
+  }
+
   let parsed: ReturnType<typeof parseDocx>;
   try {
     parsed = parseDocx(bytes);
@@ -159,9 +221,12 @@ export async function importDocx(ctx: ApiContext, opts: ImportDocxOptions): Prom
   }
 
   return writeImport(ctx, opts, {
-    parsed,
+    frontmatter: parsed.frontmatter,
+    imageSources: collectImageSources(parsed.blocks),
+    generate: (docId, images, lang) =>
+      generateDocumentSource(parsed, markdownOptions(opts, docId, images, lang)),
     text: parsed.text,
-    fallbackName: path.basename(sourceFile).replace(/\.docx$/i, ''),
+    fallbackName,
     resolveImage: (src) => {
       const data = parsed.media.get(src);
       return data ? { name: path.posix.basename(src), data } : null;
@@ -178,12 +243,34 @@ function resolveSourceFile(ctx: ApiContext, file: string | undefined): string | 
   return sourceFile;
 }
 
+function markdownOptions(
+  opts: CommonOptions,
+  docId: string,
+  images: Map<string, ImportImage>,
+  lang: string | undefined,
+): GenerateOptions {
+  return {
+    docId,
+    ...(opts.title !== undefined ? { title: opts.title } : {}),
+    ...(opts.subtitle !== undefined ? { subtitle: opts.subtitle } : {}),
+    ...(opts.author !== undefined ? { author: opts.author } : {}),
+    ...(opts.theme !== undefined ? { theme: opts.theme } : {}),
+    ...(opts.pageSize !== undefined ? { pageSize: opts.pageSize } : {}),
+    ...(opts.orientation !== undefined ? { orientation: opts.orientation } : {}),
+    ...(lang ? { lang } : {}),
+    ...(opts.cover !== undefined ? { cover: opts.cover } : {}),
+    ...(opts.contents !== undefined ? { contents: opts.contents } : {}),
+    createdAt: new Date().toISOString(),
+    images,
+  };
+}
+
 async function writeImport(
   ctx: ApiContext,
-  opts: Omit<ImportMarkdownOptions, 'markdown' | 'file'>,
+  opts: CommonOptions,
   source: ImportSource,
 ): Promise<ImportResult> {
-  const { parsed } = source;
+  const parsed = { frontmatter: source.frontmatter };
   // A Chinese file left at English breaks lines and picks glyphs as English.
   const language = opts.lang ?? (source.text ? detectLang(source.text) : undefined);
 
@@ -219,7 +306,7 @@ async function writeImport(
   const staged: StagedAsset[] = [];
   const usedNames = new Set<string>();
 
-  for (const src of new Set(collectImageSources(parsed.blocks))) {
+  for (const src of new Set(source.imageSources)) {
     if (REMOTE_RE.test(src)) continue;
     const found = source.resolveImage(src);
     const safe = found ? validateAssetName(found.name) : null;
@@ -233,20 +320,7 @@ async function writeImport(
     staged.push('data' in found ? { filename, data: found.data } : { filename, from: found.from });
   }
 
-  const generated = generateDocumentSource(parsed, {
-    docId,
-    ...(opts.title !== undefined ? { title: opts.title } : {}),
-    ...(opts.subtitle !== undefined ? { subtitle: opts.subtitle } : {}),
-    ...(opts.author !== undefined ? { author: opts.author } : {}),
-    ...(opts.theme !== undefined ? { theme: opts.theme } : {}),
-    ...(opts.pageSize !== undefined ? { pageSize: opts.pageSize } : {}),
-    ...(opts.orientation !== undefined ? { orientation: opts.orientation } : {}),
-    ...(language ? { lang: language } : {}),
-    ...(opts.cover !== undefined ? { cover: opts.cover } : {}),
-    ...(opts.contents !== undefined ? { contents: opts.contents } : {}),
-    createdAt: new Date().toISOString(),
-    images,
-  });
+  const generated = source.generate(docId, images, language);
 
   const created = await createDocument(ctx, docId, generated.source);
 

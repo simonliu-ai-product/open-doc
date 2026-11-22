@@ -78,6 +78,7 @@ interface ImportFlags {
   orientation?: string;
   cover?: boolean;
   contents?: boolean;
+  plain?: boolean;
 }
 
 const GCP_DEPLOY_ACTIONS = [
@@ -270,7 +271,9 @@ export async function run(argv: string[]): Promise<void> {
 
   program
     .command('import <file>')
-    .description('Turn a Markdown (.md) or Word (.docx) file into a document under docs/')
+    .description(
+      'Turn a Markdown (.md) or Word (.docx) file into a document under docs/ — Word keeps its page look',
+    )
     .option('--id <id>', 'document id (defaults to a slug of the title)')
     .option('--title <title>', 'override the title')
     .option('--subtitle <subtitle>', 'subtitle, also used as the cover eyebrow')
@@ -279,8 +282,12 @@ export async function run(argv: string[]): Promise<void> {
     .option('--theme <theme>', 'theme id to back-link from meta.theme')
     .addOption(new Option('--page-size <size>', 'page size').choices(PAGE_SIZE_NAMES))
     .addOption(new Option('--orientation <orientation>', 'page orientation').choices(ORIENTATIONS))
-    .option('--no-cover', 'skip the title page')
-    .option('--contents', 'add a self-filling contents page')
+    .option('--no-cover', 'skip the title page (Markdown, or Word with --plain)')
+    .option('--contents', 'add a self-filling contents page (Markdown, or Word with --plain)')
+    .option(
+      '--plain',
+      "Word only: structure in the house style (headings, lists, tables, a cover) instead of Word's own page look",
+    )
     .action(async (file: string, flags: ImportFlags) => {
       const { importDoc } = await import('./import.ts');
       await importDoc(file, flags);
