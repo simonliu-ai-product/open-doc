@@ -48,11 +48,12 @@ The Antigravity plugin in [`plugins/open-doc`](../../plugins/open-doc) uses exac
 | `list_themes` / `read_theme` | The house styles, and the full theme document. |
 | `list_assets` / `upload_asset` / `find_asset_usages` / `delete_asset` | Images per document or `global`. |
 | `list_folders` / `create_folder` / `file_document` | The folder manifest. |
-| `check_layout` | Render the sheets and report layout faults, with source locations. |
+| `check_layout` | Render the sheets and report layout faults, with source locations; `maxPages` adds a page budget per section. |
 | `proofread_document` | Report text slips in the printed words — punctuation width, mixed Chinese scripts, doubled words, term casing. |
 | `render_page` | PNG of one sheet at true page size. |
 | `export_document` | Write pdf / html / png to disk, headlessly. |
 | `import_markdown` | Turn Markdown into a document under `docs/`. |
+| `translation_status` / `mark_translated` | Translations (`meta.translationOf`) that fell behind their source, with the source's diff; mark one caught up. |
 | `import_docx` | Turn a Word `.docx` into a document under `docs/`, with warnings for what Word had that it could not keep. |
 
 `check_layout`, `render_page` and `export_document` render the document in a headless browser and need `playwright` in the workspace (`pnpm add -D playwright && pnpm exec playwright install chromium`). They reuse the running dev server, so repeat calls are cheap.

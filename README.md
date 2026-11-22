@@ -41,10 +41,11 @@ Skills ship with the scaffolder:
 - **`/create-doc`** — drafts a document end to end. Establishes topic, audience, and *source material* first (it will not invent your numbers), asks four scoping questions, plans the pages, then writes them.
 - **`/doc-authoring`** — the technical reference: file contract, page canvas, print type scale, the vertical budget that decides where pages break, tables, charts, assets.
 - **`/current-doc`** — resolves "this page" and "this element". The dev server publishes where you are reading to `node_modules/.open-doc/current.json`, so your agent edits the sheet you are looking at instead of asking which one you mean.
+- **The chores nobody wants** — `/fit-pages` (cut to a page limit, measured), `/refresh-report` (this period's data into a recurring report, with a list of every number that changed), `/proofread`, `/sync-translation` (retranslate only what the source changed), `/import-document` (Word, PDF or Markdown in).
 
 ### 🔌 An MCP server, so any agent framework can drive it
 
-`open-doc dev --mcp` mounts an MCP endpoint next to the UI — 26 tools covering documents, surgical text edits, layout checks and page screenshots, Markdown import, export, themes, assets, and folders. It is stateless Streamable HTTP, so a client just points at `http://localhost:5273/mcp` with no session handshake. For clients that launch their own servers, the same tools run over stdio with `npx -p @open-document/mcp open-doc-mcp`.
+`open-doc dev --mcp` mounts an MCP endpoint next to the UI — 33 tools covering documents, surgical text edits, layout checks and page screenshots, Markdown import, export, themes, assets, and folders. It is stateless Streamable HTTP, so a client just points at `http://localhost:5273/mcp` with no session handshake. For clients that launch their own servers, the same tools run over stdio with `npx -p @open-document/mcp open-doc-mcp`.
 
 The tools and the browser share one implementation, so `write_document` / `write_text` take the content you last read and refuse a stale write with `409` rather than overwriting whoever got there first. See [packages/mcp](packages/mcp).
 
@@ -120,6 +121,10 @@ Clipped content, blank sheets, stranded headings, type too small to print, image
 
 `open-doc proofread` reads the words the same way — off the printed sheets, code left out — and flags the slips a copy editor would: full-width `Ａ１`, half-width `,` beside Chinese or Japanese text (and `，` between English words), Simplified characters in a Traditional Chinese document or the reverse, `the the`, and `GitHub` spelled `Github` three pages later. Each finding has the page, the snippet and the `line:column`. It is advice, so it always exits zero; agents call it as `proofread_document`.
 
+With a page limit, `open-doc check --max-pages 10` fails a document that runs over and measures where the length is — each top-level section in sheets, counted from where its heading sits, plus how many pages must go once the last sheet's slack is counted. That is what `/fit-pages` cuts against, re-checking after every pass.
+
+Translations are tracked too. A document whose `meta.translationOf` names its source and whose `meta.translatedAt` names the source commit it matches shows up in `open-doc translations`: up to date, or behind with the source's commits, changed files and (`--diff`) the diff to retranslate. `--mark <id>` records that it caught up; the command exits non-zero while any translation is behind.
+
 ### ⌨️ Headless export — the Download menu without a browser
 
 ```bash
@@ -188,7 +193,8 @@ Open http://localhost:5273. From there, drive it through your agent — or edit 
 | --- | --- |
 | `open-doc dev` | Dev server + viewer (`--mcp` to mount the MCP endpoint) |
 | `open-doc build` / `preview` | Static site |
-| `open-doc check [ids…]` | Report layout faults; non-zero exit on errors |
+| `open-doc check [ids…]` | Report layout faults; non-zero exit on errors (`--max-pages <n>` for a page limit) |
+| `open-doc translations [id]` | Translations and whether their source moved on (`--diff`, `--mark <id>`) |
 | `open-doc proofread [ids…]` | Report text slips — full-width letters, punctuation width, mixed Chinese scripts, doubled words, term casing (advice; exits 0) |
 | `open-doc export [ids…]` | Headless PDF / HTML / PNG |
 | `open-doc import <file.md\|file.docx>` | Markdown or Word → a document under `docs/` |

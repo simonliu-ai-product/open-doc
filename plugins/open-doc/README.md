@@ -5,7 +5,7 @@
 ## What it adds
 
 - **Skills** — `create-doc`, `doc-authoring`, `create-theme`, `apply-comments`, `current-doc`: how a document is shaped, the print type scale and vertical budget, themes, and the viewer's comment markers. And the chores: `fit-pages` (a page limit), `refresh-report` (a recurring report's new numbers), `proofread` (consistency), `sync-translation` (translated copies), `import-document` (Word, PDF or Markdown in).
-- **MCP server** — `open-doc`, 26 tools over stdio (`@open-document/mcp`): list, read, create and edit documents; themes and assets; `check_layout`, `render_page` and `export_document` for what the pages actually look like.
+- **MCP server** — `open-doc`, 33 tools over stdio (`@open-document/mcp`): list, read, create and edit documents; themes and assets; `check_layout`, `render_page` and `export_document` for what the pages actually look like.
 - **Rule** (Antigravity) — `open-doc`, applied when the agent is working in an open-doc workspace.
 
 ## Requirements

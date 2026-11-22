@@ -48,11 +48,12 @@ open-doc dev --mcp
 | `list_themes` / `read_theme` | 可用的家族風格，以及完整的 theme 文件。 |
 | `list_assets` / `upload_asset` / `find_asset_usages` / `delete_asset` | 各文件或 `global` 範圍的圖片。 |
 | `list_folders` / `create_folder` / `file_document` | 資料夾清單與歸檔。 |
-| `check_layout` | 算出每一頁並回報版面問題，附上原始碼位置。 |
+| `check_layout` | 算出每一頁並回報版面問題，附上原始碼位置；加上 `maxPages` 會列出每個章節占的頁數。 |
 | `proofread_document` | 回報印出文字裡的問題——標點全半形、繁簡混用、重複字、專有名詞大小寫。 |
 | `render_page` | 以真實頁面尺寸截下某一頁的 PNG。 |
 | `export_document` | 無頭寫出 pdf / html / png。 |
 | `import_markdown` | 把 Markdown 變成 `docs/` 下的一份文件。 |
+| `translation_status` / `mark_translated` | 落後原文的翻譯版本（`meta.translationOf`）與原文的差異；把一份標記為已追上。 |
 | `import_docx` | 把 Word `.docx` 變成 `docs/` 下的一份文件，Word 有而文件放不下的東西會列在 warnings。 |
 
 `check_layout`、`render_page` 和 `export_document` 會在無頭瀏覽器裡算出文件，需要工作區內有 `playwright`（`pnpm add -D playwright && pnpm exec playwright install chromium`）。它們會沿用正在跑的 dev server，所以連續呼叫很便宜。

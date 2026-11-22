@@ -25,7 +25,11 @@ A PDF has no structure to import, only positioned text. Rebuild it:
 4. Pictures: if you can extract them (`pdfimages -png`), reference them from the Markdown; otherwise leave an `<ImagePlaceholder>` with what the picture showed, and list it.
 5. `open-doc import <scratch.md> …` as above, then delete the scratch file.
 
-## After any import
+## Word keeps its look
+
+A `.docx` imports with Word's page look by default: page size and margins, fonts, alignment, colours, table grid with merged cells, borders and shading, fill-in blanks. That is usually what the user wants — a form must still look like the form. So for a Word import, **skip the theme and restyle steps below** unless the user asks for a restyle; then re-import with `--plain` (MCP `plain: true`), which keeps only the structure, and continue with the steps below. Still run the check and the proofread.
+
+## After a Markdown, PDF or `--plain` import
 
 1. **Theme and design**: apply the house theme (`--theme`, or follow `themes/<id>.md` for the components it offers) instead of restyling by hand.
 2. **Restore what conversion flattens**, following `doc-authoring`: a table of numbers that came from a spreadsheet becomes a `.csv` with `<DataTable>`; numbered figures and tables get `<Figure>` and `<Ref>`; a chart that arrived as a picture can stay a picture unless its data is available.
