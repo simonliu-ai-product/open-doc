@@ -688,7 +688,7 @@ out.push('', '## Worst format mismatches', '');
 for (const row of imported) {
   const worst = row.format?.worst ?? [];
   if (worst.length === 0) continue;
-  out.push(`- **${row.name}**: ${worst.slice(0, 6).join('; ')}`);
+  out.push(`- **${row.name}**: ${worst.slice(0, 8).join('; ')}`);
 }
 out.push('', `${rows.length} files, ${failed} failing`);
 const text = `${out.join('\n')}\n`;

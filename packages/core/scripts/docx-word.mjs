@@ -57,10 +57,18 @@ export function readWord(bytes) {
     const id = el.attrs['w:styleId'];
     if (!id) continue;
     if (el.attrs['w:type'] === 'paragraph' && el.attrs['w:default'] === '1') defaultParagraph = id;
+    const conditional = {};
+    for (const cond of elements(el, 'w:tblStylePr')) {
+      conditional[cond.attrs['w:type']] = {
+        jc: val(child(child(cond, 'w:pPr'), 'w:jc')),
+        r: runProps(child(cond, 'w:rPr')),
+      };
+    }
     styles.set(id, {
       basedOn: val(child(el, 'w:basedOn')),
       jc: val(child(child(el, 'w:pPr'), 'w:jc')),
       r: runProps(child(el, 'w:rPr')),
+      conditional,
     });
   }
   const defaults = child(stylesXml, 'w:docDefaults');
@@ -95,14 +103,16 @@ export function readWord(bytes) {
     }
   }
 
-  const paragraph = (p, inTable) => {
+  // A table style's own paragraph and run properties, and the first-row and
+  // first-column formats tblLook turns on, sit under the paragraph's style.
+  const paragraph = (p, inTable, cell = { jc: undefined, r: {} }) => {
     const pPr = child(p, 'w:pPr');
     const styleId = val(child(pPr, 'w:pStyle')) ?? defaultParagraph;
     const pChain = chain(styleId);
-    let jc = defaultJc;
+    let jc = cell.jc ?? defaultJc;
     for (const style of pChain) jc = style.jc ?? jc;
     jc = val(child(pPr, 'w:jc')) ?? jc;
-    const markRun = Object.assign({}, defaultRun, ...pChain.map((style) => style.r));
+    const markRun = Object.assign({}, defaultRun, cell.r, ...pChain.map((style) => style.r));
     if (child(pPr, 'w:pageBreakBefore') && toggle(child(pPr, 'w:pageBreakBefore'))) {
       tokens.push({ mark: 'explicit' });
     }
@@ -140,7 +150,8 @@ export function readWord(bytes) {
     };
     walk(p);
     const text = runs.map((run) => run.text).join('');
-    if (child(pPr, 'w:sectPr')) tokens.push({ mark: 'section' });
+    const sectPr = child(pPr, 'w:sectPr');
+    if (sectPr && val(child(sectPr, 'w:type')) !== 'continuous') tokens.push({ mark: 'section' });
     if (text.trim()) paragraphs.push({ text, jc: jc ?? 'left', runs, inTable });
   };
 
@@ -176,15 +187,44 @@ export function readWord(bytes) {
       }
     }
     if (top) tables.push({ rows: rows.length, grid, spans, merges });
-    for (const tr of rows) for (const tc of cellsOf(tr)) block(tc, true);
+    const tblPr = child(tbl, 'w:tblPr');
+    const tStyle = chain(val(child(tblPr, 'w:tblStyle')));
+    const look = child(tblPr, 'w:tblLook');
+    const bits = Number.parseInt(look?.attrs['w:val'] ?? '', 16);
+    const on = (name, bit) =>
+      look?.attrs[`w:${name}`] !== undefined
+        ? look.attrs[`w:${name}`] === '1'
+        : Number.isFinite(bits) && (bits & bit) !== 0;
+    rows.forEach((tr, r) => {
+      const cells = cellsOf(tr);
+      cells.forEach((tc, c) => {
+        const layers = tStyle.flatMap((style) => [
+          { jc: style.jc, r: style.r },
+          ...(on('firstColumn', 0x80) && c === 0 ? [style.conditional.firstCol ?? {}] : []),
+          ...(on('lastColumn', 0x100) && c === cells.length - 1
+            ? [style.conditional.lastCol ?? {}]
+            : []),
+          ...(on('firstRow', 0x20) && r === 0 ? [style.conditional.firstRow ?? {}] : []),
+          ...(on('lastRow', 0x40) && r === rows.length - 1
+            ? [style.conditional.lastRow ?? {}]
+            : []),
+        ]);
+        const cell = { jc: undefined, r: {} };
+        for (const layer of layers) {
+          cell.jc = layer.jc ?? cell.jc;
+          Object.assign(cell.r, layer.r ?? {});
+        }
+        block(tc, true, cell);
+      });
+    });
   };
 
-  const block = (container, inTable) => {
+  const block = (container, inTable, cell) => {
     for (const el of elements(container)) {
-      if (el.name === 'w:p') paragraph(el, inTable);
+      if (el.name === 'w:p') paragraph(el, inTable, cell);
       else if (el.name === 'w:tbl') table(el, !inTable);
       else if (['w:sdt', 'w:customXml', 'w:ins', 'w:moveTo'].includes(el.name)) {
-        block(child(el, 'w:sdtContent') ?? el, inTable);
+        block(child(el, 'w:sdtContent') ?? el, inTable, cell);
       }
     }
   };
@@ -213,7 +253,9 @@ export function pageStarts(tokens) {
   let pending = false;
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    if (token.mark === kind || (!rendered && token.mark === 'section')) {
+    // A hard break or section break starts a page even where Word wrote no
+    // rendered marker for it; marks with no text between them are one start.
+    if (token.mark) {
       pending = true;
       continue;
     }
