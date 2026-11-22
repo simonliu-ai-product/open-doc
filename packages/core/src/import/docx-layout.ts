@@ -1,6 +1,7 @@
 import { isSafeHref } from '../app/lib/href.ts';
 import { PAGE_SIZE_NAMES, PAGE_SIZES, type PageSizeName } from '../app/lib/sdk.ts';
 import {
+  DocxError,
   type DocxPackage,
   num,
   on,
@@ -30,6 +31,10 @@ export type LRun =
   | { kind: 'break' }
   | { kind: 'image'; src: string; alt: string; width: number; height: number }
   | { kind: 'ruby'; base: string; rt: string; css: Css }
+  /** A drop capital: Word's frame, floated at the start of the paragraph it opens. */
+  | { kind: 'drop'; text: string; css: Css }
+  /** A bookmark an internal hyperlink points at. */
+  | { kind: 'anchor'; id: string }
   | {
       /** A text box Word positioned against the paragraph; absolute here too. */
       kind: 'box';
@@ -68,7 +73,12 @@ export type LTable = BlockFlags & {
 
 export type LBlock = LParagraph | LTable;
 
-export type LSection = { padding: number; blocks: LBlock[] };
+export type LSection = {
+  padding: number;
+  blocks: LBlock[];
+  /** Word's newspaper columns, as many as `flow()` sets (up to three). */
+  columns?: { count: 2 | 3; gap: number };
+};
 
 export type DocxLayout = {
   pageSize: PageSizeName;
@@ -105,6 +115,10 @@ type RunProps = {
   vanish?: boolean;
   spacing?: number;
   bdr?: Border;
+  smallCaps?: boolean;
+  position?: number;
+  rtl?: boolean;
+  eastAsianLayout?: boolean;
 };
 
 type ParaProps = {
@@ -133,6 +147,7 @@ type ParaProps = {
   borders?: Sides;
   numId?: string;
   ilvl?: number;
+  bidi?: boolean;
 };
 
 type Style = {
@@ -144,6 +159,8 @@ type Style = {
   p: ParaProps;
   r: RunProps;
   tbl?: XmlElement;
+  /** Conditional formats a table style sets for its first row, bands, corners… */
+  conditional?: Map<string, XmlElement>;
 };
 
 type Level = {
@@ -219,6 +236,11 @@ const WARNINGS: Record<string, (n: number) => string> = {
   unshowable: (n) => `${n} image(s) in a format browsers cannot show (EMF, WMF, TIFF) not imported`,
   missingImage: (n) => `${n} image(s) missing from the file not imported`,
   headerFooter: () => 'Word headers and footers were not imported',
+  hidden: (n) => `${n} passage(s) of hidden text left out, as Word does when printing`,
+  eastAsianLayout: (n) =>
+    `${n} passage(s) of combined or vertical East Asian characters shown as ordinary text`,
+  frame: (n) => `${n} framed paragraph(s) placed in the text flow`,
+  columns: (n) => `${n} section(s) with more than three columns set in three`,
   orientation: (n) =>
     `${n} section(s) in the other page orientation printed in the document's own; wide tables there are scaled to fit`,
   tableScaled: (n) => `${n} table(s) wider than the page scaled down to fit`,
@@ -326,6 +348,13 @@ function readRPr(rPr: XmlElement | undefined): RunProps {
   if (spacing !== undefined) r.spacing = spacing;
   const bdr = readBorder(child(rPr, 'w:bdr'));
   if (bdr) r.bdr = bdr;
+  const smallCaps = on(child(rPr, 'w:smallCaps'));
+  if (smallCaps !== undefined) r.smallCaps = smallCaps;
+  const position = num(val(child(rPr, 'w:position')));
+  if (position !== undefined) r.position = position;
+  const rtl = on(child(rPr, 'w:rtl'));
+  if (rtl !== undefined) r.rtl = rtl;
+  if (child(rPr, 'w:eastAsianLayout')) r.eastAsianLayout = true;
   return r;
 }
 
@@ -390,6 +419,8 @@ function readPPr(pPr: XmlElement | undefined): ParaProps {
   if (shd) p.shd = shd;
   const borders = readSides(child(pPr, 'w:pBdr'));
   if (borders) p.borders = borders;
+  const bidi = on(child(pPr, 'w:bidi'));
+  if (bidi !== undefined) p.bidi = bidi;
   const numPr = child(pPr, 'w:numPr');
   if (numPr) {
     const numId = val(child(numPr, 'w:numId'));
@@ -505,7 +536,16 @@ function formatNumber(n: number, fmt: string): string {
 
 export function readDocxLayout(bytes: Uint8Array): DocxLayout {
   const pkg = openDocx(bytes);
-  return new LayoutReader(pkg).read();
+  try {
+    return new LayoutReader(pkg).read();
+  } catch (err) {
+    // A damaged part is a fault in the file, and the user needs to hear that,
+    // not a stack trace.
+    if (err instanceof DocxError) throw err;
+    throw new DocxError(
+      `could not read this Word document (${err instanceof Error ? err.message : String(err)}) — try opening it in Word and saving it again`,
+    );
+  }
 }
 
 class LayoutReader {
@@ -532,6 +572,8 @@ class LayoutReader {
   private insetRight = 0;
   private padding = 0;
   private pendingBreak = false;
+  private pendingDrop: LRun | null = null;
+  private anchors = new Set<string>();
   private cjk = false;
 
   constructor(private pkg: DocxPackage) {}
@@ -547,6 +589,9 @@ class LayoutReader {
     const settings = pkg.partOf('/settings', 'settings.xml');
     this.tabStop = num(val(child(settings, 'w:defaultTabStop'))) ?? 720;
     this.cjk = CJK_RE.test(textContent(pkg.body).slice(0, 4000));
+    for (const link of descendants(pkg.body, 'w:hyperlink')) {
+      if (link.attrs['w:anchor']) this.anchors.add(link.attrs['w:anchor']);
+    }
 
     const groups = this.sectionGroups(pkg.body);
     const first = groups[0]?.sectPr ?? child(pkg.body, 'w:sectPr');
@@ -601,12 +646,28 @@ class LayoutReader {
       const blocks = collapseBlankPages(this.readBlocks(group.nodes, true));
       // Empty paragraphs at the end of a section print nothing; they only
       // risk pushing a blank sheet out of a page that was full to the margin.
-      while (blocks.length > 0 && isEmptyParagraph(blocks[blocks.length - 1])) blocks.pop();
+      while (blocks.length > 0 && isBlank(blocks[blocks.length - 1])) blocks.pop();
       const previous = sections[sections.length - 1];
       // A section already starts a new sheet; a break on its first block would leave one blank.
       if (blocks[0] && !(continuous && previous)) blocks[0].breakBefore = false;
       if (continuous && previous) previous.blocks.push(...blocks);
-      else sections.push({ padding: round(padding), blocks });
+      else {
+        const cols = child(sectPr, 'w:cols');
+        const count = num(cols?.attrs['w:num']) ?? 1;
+        if (count > 3) this.count('columns');
+        sections.push({
+          padding: round(padding),
+          blocks,
+          ...(count > 1
+            ? {
+                columns: {
+                  count: Math.min(count, 3) as 2 | 3,
+                  gap: this.hx(num(cols?.attrs['w:space']) ?? 720),
+                },
+              }
+            : {}),
+        });
+      }
     }
 
     if (this.notes.length > 0 && sections.length > 0) {
@@ -732,6 +793,13 @@ class LayoutReader {
         p: readPPr(child(el, 'w:pPr')),
         r: readRPr(child(el, 'w:rPr')),
         ...(child(el, 'w:tblPr') ? { tbl: child(el, 'w:tblPr') } : {}),
+        ...(elements(el, 'w:tblStylePr').length > 0
+          ? {
+              conditional: new Map(
+                elements(el, 'w:tblStylePr').map((cond) => [cond.attrs['w:type'] ?? '', cond]),
+              ),
+            }
+          : {}),
       });
     }
   }
@@ -853,6 +921,13 @@ class LayoutReader {
     if (r.spacing) css.letterSpacing = px(r.spacing);
     const border = borderCss(r.bdr);
     if (border && border !== 'none') css.border = border;
+    if (r.smallCaps) css.fontVariant = 'small-caps';
+    // w:position raises or lowers the run in half-points.
+    if (r.position) css.verticalAlign = `${round(((r.position / 2) * 4) / 3)}px`;
+    if (r.rtl) {
+      css.direction = 'rtl';
+      css.unicodeBidi = 'embed';
+    }
     return css;
   }
 
@@ -964,6 +1039,27 @@ class LayoutReader {
     const segments: LRun[][] = [[]];
     const breaks: number[] = [];
     this.readInline(p, baseR, undefined, segments, breaks, extra);
+    const frame = child(pPr, 'w:framePr');
+    const dropCap = frame?.attrs['w:dropCap'];
+    if (dropCap === 'drop' || dropCap === 'margin') {
+      const texts = segments.flat().filter((run) => run.kind === 'text');
+      const first = texts[0];
+      if (first && first.kind === 'text') {
+        const text = texts.map((run) => (run.kind === 'text' ? run.text : '')).join('');
+        this.pendingDrop = {
+          kind: 'drop',
+          text,
+          css: { ...first.css, float: 'left', lineHeight: 0.85, marginRight: '0.06em' },
+        };
+        return [];
+      }
+    } else if (frame) {
+      this.count('frame');
+    }
+    if (this.pendingDrop) {
+      segments[0].unshift(this.pendingDrop);
+      this.pendingDrop = null;
+    }
     // An instruction that never reached its result would hide everything after it.
     this.fields = this.fields.filter((field) => field.result);
 
@@ -1071,9 +1167,11 @@ class LayoutReader {
     top: boolean,
   ): Css {
     const css: Css = {};
+    if (p.bidi) css.direction = 'rtl';
     const align = p.jc;
     if (align === 'center') css.textAlign = 'center';
-    else if (align === 'right' || align === 'end') css.textAlign = 'right';
+    // In a right-to-left paragraph Word's left and right are its start and end.
+    else if (align === 'right' || align === 'end') css.textAlign = p.bidi ? 'end' : 'right';
     else if (align === 'both' || align === 'distribute' || align === 'thaiDistribute')
       css.textAlign = 'justify';
 
@@ -1126,6 +1224,10 @@ class LayoutReader {
         }
       }
     }
+    // Word breaks a word longer than the line (a URL, an equation written out)
+    // wherever it must; a browser lets it run off the page.
+    const joined = runs.map((run) => (run.kind === 'text' ? run.text : ' ')).join('');
+    if (/[^\s\u3000-\u9fff]{30,}/u.test(joined)) css.overflowWrap = 'anywhere';
     if (runs.some((run) => run.kind === 'text' && /\t| {2}/.test(run.text))) {
       css.whiteSpace = 'pre-wrap';
       css.tabSize = `${this.hx(this.tabStop)}px`;
@@ -1157,7 +1259,13 @@ class LayoutReader {
           break;
         case 'w:hyperlink': {
           const rel = entry.attrs['r:id'] ? this.pkg.rels.get(entry.attrs['r:id']) : undefined;
-          const target = rel?.external && isSafeHref(rel.target) ? rel.target : undefined;
+          const anchor = entry.attrs['w:anchor'];
+          const target =
+            rel?.external && isSafeHref(rel.target)
+              ? rel.target
+              : anchor && this.anchors.has(anchor)
+                ? `#${anchor}`
+                : undefined;
           this.readInline(entry, baseR, target ?? href, segments, breaks, extra);
           break;
         }
@@ -1204,6 +1312,12 @@ class LayoutReader {
           if (choice) this.readInline(choice, baseR, href, segments, breaks, extra);
           break;
         }
+        case 'w:bookmarkStart': {
+          const name = entry.attrs['w:name'];
+          if (name && this.anchors.has(name))
+            segments[segments.length - 1].push({ kind: 'anchor', id: name });
+          break;
+        }
         case 'w:pPr':
         case 'w:rPr':
           break;
@@ -1228,7 +1342,11 @@ class LayoutReader {
     const rPr = child(run, 'w:rPr');
     const charStyle = this.chain(val(child(rPr, 'w:rStyle')));
     const r = mergeR(baseR, ...charStyle.map((style) => style.r), readRPr(rPr));
-    if (r.vanish) return;
+    if (r.vanish) {
+      if (descendants(run, 'w:t').some((t) => textContent(t).trim() !== '')) this.count('hidden');
+      return;
+    }
+    if (r.eastAsianLayout) this.count('eastAsianLayout');
     const css = this.runCss(r);
     const underlined = !!r.u && r.u !== 'none';
     const vert = r.vert === 'superscript' ? 'sup' : r.vert === 'subscript' ? 'sub' : undefined;
@@ -1272,6 +1390,9 @@ class LayoutReader {
         case 'w:tab':
         case 'w:ptab':
           push('\t');
+          break;
+        case 'w:softHyphen':
+          push('\u00ad');
           break;
         case 'w:noBreakHyphen':
           push('‑');
@@ -1409,7 +1530,16 @@ class LayoutReader {
     const anchor = descendants(el, 'wp:anchor')[0];
     const boxes = descendants(el, 'w:txbxContent');
     if (anchor && boxes.length > 0) {
-      this.anchoredBox(anchor, boxes[0], out);
+      this.anchoredBox(anchor, out);
+      return;
+    }
+    const vml = descendants(el, 'v:shape').filter(
+      (shape) =>
+        /position:\s*absolute/.test(shape.attrs.style ?? '') &&
+        descendants(shape, 'w:txbxContent').length > 0,
+    );
+    if (vml.length > 0) {
+      for (const shape of vml) this.vmlBox(shape, out);
       return;
     }
     for (const box of boxes) {
@@ -1424,12 +1554,17 @@ class LayoutReader {
     const alt = (docPr?.attrs.descr || docPr?.attrs.title || '').trim();
     const blips = descendants(el, 'a:blip');
     let found = 0;
+    // A picture that cannot come across keeps its place as an empty frame,
+    // so the page around it still lays out as Word's does.
+    const placeholder = () => {
+      if (width > 0 && height > 0) out.push({ kind: 'image', src: '', alt, width, height });
+    };
     for (const blip of blips) {
       const src = this.image(blip.attrs['r:embed'] ?? blip.attrs['r:link']);
       if (src) {
         out.push({ kind: 'image', src, alt, width, height });
         found++;
-      }
+      } else placeholder();
     }
     for (const image of descendants(el, 'v:imagedata')) {
       const shape = descendants(el, 'v:shape')[0];
@@ -1455,6 +1590,7 @@ class LayoutReader {
     if (found > 0 && floating) this.count('floating', found);
     if (boxes.length === 0 && blips.length === 0 && descendants(el, 'v:imagedata').length === 0) {
       this.count('drawing');
+      placeholder();
     }
   }
 
@@ -1463,7 +1599,7 @@ class LayoutReader {
    * placed the same way here, absolutely inside the paragraph, with its own
    * border, fill and insets. One with no text, border or fill draws nothing.
    */
-  private anchoredBox(anchor: XmlElement, content: XmlElement, out: LRun[]) {
+  private anchoredBox(anchor: XmlElement, out: LRun[]) {
     const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
     const extent = child(anchor, 'wp:extent');
     const width = emu(extent?.attrs.cx);
@@ -1489,7 +1625,89 @@ class LayoutReader {
     // Offsets measured from the page or its left margin, not the text column.
     if (h.from === 'page') left -= this.padding + this.insetLeft;
     else if (h.from === 'leftMargin') left -= this.insetLeft + this.padding;
-    const spPr = descendants(anchor, 'wps:spPr')[0];
+
+    // A group (wpg) places each shape on its own child grid, scaled to the
+    // group's extent; a lone shape fills the anchor.
+    const group = descendants(anchor, 'wpg:grpSpPr')[0];
+    const gx = child(group, 'a:xfrm');
+    const point = (el: XmlElement | undefined, a: string, b: string) => [
+      num(el?.attrs[a]) ?? 0,
+      num(el?.attrs[b]) ?? 0,
+    ];
+    const [extX, extY] = point(child(gx, 'a:ext'), 'cx', 'cy');
+    const [chX, chY] = point(child(gx, 'a:chOff'), 'x', 'y');
+    const [chW, chH] = point(child(gx, 'a:chExt'), 'cx', 'cy');
+    const sx = chW ? extX / chW : 1;
+    const sy = chH ? extY / chH : 1;
+    for (const shape of descendants(anchor, 'wps:wsp')) {
+      const spPr = child(shape, 'wps:spPr');
+      let box = { x: left, y: v.value, w: width, h: height };
+      if (group) {
+        const xfrm = child(spPr, 'a:xfrm');
+        const [x, y] = point(child(xfrm, 'a:off'), 'x', 'y');
+        const [cx, cy] = point(child(xfrm, 'a:ext'), 'cx', 'cy');
+        box = {
+          x: round(left + ((x - chX) * sx) / 9525),
+          y: round(v.value + ((y - chY) * sy) / 9525),
+          w: round((cx * sx) / 9525),
+          h: round((cy * sy) / 9525),
+        };
+      }
+      const content = descendants(shape, 'w:txbxContent')[0];
+      this.shapeBox(shape, spPr, content, box, out);
+    }
+  }
+
+  /** An old-style (VML) text box: `v:shape` positioned by its CSS-like style. */
+  private vmlBox(shape: XmlElement, out: LRun[]) {
+    const style = shape.attrs.style ?? '';
+    const length = (key: string) => {
+      const match = style.match(new RegExp(`(?:^|;)\\s*${key}:\\s*(-?[\\d.]+)(pt|px|in|cm|mm)?`));
+      if (!match) return 0;
+      const value = Number(match[1]);
+      const unit = match[2] ?? 'px';
+      const factor = { pt: 4 / 3, px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4 }[unit] ?? 1;
+      return round(value * factor);
+    };
+    const relative = style.match(/mso-position-horizontal-relative:\s*([\w-]+)/)?.[1];
+    let left = length('margin-left') || length('left');
+    if (relative === 'page') left -= this.padding + this.insetLeft;
+    const css: Css = {};
+    if (shape.attrs.stroked !== 'f' && shape.attrs.stroked !== 'false') {
+      const weight = (shape.attrs.strokeweight ?? '0.75pt').match(/([\d.]+)(pt|px)?/);
+      const width = weight ? round(Number(weight[1]) * (weight[2] === 'px' ? 1 : 4 / 3)) : 1;
+      const color = shape.attrs.strokecolor?.replace(/\s.*$/, '') ?? '#000000';
+      css.border = `${Math.max(0.5, width)}px solid ${color.startsWith('#') ? color : 'black'}`;
+    }
+    if (shape.attrs.filled !== 'f' && shape.attrs.fillcolor) {
+      const color = shape.attrs.fillcolor.replace(/\s.*$/, '');
+      if (color.startsWith('#')) css.background = color;
+    }
+    css.padding = '3.75px 7.5px';
+    const content = descendants(shape, 'w:txbxContent')[0];
+    const blocks = this.readBlocks(elements(content), false);
+    const text = textContent(content).trim();
+    if (!text && !css.border && !css.background) return;
+    if (text.length <= 12 && blocks.length === 1) css.whiteSpace = 'nowrap';
+    out.push({
+      kind: 'box',
+      left,
+      top: length('margin-top') || length('top'),
+      width: length('width'),
+      height: length('height'),
+      css,
+      blocks,
+    });
+  }
+
+  private shapeBox(
+    shape: XmlElement,
+    spPr: XmlElement | undefined,
+    content: XmlElement | undefined,
+    box: { x: number; y: number; w: number; h: number },
+    out: LRun[],
+  ) {
+    const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
     const line = child(spPr, 'a:ln');
     const lineFill = child(line, 'a:solidFill');
     const color = (fill: XmlElement | undefined) => {
@@ -1502,16 +1720,16 @@ class LayoutReader {
     }
     const fillEl = child(spPr, 'a:solidFill');
     if (fillEl) css.background = color(fillEl);
-    const body = descendants(anchor, 'wps:bodyPr')[0]?.attrs ?? {};
+    const body = child(shape, 'wps:bodyPr')?.attrs ?? {};
     const inset = (key: string, fallback: number) => emu(body[key] ?? String(fallback));
     css.padding = `${inset('tIns', 45720)}px ${inset('rIns', 91440)}px ${inset('bIns', 45720)}px ${inset('lIns', 91440)}px`;
-    const blocks = this.readBlocks(elements(content), false);
-    const text = textContent(content).trim();
+    const blocks = content ? this.readBlocks(elements(content), false) : [];
+    const text = content ? textContent(content).trim() : '';
     if (!text && !css.border && !css.background) return;
     // A one-line label ("附表一") sized to fit Word's font must not wrap in a
     // fallback face a hair wider.
     if (text.length <= 12 && blocks.length === 1) css.whiteSpace = 'nowrap';
-    out.push({ kind: 'box', left, top: v.value, width, height, css, blocks });
+    out.push({ kind: 'box', left: box.x, top: box.y, width: box.w, height: box.h, css, blocks });
   }
 
   private inset(block: LBlock): LBlock {
@@ -1581,11 +1799,67 @@ class LayoutReader {
       r: mergeR(...styled.map((style) => style.r)),
     };
 
-    const cols = elements(child(tbl, 'w:tblGrid') ?? tbl, 'w:gridCol').map((col) =>
+    let cols = elements(child(tbl, 'w:tblGrid') ?? tbl, 'w:gridCol').map((col) =>
       this.hx(num(col.attrs['w:w']) ?? 0),
     );
-    const trs = elements(tbl, 'w:tr');
+    const trs = unwrap(tbl, 'w:tr');
     if (trs.length === 0) return [];
+
+    // Which of the style's conditional formats a cell takes, in Word's order
+    // of precedence (later wins), as tblLook switches them on.
+    const conditional = new Map<string, XmlElement>();
+    for (const style of styled)
+      for (const [type, el] of style.conditional ?? []) conditional.set(type, el);
+    const look = pick('w:tblLook');
+    const lookBits = Number.parseInt(look?.attrs['w:val'] ?? '', 16);
+    const flag = (name: string, bit: number) => {
+      const value = look?.attrs[`w:${name}`];
+      if (value !== undefined) return value === '1' || value === 'true';
+      return Number.isFinite(lookBits) ? (lookBits & bit) !== 0 : false;
+    };
+    const firstRow = flag('firstRow', 0x20);
+    const lastRowOn = flag('lastRow', 0x40);
+    const firstCol = flag('firstColumn', 0x80);
+    const lastCol = flag('lastColumn', 0x100);
+    const hBand = !flag('noHBand', 0x200);
+    const vBand = !flag('noVBand', 0x400);
+    const conditionsFor = (r: number, c: number, span: number, columns: number): XmlElement[] => {
+      if (conditional.size === 0) return [];
+      const types: string[] = ['wholeTable'];
+      const bodyRow = r - (firstRow ? 1 : 0);
+      const bodyCol = c - (firstCol ? 1 : 0);
+      if (vBand && bodyCol >= 0) types.push(bodyCol % 2 === 0 ? 'band1Vert' : 'band2Vert');
+      if (hBand && bodyRow >= 0) types.push(bodyRow % 2 === 0 ? 'band1Horz' : 'band2Horz');
+      const isFirstCol = firstCol && c === 0;
+      const isLastCol = lastCol && c + span >= columns;
+      const isFirstRow = firstRow && r === 0;
+      const isLastRow = lastRowOn && r === trs.length - 1;
+      if (isFirstCol) types.push('firstCol');
+      if (isLastCol) types.push('lastCol');
+      if (isFirstRow) types.push('firstRow');
+      if (isLastRow) types.push('lastRow');
+      if (isFirstRow && isFirstCol) types.push('nwCell');
+      if (isFirstRow && isLastCol) types.push('neCell');
+      if (isLastRow && isFirstCol) types.push('swCell');
+      if (isLastRow && isLastCol) types.push('seCell');
+      return types.flatMap((type) =>
+        conditional.has(type) ? [conditional.get(type) as XmlElement] : [],
+      );
+    };
+    // A table some producers write without a grid takes its first row's
+    // cell widths, or shares the column evenly.
+    if (cols.length === 0 || cols.every((w) => w === 0)) {
+      const first = unwrap(trs[0], 'w:tc');
+      const widths = first.flatMap((tc) => {
+        const tcPr = child(tc, 'w:tcPr');
+        const span = num(val(child(tcPr, 'w:gridSpan'))) ?? 1;
+        const w = child(tcPr, 'w:tcW');
+        const each = w?.attrs['w:type'] === 'dxa' ? this.hx(num(w.attrs['w:w']) ?? 0) / span : 0;
+        return Array.from({ length: span }, () => each);
+      });
+      const fallback = round(this.textWidth / Math.max(1, widths.length));
+      cols = widths.map((w) => w || fallback);
+    }
 
     type Slot = {
       cell: LCell;
@@ -1595,6 +1869,7 @@ class LayoutReader {
       lastRow: number;
       tcPr?: XmlElement;
       bottomPr?: XmlElement;
+      conds: XmlElement[];
     };
     const grid: Array<Array<Slot | undefined>> = [];
     const rows: LRow[] = [];
@@ -1611,12 +1886,7 @@ class LayoutReader {
       let col = num(val(child(trPr, 'w:gridBefore'))) ?? 0;
       if (col > 0)
         row.cells.push({ colSpan: col, rowSpan: 1, css: { border: 'none' }, blocks: [] });
-      const tcs = [
-        ...elements(tr, 'w:tc'),
-        ...elements(tr, 'w:sdt').flatMap((sdt) =>
-          elements(child(sdt, 'w:sdtContent') ?? sdt, 'w:tc'),
-        ),
-      ];
+      const tcs = unwrap(tr, 'w:tc');
       for (const tc of tcs) {
         const tcPr = child(tc, 'w:tcPr');
         const span = num(val(child(tcPr, 'w:gridSpan'))) ?? 1;
@@ -1635,9 +1905,24 @@ class LayoutReader {
         }
         // Table-style paragraph and run properties sit between the defaults
         // and the paragraph's own style.
-        const blocks = this.readBlocks(elements(tc), false, inherited);
+        const conds = conditionsFor(r, col, span, Math.max(cols.length, col + span));
+        const cellInherited = conds.length
+          ? {
+              p: mergeP(inherited.p, ...conds.map((cond) => readPPr(child(cond, 'w:pPr')))),
+              r: mergeR(inherited.r, ...conds.map((cond) => readRPr(child(cond, 'w:rPr')))),
+            }
+          : inherited;
+        const blocks = this.readBlocks(elements(tc), false, cellInherited);
         const cell: LCell = { colSpan: span, rowSpan: 1, css: {}, blocks };
-        const slot: Slot = { cell, row: r, col, span, lastRow: r, ...(tcPr ? { tcPr } : {}) };
+        const slot: Slot = {
+          cell,
+          row: r,
+          col,
+          span,
+          lastRow: r,
+          conds,
+          ...(tcPr ? { tcPr } : {}),
+        };
         slots.push(slot);
         for (let c = col; c < col + span; c++) grid[r][c] = slot;
         row.cells.push(cell);
@@ -1650,7 +1935,11 @@ class LayoutReader {
     const lastRow = rows.length - 1;
     for (const slot of slots) {
       const tcPr = slot.tcPr;
-      const own = readSides(child(tcPr, 'w:tcBorders')) ?? {};
+      const own: Sides = {};
+      for (const cond of slot.conds) {
+        Object.assign(own, readSides(child(child(cond, 'w:tcPr'), 'w:tcBorders')));
+      }
+      Object.assign(own, readSides(child(tcPr, 'w:tcBorders')));
       const ownBottom = slot.bottomPr
         ? readSides(child(slot.bottomPr, 'w:tcBorders'))?.bottom
         : own.bottom;
@@ -1679,12 +1968,71 @@ class LayoutReader {
         return this.hx(num(el?.attrs['w:w']) ?? cellMargins[s]);
       };
       css.padding = `${margin('top')}px ${margin('right')}px ${margin('bottom')}px ${margin('left')}px`;
-      const background = fill(child(tcPr, 'w:shd'));
+      const condFill = slot.conds
+        .map((cond) => fill(child(child(cond, 'w:tcPr'), 'w:shd')))
+        .filter((value): value is string => !!value)
+        .pop();
+      const background = fill(child(tcPr, 'w:shd')) ?? condFill;
       if (background) css.background = background;
+      const direction = val(child(tcPr, 'w:textDirection'));
+      if (direction === 'tbRl' || direction === 'tbRlV' || direction === 'tbLrV') {
+        css.writingMode = 'vertical-rl';
+      } else if (direction === 'btLr') {
+        css.writingMode = 'sideways-lr';
+      }
       const vAlign = val(child(tcPr, 'w:vAlign'));
       css.verticalAlign = vAlign === 'center' ? 'middle' : vAlign === 'bottom' ? 'bottom' : 'top';
       slot.cell.css = css;
     }
+
+    // Word lets a row break across pages. A row too tall for one sheet is
+    // cut here into rows of a few paragraphs each, with no rule between them.
+    const covered = new Set<number>();
+    for (const slot of slots) {
+      if (slot.lastRow > slot.row) for (let r = slot.row; r <= slot.lastRow; r++) covered.add(r);
+    }
+    const sheet = 600;
+    const expanded: LRow[] = [];
+    rows.forEach((row, r) => {
+      let gridCol = 0;
+      const chunked = row.cells.map((cell) => {
+        const width = cols.slice(gridCol, gridCol + cell.colSpan).reduce((a, b) => a + b, 0) || 200;
+        gridCol += cell.colSpan;
+        const chunks: LBlock[][] = [[]];
+        let height = 0;
+        for (const block of cell.blocks) {
+          const h = estimateHeight(block, width);
+          if (height > 0 && height + h > sheet) {
+            chunks.push([]);
+            height = 0;
+          }
+          chunks[chunks.length - 1].push(block);
+          height += h;
+        }
+        return chunks;
+      });
+      const pieces = Math.max(1, ...chunked.map((chunks) => chunks.length));
+      if (pieces === 1 || covered.has(r)) {
+        expanded.push(row);
+        return;
+      }
+      for (let k = 0; k < pieces; k++) {
+        expanded.push({
+          css: {},
+          header: false,
+          cells: row.cells.map((cell, index) => ({
+            ...cell,
+            blocks: chunked[index][k] ?? [],
+            css: {
+              ...cell.css,
+              ...(k > 0 ? { borderTop: 'none' } : {}),
+              ...(k < pieces - 1 ? { borderBottom: 'none' } : {}),
+            },
+          })),
+        });
+      }
+    });
+    rows.splice(0, rows.length, ...expanded);
 
     const tblW = pick('w:tblW');
     const wType = tblW?.attrs['w:type'];
@@ -1768,7 +2116,7 @@ export function layoutText(layout: DocxLayout): string {
         continue;
       }
       for (const run of block.runs) {
-        if (run.kind === 'text' || run.kind === 'marker') out.push(run.text);
+        if (run.kind === 'text' || run.kind === 'marker' || run.kind === 'drop') out.push(run.text);
         else if (run.kind === 'ruby') out.push(run.base, run.rt);
         else if (run.kind === 'box') walk(run.blocks);
       }
@@ -1777,6 +2125,48 @@ export function layoutText(layout: DocxLayout): string {
   };
   for (const section of layout.sections) walk(section.blocks);
   return out.join('');
+}
+
+/** A rough height for a block set in a column `width` px wide — enough to cut a row in pieces. */
+function estimateHeight(block: LBlock, width: number): number {
+  if (block.kind === 'table') {
+    return block.rows.reduce(
+      (sum, row) =>
+        sum +
+        Math.max(
+          20,
+          ...row.cells.map((cell) => cell.blocks.reduce((h, b) => h + estimateHeight(b, width), 0)),
+        ),
+      0,
+    );
+  }
+  let line = 0;
+  let size = 16;
+  let advance = 0;
+  let pictures = 0;
+  for (const run of block.runs) {
+    if (run.kind === 'image') pictures += run.height;
+    if (run.kind !== 'text') continue;
+    size = Math.max(size, Number(run.css.fontSize) || 16);
+    for (const char of run.text) advance += (char.codePointAt(0) ?? 0) > 0x2e80 ? 1 : 0.55;
+  }
+  line =
+    typeof block.css.lineHeight === 'string' ? Number.parseFloat(block.css.lineHeight) : size * 1.3;
+  const lines = Math.max(1, Math.ceil((advance * size) / Math.max(40, width)));
+  return lines * line + pictures + 8;
+}
+
+/** Rows or cells in order, through the content controls and custom XML that may wrap them. */
+function unwrap(parent: XmlElement, name: string): XmlElement[] {
+  const out: XmlElement[] = [];
+  for (const node of elements(parent)) {
+    if (node.name === name) out.push(node);
+    else if (node.name === 'w:sdt') out.push(...unwrap(child(node, 'w:sdtContent') ?? node, name));
+    else if (node.name === 'w:customXml' || node.name === 'w:ins' || node.name === 'w:moveTo') {
+      out.push(...unwrap(node, name));
+    }
+  }
+  return out;
 }
 
 /** Rewrites one side of a `margin: top right bottom left` shorthand. */
@@ -1795,16 +2185,19 @@ function collapseBlankPages(blocks: LBlock[]): LBlock[] {
   const out: LBlock[] = [];
   let i = 0;
   while (i < blocks.length) {
-    const block = blocks[i];
-    if (block.breakBefore && isBlank(block)) {
+    if (isBlank(blocks[i])) {
       let j = i;
       while (j < blocks.length && isBlank(blocks[j]) && (j === i || !blocks[j].breakBefore)) j++;
-      if (j === blocks.length || blocks[j].breakBefore) {
+      const next = blocks[j];
+      // Empty lines just before a page break only pad the foot of a page —
+      // or, pushed over, fill one alone.
+      if (!next || next.breakBefore) {
+        if (blocks[i].breakBefore && next) next.breakBefore = true;
         i = j;
         continue;
       }
     }
-    out.push(block);
+    out.push(blocks[i]);
     i++;
   }
   return out;
@@ -1814,16 +2207,11 @@ function isBlank(block: LBlock): boolean {
   return (
     block.kind === 'p' &&
     block.runs.every(
-      (run) => (run.kind === 'text' && run.text.trim() === '') || run.kind === 'break',
+      (run) =>
+        (run.kind === 'text' && run.text.trim() === '') ||
+        run.kind === 'break' ||
+        run.kind === 'anchor',
     )
-  );
-}
-
-function isEmptyParagraph(block: LBlock): boolean {
-  return (
-    block.kind === 'p' &&
-    !block.breakBefore &&
-    block.runs.every((run) => run.kind === 'text' && run.text.trim() === '')
   );
 }
 

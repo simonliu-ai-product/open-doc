@@ -248,7 +248,11 @@ function missing(expected: string, actual: string): string {
 /** The JSX text of the generated flow sections, tags and style objects stripped. */
 function sourceText(source: string): string {
   const body = source.slice(source.indexOf('const Section1'), source.indexOf('export const meta'));
-  return body.replace(/<[^>]*>/g, '').replace(/\{'([^']*)'\}/g, '$1');
+  const kept: string[] = [];
+  return body
+    .replace(/\{'([^']*)'\}/g, (_, text: string) => `\uE000${kept.push(text) - 1}\uE000`)
+    .replace(/<[^>]*>/g, '')
+    .replace(/\uE000(\d+)\uE000/g, (_, n: string) => kept[Number(n)]);
 }
 
 function expectNoLostText(bytes: Uint8Array) {

@@ -172,12 +172,15 @@ export async function importDocx(ctx: ApiContext, opts: ImportDocxOptions): Prom
     throw new OpsError(404, `file not found: ${opts.file}`);
   }
 
-  const fallbackName = path.basename(sourceFile).replace(/\.docx$/i, '');
+  const fallbackName = path.basename(sourceFile).replace(/\.(docx|docm|dotx|dotm)$/i, '');
   try {
     if (!opts.plain) {
       const layout = readDocxLayout(bytes);
       if (layout.sections.every((section) => section.blocks.length === 0)) {
-        throw new OpsError(422, 'the Word document has no text');
+        throw new OpsError(
+          422,
+          'the Word document is empty — it has no text or pictures to import',
+        );
       }
       return await writeImport(ctx, opts, {
         frontmatter: layout.title ? { title: layout.title } : {},
@@ -217,7 +220,7 @@ export async function importDocx(ctx: ApiContext, opts: ImportDocxOptions): Prom
     throw err;
   }
   if (parsed.blocks.length === 0 && !parsed.frontmatter.title) {
-    throw new OpsError(422, 'the Word document has no text');
+    throw new OpsError(422, 'the Word document is empty — it has no text or pictures to import');
   }
 
   return writeImport(ctx, opts, {

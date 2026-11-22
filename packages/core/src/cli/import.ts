@@ -34,7 +34,7 @@ export async function importDoc(file: string, opts: ImportOptions = {}): Promise
     ...(opts.cover !== undefined ? { cover: opts.cover } : {}),
     ...(opts.contents !== undefined ? { contents: opts.contents } : {}),
   };
-  const result = /\.docx$/i.test(file)
+  const result = /\.(docx|docm|dotx|dotm)$/i.test(file)
     ? await importDocx(ctx, { ...common, ...(opts.plain ? { plain: true } : {}) })
     : await importMarkdown(ctx, common);
 

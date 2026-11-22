@@ -32,9 +32,16 @@ export function decodeEntities(value: string): string {
 
 const ATTR_RE = /([^\s=/]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
-export function parseXml(source: string): XmlElement {
+/**
+ * Parses `source`. With `canonical` (namespace URI → prefix), names are
+ * rewritten to that prefix whatever the file declared — Strict OOXML, or a
+ * producer that writes `ns0:p` — so readers can match `w:p` alone.
+ */
+export function parseXml(source: string, canonical?: Record<string, string>): XmlElement {
   const root: XmlElement = { name: '#document', attrs: {}, children: [] };
   const stack: XmlElement[] = [root];
+  const raws: string[] = ['#document'];
+  const scopes: Array<Record<string, string>> = [{}];
   let i = 0;
 
   while (i < source.length) {
@@ -62,8 +69,10 @@ export function parseXml(source: string): XmlElement {
       const name = source.slice(lt + 2, gt === -1 ? source.length : gt).trim();
       // Pop to the matching element so one stray close tag cannot swallow the rest.
       for (let depth = stack.length - 1; depth > 0; depth--) {
-        if (stack[depth].name === name) {
+        if (raws[depth] === name) {
           stack.length = depth;
+          raws.length = depth;
+          scopes.length = depth;
           break;
         }
       }
@@ -75,15 +84,40 @@ export function parseXml(source: string): XmlElement {
       const body = selfClosing ? raw.slice(0, -1) : raw;
       const nameEnd = body.search(/\s/);
       const name = nameEnd === -1 ? body : body.slice(0, nameEnd);
-      const attrs: Record<string, string> = {};
+      const rawAttrs: Array<[string, string]> = [];
       if (nameEnd !== -1) {
         for (const match of body.slice(nameEnd).matchAll(ATTR_RE)) {
-          attrs[match[1]] = decodeEntities(match[2] ?? match[3] ?? '');
+          rawAttrs.push([match[1], decodeEntities(match[2] ?? match[3] ?? '')]);
         }
       }
-      const element: XmlElement = { name, attrs, children: [] };
+      let scope = scopes[scopes.length - 1];
+      if (canonical && rawAttrs.some(([key]) => key === 'xmlns' || key.startsWith('xmlns:'))) {
+        scope = { ...scope };
+        for (const [key, value] of rawAttrs) {
+          if (key === 'xmlns') scope[''] = value;
+          else if (key.startsWith('xmlns:')) scope[key.slice(6)] = value;
+        }
+      }
+      const rename = (qname: string, element: boolean) => {
+        if (!canonical) return qname;
+        const colon = qname.indexOf(':');
+        if (colon === -1 && !element) return qname;
+        const prefix = colon === -1 ? '' : qname.slice(0, colon);
+        if (prefix === 'xmlns' || prefix === 'xml') return qname;
+        const uri = scope[prefix];
+        const target = uri === undefined ? undefined : canonical[uri];
+        if (target === undefined) return qname;
+        return `${target}:${colon === -1 ? qname : qname.slice(colon + 1)}`;
+      };
+      const attrs: Record<string, string> = {};
+      for (const [key, value] of rawAttrs) attrs[rename(key, false)] = value;
+      const element: XmlElement = { name: rename(name, true), attrs, children: [] };
       top.children.push(element);
-      if (!selfClosing) stack.push(element);
+      if (!selfClosing) {
+        stack.push(element);
+        raws.push(name);
+        scopes.push(scope);
+      }
       i = gt + 1;
     }
   }

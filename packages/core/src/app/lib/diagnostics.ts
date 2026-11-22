@@ -152,8 +152,9 @@ export function diagnosePages(
     const rawText = (frame.textContent ?? '').trim();
     const text = watermarkText && rawText === watermarkText ? '' : rawText;
     // A page shell always paints — background, borders. What makes a sheet
-    // blank is that it carries neither words nor a picture.
-    if (text === '' && !hasMedia) {
+    // blank is that it carries neither words nor a picture; an empty ruled
+    // table is a form to fill in, not a blank sheet.
+    if (text === '' && !hasMedia && !frame.querySelector('td, th')) {
       findings.push({
         page,
         rule: 'blank-page',

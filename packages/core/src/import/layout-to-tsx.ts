@@ -152,6 +152,23 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
         case 'break':
           return '<br />';
         case 'image': {
+          if (!run.src) {
+            return `<span${styleAttr({
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: run.width,
+              height: run.height,
+              overflow: 'hidden',
+              border: '1px dashed #9ca3af',
+              boxSizing: 'border-box',
+              verticalAlign: 'bottom',
+              color: '#6b7280',
+              fontSize: 10,
+              lineHeight: 1.2,
+              textIndent: 0,
+            })}>${textJsx(run.alt || 'picture not imported')}</span>`;
+          }
           const known = ctx.images?.get(run.src);
           const src = known ? `{${known.ident}}` : attr(run.src);
           const size: Css = run.width
@@ -166,6 +183,10 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
             borderBottom: '1px solid currentColor',
             ...diff(pick(run.css, ['fontSize']), pick(base, ['fontSize'])),
           })} />`;
+        case 'anchor':
+          return `<span id=${attr(run.id)} />`;
+        case 'drop':
+          return `<span${styleAttr({ ...diff(run.css, base), float: 'left' })}>${textJsx(run.text)}</span>`;
         case 'ruby':
           return wrapRun(
             `<ruby>${textJsx(run.base)}<rt>${textJsx(run.rt)}</rt></ruby>`,
@@ -300,7 +321,7 @@ export function collectLayoutImages(layout: DocxLayout): string[] {
     for (const block of blocks) {
       if (block.kind === 'p') {
         for (const run of block.runs) {
-          if (run.kind === 'image') out.push(run.src);
+          if (run.kind === 'image' && run.src) out.push(run.src);
           else if (run.kind === 'box') walk(run.blocks);
         }
       } else {
@@ -331,7 +352,10 @@ export function generateLayoutSource(
 
   const sections = layout.sections.map((section, index) => {
     const body = section.blocks.map((block) => renderBlock(block, ctx, '    ')).join('\n');
-    return `const Section${index + 1} = flow(\n  <>\n${body}\n  </>,\n  { padding: ${section.padding} },\n);`;
+    const columns = section.columns
+      ? `, columns: ${section.columns.count}, columnGap: ${section.columns.gap}`
+      : '';
+    return `const Section${index + 1} = flow(\n  <>\n${body}\n  </>,\n  { padding: ${section.padding}${columns} },\n);`;
   });
 
   const baseStack = layout.fonts.get(layout.baseFont) ?? MONO_STACK;
