@@ -427,3 +427,127 @@ describe('layout fidelity', () => {
     expect(source).toContain('<ruby>和<rt>ㄏㄜˊ</rt></ruby>');
   });
 });
+
+/** A package whose main part is written with its own prefixes and namespace URIs. */
+function rawDocx(documentXml: string, extra: Record<string, string> = {}): Uint8Array {
+  const files: Record<string, Uint8Array> = { 'word/document.xml': strToU8(documentXml) };
+  for (const [name, xml] of Object.entries(extra)) files[name] = strToU8(xml);
+  return zipSync(files);
+}
+
+describe('compatibility', () => {
+  it('reads Strict OOXML and any prefix by namespace URI', () => {
+    const strict = 'http://purl.oclc.org/ooxml/wordprocessingml/main';
+    const text = layoutText(
+      readDocxLayout(
+        rawDocx(
+          `<ns0:document xmlns:ns0="${strict}"><ns0:body><ns0:p><ns0:r><ns0:t>嚴格格式</ns0:t></ns0:r></ns0:p></ns0:body></ns0:document>`,
+        ),
+      ),
+    );
+    expect(text).toContain('嚴格格式');
+  });
+
+  it('reads every body a producer wrote, rows and cells inside content controls, and a table with no grid', () => {
+    const doc = `<w:document ${W}><w:body>${p(r('one'))}</w:body><w:body>${p(r('two'))}<w:tbl><w:sdt><w:sdtContent><w:tr><w:tc>${p(r('cell A'))}</w:tc><w:sdt><w:sdtContent><w:tc>${p(r('cell B'))}</w:tc></w:sdtContent></w:sdt></w:tr></w:sdtContent></w:sdt></w:tbl></w:body></w:document>`;
+    const layout = readDocxLayout(rawDocx(doc));
+    expect(layoutText(layout).replace(/\s/g, '')).toBe('onetwocellAcellB');
+    const table = layout.sections[0].blocks.find((block) => block.kind === 'table') as LTable;
+    expect(table.cols).toHaveLength(2);
+    expect(table.cols[0]).toBeGreaterThan(100);
+  });
+
+  it('refuses an encrypted file and an old .doc with a message, and never reads external entities', () => {
+    const ole = new Uint8Array(4096);
+    ole.set([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+    expect(() => readDocxLayout(ole)).toThrow(/older Word \.doc/);
+    const encrypted = new Uint8Array(4096);
+    encrypted.set(ole.subarray(0, 8));
+    const marker = 'EncryptedPackage';
+    for (let i = 0; i < marker.length; i++) encrypted[512 + i * 2] = marker.charCodeAt(i);
+    expect(() => readDocxLayout(encrypted)).toThrow(/password-protected/);
+    const xxe = `<?xml version="1.0"?><!DOCTYPE d [<!ENTITY x SYSTEM "file:///etc/passwd">]><w:document ${W}><w:body>${p('<w:r><w:t>a&x;b</w:t></w:r>')}</w:body></w:document>`;
+    expect(layoutText(readDocxLayout(rawDocx(xxe)))).toContain('a&x;b');
+  });
+
+  it('cuts a row taller than a page into rows that can break across pages', () => {
+    const long = Array.from({ length: 60 }, (_, i) =>
+      p(r(`段落 ${i} ${'很長的文字'.repeat(20)}`)),
+    ).join('');
+    const [table] = blocks(
+      docx(
+        `<w:tbl><w:tblGrid><w:gridCol w:w="9000"/></w:tblGrid><w:tr><w:tc>${p(r('head'))}</w:tc></w:tr><w:tr><w:tc>${long}</w:tc></w:tr></w:tbl>`,
+      ),
+    ) as LTable[];
+    expect(table.rows.length).toBeGreaterThan(3);
+    expect(table.splittable).toBe(true);
+    expect(table.rows[1].cells[0].css.borderBottom).toBe('none');
+  });
+
+  it('takes a table style’s first-row and banding formats as tblLook switches them on', () => {
+    const styles = `<w:style w:type="table" w:styleId="Grid"><w:name w:val="Grid"/><w:tblStylePr w:type="firstRow"><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:tcPr><w:shd w:val="clear" w:fill="9BBB59"/></w:tcPr></w:tblStylePr><w:tblStylePr w:type="band1Horz"><w:tcPr><w:shd w:val="clear" w:fill="EEEEEE"/></w:tcPr></w:tblStylePr></w:style>`;
+    const [table] = blocks(
+      docx(
+        `<w:tbl><w:tblPr><w:tblStyle w:val="Grid"/><w:tblLook w:firstRow="1" w:noHBand="0"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/></w:tblGrid><w:tr><w:tc>${p(r('ITEM'))}</w:tc></w:tr><w:tr><w:tc>${p(r('Books'))}</w:tc></w:tr><w:tr><w:tc>${p(r('Pens'))}</w:tc></w:tr></w:tbl>`,
+        styles,
+      ),
+    ) as LTable[];
+    const [head, first, second] = table.rows.map((row) => row.cells[0]);
+    expect(head.css.background).toBe('#9BBB59');
+    expect((head.blocks[0] as LParagraph).runs[0]).toMatchObject({
+      css: { fontWeight: 700, color: '#FFFFFF' },
+    });
+    expect(first.css.background).toBe('#EEEEEE');
+    expect(second.css.background).toBeUndefined();
+  });
+
+  it('sets newspaper columns, drop caps, internal links and right-to-left text', () => {
+    const layout = readDocxLayout(
+      docx(
+        p(r('W'), '<w:framePr w:dropCap="drop" w:lines="3"/>') +
+          p(r('ord opens the paragraph.')) +
+          p('<w:hyperlink w:anchor="sec"><w:r><w:t>see below</w:t></w:r></w:hyperlink>') +
+          p('<w:bookmarkStart w:id="1" w:name="sec"/>' + r('Target')) +
+          p(r('שלום', '<w:rtl/>'), '<w:bidi/><w:jc w:val="right"/>'),
+        '',
+        '<w:sectPr><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/><w:cols w:num="2" w:space="720"/></w:sectPr>',
+      ),
+    );
+    expect(layout.sections[0].columns).toEqual({ count: 2, gap: 48 });
+    const [dropped, link, target, rtl] = layout.sections[0].blocks as LParagraph[];
+    expect(dropped.runs[0]).toMatchObject({ kind: 'drop', text: 'W', css: { float: 'left' } });
+    expect(link.runs[0]).toMatchObject({ href: '#sec' });
+    expect(target.runs[0]).toEqual({ kind: 'anchor', id: 'sec' });
+    expect(rtl.css).toMatchObject({ direction: 'rtl', textAlign: 'end' });
+    const { source } = generateLayoutSource(layout, { docId: 'x', createdAt: 'x' });
+    expect(source).toContain('columns: 2, columnGap: 48');
+    expect(source).toContain('<span id="sec" />');
+  });
+
+  it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {
+    const [para] = blocks(
+      docx(
+        p(
+          `<w:r><w:drawing><wp:inline xmlns:wp="wp"><wp:extent cx="952500" cy="476250"/><wp:docPr id="1" name="p" descr="logo"/><a:graphic xmlns:a="a"><a:graphicData><a:blip r:embed="rId404"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>` +
+            `<w:sdt><w:sdtPr><w14:checkbox xmlns:w14="w14"><w14:checked w14:val="1"/></w14:checkbox></w:sdtPr><w:sdtContent></w:sdtContent></w:sdt>`,
+        ),
+      ),
+    ) as LParagraph[];
+    expect(para.runs[0]).toMatchObject({
+      kind: 'image',
+      src: '',
+      alt: 'logo',
+      width: 100,
+      height: 50,
+    });
+    expect(para.runs[1]).toMatchObject({ kind: 'text', text: '☒' });
+  });
+
+  it('counts hidden text instead of dropping it silently', () => {
+    const layout = readDocxLayout(docx(p(r('shown') + r('secret', '<w:vanish/>'))));
+    expect(layoutText(layout)).not.toContain('secret');
+    expect(layout.warnings).toContain(
+      '1 passage(s) of hidden text left out, as Word does when printing',
+    );
+  });
+});

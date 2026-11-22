@@ -1278,16 +1278,21 @@ class LayoutReader {
         case 'w:moveFrom':
           this.count('deletion');
           break;
-        case 'w:sdt':
-          this.readInline(
-            child(entry, 'w:sdtContent') ?? entry,
-            baseR,
-            href,
-            segments,
-            breaks,
-            extra,
-          );
+        case 'w:sdt': {
+          const content = child(entry, 'w:sdtContent') ?? entry;
+          // A checkbox control with no glyph of its own still shows its state.
+          const checkbox = descendants(child(entry, 'w:sdtPr') ?? entry, 'w14:checkbox')[0];
+          if (checkbox && textContent(content).trim() === '') {
+            const state = child(checkbox, 'w14:checked')?.attrs['w14:val'];
+            const checked = state === '1' || state === 'true';
+            const text = checked ? '☒' : '☐';
+            this.text.push(text);
+            segments[segments.length - 1].push({ kind: 'text', text, css: this.runCss(baseR) });
+            break;
+          }
+          this.readInline(content, baseR, href, segments, breaks, extra);
           break;
+        }
         case 'w:smartTag':
         case 'w:customXml':
         case 'w:fldSimple':
