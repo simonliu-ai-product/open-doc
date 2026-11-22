@@ -11,7 +11,7 @@ description: Use this skill to bring an existing Word, PDF or Markdown document 
 open-doc import <file> --lang zh-Hant-TW --theme <theme> --contents
 ```
 
-Useful flags: `--id`, `--title`, `--subtitle`, `--author`, `--page-size`, `--orientation`, `--no-cover`, `--contents` (`open-doc import --help`). The language is detected for Chinese, Japanese and Korean text when `--lang` is omitted — pass it anyway when you know it. Images are copied into `docs/<id>/assets/`.
+Over MCP: `import_docx` for Word, `import_markdown` for Markdown. Useful CLI flags: `--id`, `--title`, `--subtitle`, `--author`, `--page-size`, `--orientation`, `--no-cover`, `--contents` (`open-doc import --help`). The language is detected for Chinese, Japanese and Korean text when `--lang` is omitted — pass it anyway when you know it. Images are copied into `docs/<id>/assets/`. An old binary `.doc` is refused: ask for it saved as `.docx`.
 
 The command prints what it could not carry over (for Word: text boxes, comments, tracked changes, anything without structure). Read that list — every item is something you must fix or report in Step 3.
 
