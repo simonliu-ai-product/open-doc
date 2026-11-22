@@ -4,6 +4,7 @@ import { cliContext } from './context.ts';
 
 export interface CheckOptions {
   json?: boolean;
+  maxPages?: number;
 }
 
 function line(finding: LayoutFinding): string {
@@ -32,7 +33,7 @@ export async function checkDocs(docIds: string[], opts: CheckOptions = {}): Prom
 
   try {
     for (const docId of targets) {
-      const report = await checkLayout(ctx, docId);
+      const report = await checkLayout(ctx, docId, { maxPages: opts.maxPages });
       reports.push(report);
       errors += report.errors;
 
@@ -52,6 +53,18 @@ export async function checkDocs(docIds: string[], opts: CheckOptions = {}): Prom
         `${chalk.bold(docId)} ${chalk.dim(`${report.pageCount} pages`)} — ${summary}\n`,
       );
       for (const finding of report.findings) process.stdout.write(`${line(finding)}\n`);
+      if (report.budget && report.budget.over > 0) {
+        process.stdout.write(`  ${chalk.dim('Where the pages go:')}\n`);
+        for (const section of report.budget.sections) {
+          const span =
+            section.startPage === section.endPage
+              ? `p.${section.startPage}`
+              : `p.${section.startPage}–${section.endPage}`;
+          process.stdout.write(
+            `    ${String(section.pages).padStart(5)}  ${section.title} ${chalk.dim(span)}\n`,
+          );
+        }
+      }
     }
   } finally {
     await closeRenderSession();

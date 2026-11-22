@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { diagnosePages, type LayoutFinding } from './diagnostics';
+import { diagnosePages, headingOffsets, type LayoutFinding, pageFills } from './diagnostics';
 import { buildDocDocx } from './export-docx';
 import { buildDocHtmlBundle } from './export-html';
 import { mountPrintCopy, type PrintCopy } from './export-pdf';
-import { exposeOutline } from './outline';
+import { collectOutline, exposeOutline, type OutlineEntry } from './outline';
 import { recordFileName, setRecordIndex } from './records';
 import type { DocModule, PageGeometry } from './sdk';
 import type { ExpandedPage } from './use-doc-pages';
@@ -23,7 +23,14 @@ export type BridgeStatus = {
   record: number;
 };
 
-export type BridgeReport = BridgeStatus & { findings: LayoutFinding[] };
+export type BridgeReport = BridgeStatus & {
+  findings: LayoutFinding[];
+  /** How full each sheet is, 0–1, footer band excluded. */
+  fills?: number[];
+  outline?: OutlineEntry[];
+  /** Heading id → how far down its sheet it starts, 0–1. */
+  offsets?: Record<string, number>;
+};
 
 export type BridgeBundle = { filename: string; mimeType: string; base64: string };
 
@@ -112,6 +119,9 @@ export function useAgentBridge(input: BridgeInput): void {
           return {
             ...snapshot,
             findings: diagnosePages(copy.root, geometry, { oversized }),
+            fills: pageFills(copy.root, geometry),
+            outline: collectOutline(copy.root),
+            offsets: headingOffsets(copy.root, geometry),
           };
         } finally {
           copy.dispose();

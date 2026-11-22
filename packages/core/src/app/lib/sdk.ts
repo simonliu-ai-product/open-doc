@@ -107,6 +107,10 @@ export type DocMeta = {
   recordLabel?: string;
   /** Diagonal watermark text stamped across every sheet (e.g. 'CONFIDENTIAL', 'DRAFT'). */
   watermark?: string;
+  /** Id of the document this one translates. `open-doc translations` reports when it falls behind. */
+  translationOf?: string;
+  /** The source's commit this translation matches. Written by `open-doc translations --mark`. */
+  translatedAt?: string;
 };
 
 /**

@@ -23,6 +23,7 @@ import {
   listFolders,
   listTemplates,
   listThemes,
+  markTranslated,
   OpsError,
   ORIENTATIONS,
   outlineDocument,
@@ -34,6 +35,7 @@ import {
   renameDocument,
   renderDocPage,
   searchDocument,
+  translationStatus,
   writeAsset,
   writeDocument,
   writeText,
@@ -544,10 +546,52 @@ export function registerTools(
     {
       title: 'Check the layout',
       description:
-        'Renders the document at true page size and reports what is wrong with the sheets — content clipped by the page edge, a blank page, a heading stranded at the foot of a page, unreadable type, an image that failed to load. Findings carry a `loc` (line:column) pointing at the source. Run this after writing or editing a document: it is the only way to see what you actually produced.',
-      inputSchema: z.object({ docId: z.string() }),
+        'Renders the document at true page size and reports what is wrong with the sheets — content clipped by the page edge, a blank page, a heading stranded at the foot of a page, unreadable type, an image that failed to load. Findings carry a `loc` (line:column) pointing at the source. Run this after writing or editing a document: it is the only way to see what you actually produced. With `maxPages`, going over is an error and `budget` says how many pages must go and how many each top-level section takes.',
+      inputSchema: z.object({
+        docId: z.string(),
+        maxPages: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('Page limit the document must fit in'),
+      }),
     },
-    ({ docId }) => run(() => checkLayout(ctx, docId)),
+    ({ docId, maxPages }) => run(() => checkLayout(ctx, docId, { maxPages })),
+  );
+
+  server.registerTool(
+    'translation_status',
+    {
+      title: 'Translations and what they are behind',
+      description:
+        "Every document that declares `meta.translationOf` (the source document's id) and `meta.translatedAt` (the source commit it matches), with its state: current, stale (the source changed since), unsynced (no translatedAt yet), missing-source, unknown-revision or no-git. Stale ones list the changed source files and commits. Pass `docId` with `diff: true` to get the source's changes as a unified diff — translate only those, then call mark_translated.",
+      inputSchema: z.object({
+        docId: z.string().optional().describe('One translation; omit for all'),
+        diff: z
+          .boolean()
+          .optional()
+          .describe("Include the source's unified diff since translatedAt"),
+      }),
+    },
+    ({ docId, diff }) => run(() => translationStatus(ctx, { docId, diff })),
+  );
+
+  server.registerTool(
+    'mark_translated',
+    {
+      title: 'Mark a translation as up to date',
+      description:
+        "Sets the translation's `meta.translatedAt` to the source's last commit (or `revision`). Call it after the translation has caught up with every change translation_status listed. Refuses while the source has uncommitted changes.",
+      inputSchema: z.object({
+        docId: z.string().describe('The translation, not the source'),
+        revision: z
+          .string()
+          .optional()
+          .describe('Source commit it now matches; defaults to the last one'),
+      }),
+    },
+    ({ docId, revision }) => run(() => markTranslated(ctx, docId, revision)),
   );
 
   server.registerTool(

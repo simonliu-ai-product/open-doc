@@ -45,6 +45,7 @@ export {
   slugify,
 } from './import.ts';
 export {
+  type CheckLayoutOptions,
   checkLayout,
   closeRenderSession,
   EXPORT_FORMATS,
@@ -53,6 +54,7 @@ export {
   exportDocument,
   type LayoutFinding,
   type LayoutReport,
+  type PageBudget,
   renderDocPage,
 } from './layout.ts';
 export {
@@ -85,3 +87,9 @@ export {
   type TemplateSummary,
 } from './templates.ts';
 export { addComment, type Loc, readText, writeEdits, writeText, writeTexts } from './text.ts';
+export {
+  markTranslated,
+  type TranslationState,
+  type TranslationStatus,
+  translationStatus,
+} from './translations.ts';

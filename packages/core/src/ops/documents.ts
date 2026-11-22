@@ -63,7 +63,7 @@ export async function listDocIds(ctx: ApiContext): Promise<string[]> {
 }
 
 /** Reads what the doc declares without executing it — a regex over `export const meta`. */
-function readMetaField(source: string, field: string): string | undefined {
+export function readMetaField(source: string, field: string): string | undefined {
   const re = new RegExp(`${field}\\s*:\\s*(['"\`])((?:\\\\.|(?!\\1).)*)\\1`);
   const inMeta = source.slice(source.indexOf('export const meta'));
   const match = inMeta.match(re);

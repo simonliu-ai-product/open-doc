@@ -16,6 +16,13 @@ export function parsePort(value: string): number {
   return n;
 }
 
+export function parsePositiveInt(value: string): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1)
+    throw new Error(`Expected a whole number of at least 1: ${value}`);
+  return n;
+}
+
 interface ServerFlags {
   port?: number;
   host?: string | boolean;
@@ -50,6 +57,14 @@ interface DiffFlags {
 
 interface CheckFlags {
   json?: boolean;
+  maxPages?: number;
+}
+
+interface TranslationsFlags {
+  json?: boolean;
+  diff?: boolean;
+  mark?: string;
+  at?: string;
 }
 
 interface ImportFlags {
@@ -202,9 +217,27 @@ export async function run(argv: string[]): Promise<void> {
     .command('check [docIds...]')
     .description('Report layout faults — clipped content, blank sheets, stranded headings')
     .option('--json', 'print the full report as JSON')
+    .addOption(
+      new Option(
+        '--max-pages <n>',
+        'fail when a document runs past n pages, and say where the length is',
+      ).argParser(parsePositiveInt),
+    )
     .action(async (docIds: string[], flags: CheckFlags) => {
       const { checkDocs } = await import('./check.ts');
       await checkDocs(docIds, flags);
+    });
+
+  program
+    .command('translations [docId]')
+    .description('List translations (meta.translationOf) and what changed in their source since')
+    .option('--diff', "print the source's changes since each translation's translatedAt")
+    .option('--mark <docId>', 'record that a translation now matches its source')
+    .option('--at <rev>', 'with --mark: the source commit it matches (defaults to the last one)')
+    .option('--json', 'print the result as JSON')
+    .action(async (docId: string | undefined, flags: TranslationsFlags) => {
+      const { translations } = await import('./translations.ts');
+      await translations(docId, flags);
     });
 
   program
