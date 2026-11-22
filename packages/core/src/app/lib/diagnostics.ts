@@ -60,7 +60,7 @@ function snippet(el: Element): string {
   return `${tag}: ${text.length > SNIPPET_MAX ? `${text.slice(0, SNIPPET_MAX)}…` : text}`;
 }
 
-function locOf(el: Element): string | undefined {
+export function locOf(el: Element): string | undefined {
   return el.closest('[data-od-loc]')?.getAttribute('data-od-loc') ?? undefined;
 }
 
@@ -82,7 +82,7 @@ function leafmost(elements: Element[]): Element[] {
   return elements.filter((el) => !elements.some((other) => other !== el && el.contains(other)));
 }
 
-function pageNumberOf(frame: Element, fallbackIndex: number): number {
+export function pageNumberOf(frame: Element, fallbackIndex: number): number {
   const declared = Number(frame.getAttribute(PAGE_INDEX_ATTR));
   return (Number.isFinite(declared) ? declared : fallbackIndex) + 1;
 }

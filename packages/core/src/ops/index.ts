@@ -57,6 +57,9 @@ export {
   type LayoutFinding,
   type LayoutReport,
   type PageBudget,
+  type ProofreadFinding,
+  type ProofreadReport,
+  proofreadDocument,
   renderDocPage,
 } from './layout.ts';
 export {

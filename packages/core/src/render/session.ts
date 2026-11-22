@@ -1,6 +1,11 @@
 import { Buffer } from 'node:buffer';
 import { createServer, mergeConfig, type ViteDevServer } from 'vite';
-import type { BridgeBundle, BridgeReport, BridgeStatus } from '../app/lib/agent-bridge.ts';
+import type {
+  BridgeBundle,
+  BridgeProofread,
+  BridgeReport,
+  BridgeStatus,
+} from '../app/lib/agent-bridge.ts';
 import { createViteConfig } from '../vite/config.ts';
 
 /**
@@ -89,6 +94,7 @@ export type ImageDiff = {
 export type DocRenderer = {
   status: BridgeStatus;
   diagnose(): Promise<BridgeReport>;
+  proofread(): Promise<BridgeProofread>;
   pdf(): Promise<Uint8Array>;
   /** PNG of one sheet at true page size, 1-based. */
   screenshot(page: number): Promise<Uint8Array>;
@@ -190,6 +196,7 @@ export async function createRenderSession(opts: RenderSessionOptions): Promise<R
       const renderer: DocRenderer = {
         status,
         diagnose: () => page.evaluate<BridgeReport>('globalThis.__openDoc.diagnose()'),
+        proofread: () => page.evaluate<BridgeProofread>('globalThis.__openDoc.proofread()'),
         async pdf() {
           await page.evaluate('globalThis.__openDoc.preparePrint()');
           try {

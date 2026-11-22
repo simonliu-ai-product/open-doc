@@ -49,6 +49,7 @@ open-doc dev --mcp
 | `list_assets` / `upload_asset` / `find_asset_usages` / `delete_asset` | 各文件或 `global` 範圍的圖片。 |
 | `list_folders` / `create_folder` / `file_document` | 資料夾清單與歸檔。 |
 | `check_layout` | 算出每一頁並回報版面問題，附上原始碼位置。 |
+| `proofread_document` | 回報印出文字裡的問題——標點全半形、繁簡混用、重複字、專有名詞大小寫。 |
 | `render_page` | 以真實頁面尺寸截下某一頁的 PNG。 |
 | `export_document` | 無頭寫出 pdf / html / png。 |
 | `import_markdown` | 把 Markdown 變成 `docs/` 下的一份文件。 |

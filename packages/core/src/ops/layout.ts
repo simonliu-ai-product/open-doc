@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { LayoutFinding } from '../app/lib/diagnostics.ts';
 import { type PageBudget, pageBudget } from '../app/lib/page-budget.ts';
+import type { ProofreadFinding } from '../app/lib/proofread.ts';
 import {
   createRenderSession,
   type DocRenderer,
@@ -12,7 +13,7 @@ import {
 import type { ApiContext } from '../vite/routes/context.ts';
 import { OpsError, resolveEntry } from './documents.ts';
 
-export type { LayoutFinding, PageBudget };
+export type { LayoutFinding, PageBudget, ProofreadFinding };
 
 export type LayoutReport = {
   docId: string;
@@ -28,6 +29,18 @@ export type LayoutReport = {
 export type CheckLayoutOptions = {
   /** Sheets the document must fit in. Going over is an error finding. */
   maxPages?: number;
+};
+
+export type ProofreadReport = {
+  docId: string;
+  title: string;
+  /** The language the rules read the text in — `meta.lang`, else `en`. */
+  lang: string;
+  pageCount: number;
+  warnings: number;
+  findings: ProofreadFinding[];
+  /** Findings left out by the per-page and per-rule caps. */
+  omitted: number;
 };
 
 import type { ExportFormat } from '../app/lib/sdk.ts';
@@ -165,6 +178,27 @@ export async function checkLayout(
       warnings: findings.filter((f) => f.severity === 'warn').length,
       findings,
       ...(budget ? { budget } : {}),
+    };
+  });
+}
+
+/**
+ * Reads the text the document prints and reports consistency slips — full-width
+ * letters, punctuation of the wrong width for the language, Simplified and
+ * Traditional characters mixed, doubled words, a term capitalised two ways.
+ * Advice, not a gate: everything is a warning.
+ */
+export async function proofreadDocument(ctx: ApiContext, docId: string): Promise<ProofreadReport> {
+  return withDoc(ctx, docId, async (renderer) => {
+    const report = await renderer.proofread();
+    return {
+      docId: report.docId || docId,
+      title: report.title,
+      lang: report.lang,
+      pageCount: report.pageCount,
+      warnings: report.findings.length,
+      findings: report.findings,
+      omitted: report.omitted,
     };
   });
 }

@@ -118,6 +118,8 @@ q3-infra-review 9 pages — 2 error(s), 1 warning(s)
 
 被裁掉的內容、空白頁、落在頁尾的孤立標題、小到印不出來的字級、載入失敗的圖——每一項都附上原始碼的 `line:column`（inspector 本來就在那裡蓋了標記）。它以非零狀態碼結束，可以直接當 CI 關卡；agent 則呼叫同一套邏輯的 `check_layout`，需要親眼看一頁時用 `render_page`。
 
+`open-doc proofread` 也從印出來的頁面讀文字（程式碼不算），抓校對時會圈的地方：全形的 `Ａ１`、中日文旁邊的半形 `,`（以及英文字之間的 `，`）、繁體文件裡混進簡體字或反過來、`the the`，還有三頁後把 `GitHub` 寫成 `Github`。每一項都附頁碼、上下文和 `line:column`。它只是建議，所以一律以狀態碼 0 結束；agent 呼叫的是 `proofread_document`。
+
 ### ⌨️ 無頭匯出——不開瀏覽器的下載選單
 
 ```bash
@@ -187,6 +189,7 @@ pnpm dev
 | `open-doc dev` | 開發伺服器與檢視器（`--mcp` 會掛上 MCP 端點） |
 | `open-doc build` / `preview` | 靜態網站 |
 | `open-doc check [ids…]` | 回報版面問題，有錯誤時以非零狀態碼結束 |
+| `open-doc proofread [ids…]` | 回報文字問題——全形英數、標點全半形、繁簡混用、重複字、專有名詞大小寫不一（僅供參考，狀態碼為 0） |
 | `open-doc export [ids…]` | 無頭產出 PDF / HTML / PNG |
 | `open-doc import <file.md\|file.docx>` | Markdown 或 Word → `docs/` 下的一份文件 |
 | `open-doc templates` | 列出新文件可以使用的範本 |

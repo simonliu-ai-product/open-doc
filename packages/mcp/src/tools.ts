@@ -29,6 +29,7 @@ import {
   ORIENTATIONS,
   outlineDocument,
   PAGE_SIZE_NAMES,
+  proofreadDocument,
   readDocument,
   readDocumentLines,
   readText,
@@ -593,6 +594,17 @@ export function registerTools(
       }),
     },
     ({ docId, revision }) => run(() => markTranslated(ctx, docId, revision)),
+  );
+
+  server.registerTool(
+    'proofread_document',
+    {
+      title: 'Proofread the text',
+      description:
+        "Reads the text the document prints and reports consistency slips: full-width letters or digits, punctuation of the wrong width for the document's language, Simplified characters in a Traditional Chinese document (or the reverse), a doubled word, one term capitalised two ways. Each finding has a page, a snippet and a `loc` (line:column). Advice, not errors — fix what is a real slip, leave what is intended. Code is not read.",
+      inputSchema: z.object({ docId: z.string() }),
+    },
+    ({ docId }) => run(() => proofreadDocument(ctx, docId)),
   );
 
   server.registerTool(

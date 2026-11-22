@@ -118,6 +118,8 @@ q3-infra-review 9 pages — 2 error(s), 1 warning(s)
 
 Clipped content, blank sheets, stranded headings, type too small to print, images that never loaded — each with the `line:column` in your source, because the inspector already stamps it there. It exits non-zero, so it works as a CI gate; agents call the same thing as the `check_layout` tool, and `render_page` when they need to look at a sheet.
 
+`open-doc proofread` reads the words the same way — off the printed sheets, code left out — and flags the slips a copy editor would: full-width `Ａ１`, half-width `,` beside Chinese or Japanese text (and `，` between English words), Simplified characters in a Traditional Chinese document or the reverse, `the the`, and `GitHub` spelled `Github` three pages later. Each finding has the page, the snippet and the `line:column`. It is advice, so it always exits zero; agents call it as `proofread_document`.
+
 ### ⌨️ Headless export — the Download menu without a browser
 
 ```bash
@@ -187,6 +189,7 @@ Open http://localhost:5273. From there, drive it through your agent — or edit 
 | `open-doc dev` | Dev server + viewer (`--mcp` to mount the MCP endpoint) |
 | `open-doc build` / `preview` | Static site |
 | `open-doc check [ids…]` | Report layout faults; non-zero exit on errors |
+| `open-doc proofread [ids…]` | Report text slips — full-width letters, punctuation width, mixed Chinese scripts, doubled words, term casing (advice; exits 0) |
 | `open-doc export [ids…]` | Headless PDF / HTML / PNG |
 | `open-doc import <file.md\|file.docx>` | Markdown or Word → a document under `docs/` |
 | `open-doc templates` | List the templates a document can start from |

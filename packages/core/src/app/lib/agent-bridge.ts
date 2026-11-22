@@ -4,8 +4,10 @@ import { buildDocDocx } from './export-docx';
 import { buildDocHtmlBundle } from './export-html';
 import { mountPrintCopy, type PrintCopy } from './export-pdf';
 import { collectOutline, exposeOutline, type OutlineEntry } from './outline';
+import { type ProofreadFinding, proofreadRuns } from './proofread';
 import { recordFileName, setRecordIndex } from './records';
-import type { DocModule, PageGeometry } from './sdk';
+import { type DocModule, type PageGeometry, pageLang } from './sdk';
+import { collectTextRuns } from './text-runs';
 import type { ExpandedPage } from './use-doc-pages';
 
 export const BRIDGE_KEY = '__openDoc';
@@ -32,6 +34,13 @@ export type BridgeReport = BridgeStatus & {
   offsets?: Record<string, number>;
 };
 
+export type BridgeProofread = BridgeStatus & {
+  lang: string;
+  findings: ProofreadFinding[];
+  /** Findings dropped by the per-page and per-rule caps. */
+  omitted: number;
+};
+
 export type BridgeBundle = { filename: string; mimeType: string; base64: string };
 
 export type OpenDocBridge = {
@@ -39,6 +48,8 @@ export type OpenDocBridge = {
   status(): BridgeStatus;
   /** Mounts the print copy and reads the layout back from it. */
   diagnose(): Promise<BridgeReport>;
+  /** Mounts the print copy and proofreads the text printed on it. */
+  proofread(): Promise<BridgeProofread>;
   /** Mounts the print copy and leaves it up, for `page.pdf()` or a screenshot. */
   preparePrint(): Promise<{ pageCount: number }>;
   releasePrint(): void;
@@ -123,6 +134,18 @@ export function useAgentBridge(input: BridgeInput): void {
             outline: collectOutline(copy.root),
             offsets: headingOffsets(copy.root, geometry),
           };
+        } finally {
+          copy.dispose();
+        }
+      },
+      async proofread() {
+        const { docId, doc, pages } = latest.current;
+        const snapshot = status();
+        const lang = pageLang(doc?.meta);
+        if (!doc || pages.length === 0) return { ...snapshot, lang, findings: [], omitted: 0 };
+        const copy = await mountPrintCopy(doc, docId, pages);
+        try {
+          return { ...snapshot, lang, ...proofreadRuns(collectTextRuns(copy.root), lang) };
         } finally {
           copy.dispose();
         }

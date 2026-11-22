@@ -49,6 +49,7 @@ The Antigravity plugin in [`plugins/open-doc`](../../plugins/open-doc) uses exac
 | `list_assets` / `upload_asset` / `find_asset_usages` / `delete_asset` | Images per document or `global`. |
 | `list_folders` / `create_folder` / `file_document` | The folder manifest. |
 | `check_layout` | Render the sheets and report layout faults, with source locations. |
+| `proofread_document` | Report text slips in the printed words — punctuation width, mixed Chinese scripts, doubled words, term casing. |
 | `render_page` | PNG of one sheet at true page size. |
 | `export_document` | Write pdf / html / png to disk, headlessly. |
 | `import_markdown` | Turn Markdown into a document under `docs/`. |

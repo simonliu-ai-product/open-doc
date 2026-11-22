@@ -241,6 +241,15 @@ export async function run(argv: string[]): Promise<void> {
     });
 
   program
+    .command('proofread [docIds...]')
+    .description('Report text slips — full-width letters, wrong-width punctuation, mixed scripts')
+    .option('--json', 'print the full report as JSON')
+    .action(async (docIds: string[], flags: CheckFlags) => {
+      const { proofreadDocs } = await import('./proofread.ts');
+      await proofreadDocs(docIds, flags);
+    });
+
+  program
     .command('templates')
     .description('List the templates a new document can start from')
     .option('--json', 'print them as JSON')
