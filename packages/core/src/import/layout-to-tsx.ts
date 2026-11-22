@@ -179,9 +179,16 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
           }
           const known = ctx.images?.get(run.src);
           const src = known ? `{${known.ident}}` : attr(run.src);
+          // In line with the text, as in Word: the page's base styles make
+          // every picture a block, which would stack a row of logos.
           const size: Css = run.width
-            ? { width: run.width, height: run.height, verticalAlign: 'bottom' }
-            : { maxWidth: '100%', verticalAlign: 'bottom' };
+            ? {
+                display: 'inline-block',
+                width: run.width,
+                height: run.height,
+                verticalAlign: 'bottom',
+              }
+            : { display: 'inline-block', maxWidth: '100%', verticalAlign: 'bottom' };
           return `<img src=${src} alt=${attr(run.alt)}${styleAttr(size)} />`;
         }
         case 'blank':

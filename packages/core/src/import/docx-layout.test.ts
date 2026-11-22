@@ -538,6 +538,18 @@ describe('compatibility', () => {
     expect(source).toContain('<span id="sec" />');
   });
 
+  it('keeps a row of pictures side by side, in line as Word sets them', () => {
+    const pic = `<w:r><w:drawing><wp:inline xmlns:wp="wp"><wp:extent cx="952500" cy="476250"/><wp:docPr id="1" name="p" descr="logo"/><a:graphic xmlns:a="a"><a:graphicData><a:blip r:embed="rId404"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+    const layout = readDocxLayout(docx(p(pic + pic)));
+    const [para] = layout.sections[0].blocks as LParagraph[];
+    for (const run of para.runs) if (run.kind === 'image') run.src = 'https://example.com/logo.png';
+    const { source } = generateLayoutSource(layout, {
+      docId: 'logos',
+      createdAt: '2026-11-22T00:00:00.000Z',
+    });
+    expect(source.match(/<img [^>]*display: 'inline-block'/g)).toHaveLength(2);
+  });
+
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {
     const [para] = blocks(
       docx(

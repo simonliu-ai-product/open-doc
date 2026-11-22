@@ -75,7 +75,7 @@ function wordText(bytes) {
       if (pStyle && hidden.has(pStyle)) return '';
       return p.replace(/<(\w+:)?r\b[^>]*>[\s\S]*?<\/\1?r>/g, (r) => (styledHidden(r) ? '' : r));
     })
-    .replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, '')
+    .replace(/<mc:Fallback\b[^>]*>[\s\S]*?<\/mc:Fallback>/g, '')
     .replace(/<(\w+:)?(del|moveFrom)\b[^>]*>[\s\S]*?<\/\1?\2>/g, '')
     .replace(/<(\w+:)?r\b[^>]*>(?:(?!<\/\1?r>)[\s\S])*?<\1?vanish\/>[\s\S]*?<\/\1?r>/g, '');
   // Notes print too; their text lives in its own parts.
