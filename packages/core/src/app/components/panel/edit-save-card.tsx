@@ -89,7 +89,7 @@ export function EditSaveCard({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [count, save, history]);
 
-  // A host app (CoStaff Desktop) asks before it closes, reloads or quits.
+  // A host app asks before it closes, reloads or quits.
   const latest = useRef({ count, committing, save, discard });
   latest.current = { count, committing, save, discard };
   useEffect(() => {

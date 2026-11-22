@@ -4,7 +4,7 @@ import { documentPathForHost, getHost, hostCan } from '../lib/host';
 
 /**
  * Connects the viewer to a host app, when there is one: the theme follows the
- * host's, and opening another document goes through the host (CoStaff Desktop
+ * host's, and opening another document goes through the host (a desktop host
  * opens it in its own tab). Renders nothing; with no host it does nothing.
  */
 export function HostBridge() {

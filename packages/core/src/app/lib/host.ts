@@ -1,8 +1,7 @@
 /**
- * The open-x host protocol, v1: what a host app (CoStaff Desktop, later the
- * VS Code extension) offers the viewer. Every member is optional, and with no
- * host the viewer behaves exactly as in a browser. The spec lives with the
- * desktop app (open-desktop/docs/HOST-PROTOCOL.md), which keeps the same types.
+ * The open-x host protocol, v1: what a host app (a desktop shell, an editor
+ * extension) offers the viewer. Every member is optional, and with no host the
+ * viewer behaves exactly as in a browser. Hosts keep the same types.
  */
 export type HostCapability =
   | 'theme'
