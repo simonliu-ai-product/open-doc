@@ -25,7 +25,15 @@ import { child, descendants, elements, textContent, type XmlElement } from './xm
 export type Css = Record<string, string | number>;
 
 export type LRun =
-  | { kind: 'text'; text: string; css: Css; href?: string; vert?: 'sup' | 'sub' }
+  | {
+      kind: 'text';
+      text: string;
+      css: Css;
+      href?: string;
+      vert?: 'sup' | 'sub';
+      /** Text Word draws but does not store (a note number, a checkbox's box). */
+      generated?: true;
+    }
   | { kind: 'blank'; width: string; css: Css }
   | { kind: 'marker'; text: string; css: Css; width: number }
   | { kind: 'break' }
@@ -61,7 +69,13 @@ export type LParagraph = BlockFlags & {
 };
 
 export type LCell = { colSpan: number; rowSpan: number; css: Css; blocks: LBlock[] };
-export type LRow = { css: Css; cells: LCell[]; header: boolean };
+export type LRow = {
+  css: Css;
+  cells: LCell[];
+  header: boolean;
+  /** Index of the Word row it came from; a row cut in pieces repeats it. */
+  source?: number;
+};
 export type LTable = BlockFlags & {
   kind: 'table';
   css: Css;
@@ -69,6 +83,8 @@ export type LTable = BlockFlags & {
   rows: LRow[];
   /** No cell spans rows, so the table may break between any two rows. */
   splittable: boolean;
+  /** Index of the Word table (top level, document order) it came from; pieces share it. */
+  source?: number;
 };
 
 export type LBlock = LParagraph | LTable;
@@ -574,6 +590,7 @@ class LayoutReader {
   private pendingBreak = false;
   private pendingDrop: LRun | null = null;
   private anchors = new Set<string>();
+  private tables = 0;
   private cjk = false;
 
   constructor(private pkg: DocxPackage) {}
@@ -1287,7 +1304,12 @@ class LayoutReader {
             const checked = state === '1' || state === 'true';
             const text = checked ? '☒' : '☐';
             this.text.push(text);
-            segments[segments.length - 1].push({ kind: 'text', text, css: this.runCss(baseR) });
+            segments[segments.length - 1].push({
+              kind: 'text',
+              text,
+              css: this.runCss(baseR),
+              generated: true,
+            });
             break;
           }
           this.readInline(content, baseR, href, segments, breaks, extra);
@@ -1524,10 +1546,18 @@ class LayoutReader {
     if (!note) return;
     this.count('note');
     const n = this.notes.length + 1;
-    out.push({ kind: 'text', text: String(n), css, vert: 'sup' });
+    out.push({ kind: 'text', text: String(n), css, vert: 'sup', generated: true });
     const paragraphs = elements(note, 'w:p').flatMap((p) => this.readParagraph(p, true));
     const first = paragraphs.find((block): block is LParagraph => block.kind === 'p');
-    if (first) first.runs.unshift({ kind: 'text', text: `${n} `, css: { ...css }, vert: 'sup' });
+    if (first) {
+      first.runs.unshift({
+        kind: 'text',
+        text: `${n} `,
+        css: { ...css },
+        vert: 'sup',
+        generated: true,
+      });
+    }
     for (const block of paragraphs) if (block.kind === 'p') this.notes.push(block);
   }
 
@@ -1771,6 +1801,7 @@ class LayoutReader {
   }
 
   private readTable(tbl: XmlElement, top: boolean): LTable[] {
+    const source = top ? this.tables++ : undefined;
     const tblPr = child(tbl, 'w:tblPr');
     const styleId = val(child(tblPr, 'w:tblStyle')) ?? this.defaultTable;
     const styled = this.chain(styleId);
@@ -1886,7 +1917,7 @@ class LayoutReader {
       const header = on(child(trPr, 'w:tblHeader')) === true;
       const heightEl = child(trPr, 'w:trHeight');
       const height = num(heightEl?.attrs['w:val']);
-      const row: LRow = { css: height ? { height: px(height) } : {}, cells: [], header };
+      const row: LRow = { css: height ? { height: px(height) } : {}, cells: [], header, source: r };
       grid[r] = [];
       let col = num(val(child(trPr, 'w:gridBefore'))) ?? 0;
       if (col > 0)
@@ -2025,6 +2056,7 @@ class LayoutReader {
         expanded.push({
           css: {},
           header: false,
+          ...(row.source !== undefined ? { source: row.source } : {}),
           cells: row.cells.map((cell, index) => ({
             ...cell,
             blocks: chunked[index][k] ?? [],
@@ -2087,6 +2119,7 @@ class LayoutReader {
       cols: widths,
       rows: part,
       splittable: splittable && part.length > 1,
+      ...(source !== undefined ? { source } : {}),
     });
     if (!top || !anyRowSpan) return [table(rows, top && !anyRowSpan, true)];
 
@@ -2179,6 +2212,7 @@ function setSpace(p: LParagraph, index: number, value: number) {
   const parts = String(p.css.margin ?? '0px 0px 0px 0px').split(' ');
   parts[index] = `${value}px`;
   p.css.margin = parts.join(' ');
+  if (index === 0) delete p.css.paddingTop;
 }
 
 /**

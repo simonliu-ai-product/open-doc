@@ -75,8 +75,16 @@ function dominant(p: LParagraph): Css {
       most = n;
     }
   }
-  // A highlight or a box belongs to the words, not to the whole line width.
-  const { background: _background, border: _border, ...hoisted } = best;
+  // A highlight or a box belongs to the words, not to the whole line width;
+  // an underline on the paragraph could not be taken off one run inside it
+  // (CSS draws an ancestor's decoration through its children).
+  const {
+    background: _background,
+    border: _border,
+    textDecoration: _decoration,
+    textDecorationStyle: _decorationStyle,
+    ...hoisted
+  } = best;
   return hoisted;
 }
 
@@ -167,7 +175,7 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
               fontSize: 10,
               lineHeight: 1.2,
               textIndent: 0,
-            })}>${textJsx(run.alt || 'picture not imported')}</span>`;
+            })} data-od-generated="">${textJsx(run.alt || 'picture not imported')}</span>`;
           }
           const known = ctx.images?.get(run.src);
           const src = known ? `{${known.ident}}` : attr(run.src);
@@ -210,7 +218,7 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
             ...(run.width ? { minWidth: run.width } : {}),
             textIndent: 0,
             ...solid(diff(run.css, base), p),
-          })}>${textJsx(run.text)}</span>`;
+          })} data-od-generated="">${textJsx(run.text)}</span>`;
         case 'text': {
           let inner = textJsx(run.text);
           const own = solid(diff(run.css, base), p);
@@ -225,6 +233,9 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
             inner = wrapRun(inner, own);
           }
           if (run.vert) inner = `<${run.vert}>${inner}</${run.vert}>`;
+          // Text Word draws but never stored is marked, so a comparison with
+          // the source can tell it from words the import made up.
+          if (run.generated) inner = `<span data-od-generated="">${inner}</span>`;
           return inner;
         }
         default:
@@ -279,7 +290,7 @@ function renderCell(cell: LCell, ctx: Context, pad: string): string {
 function renderTable(table: LTable, ctx: Context, pad: string): string {
   const rowJsx = (rowPad: string) => (row: LTable['rows'][number]) =>
     [
-      `${rowPad}<tr${styleAttr(row.css)}>`,
+      `${rowPad}<tr${styleAttr(row.css)}${row.source !== undefined ? ` data-od-source-row="${row.source}"` : ''}>`,
       ...row.cells.map((cell) => renderCell(cell, ctx, `${rowPad}  `)),
       `${rowPad}</tr>`,
     ].join('\n');
@@ -288,7 +299,7 @@ function renderTable(table: LTable, ctx: Context, pad: string): string {
   const split = table.splittable && body.length > 1;
   if (split) ctx.usesRows = true;
   const lines = [
-    `${pad}<table${styleAttr(table.css)}${split ? ' data-od-splittable=""' : ''}${flags(table)}>`,
+    `${pad}<table${styleAttr(table.css)}${split ? ' data-od-splittable=""' : ''}${table.source !== undefined ? ` data-od-source-table="${table.source}"` : ''}${flags(table)}>`,
     `${pad}  <colgroup>`,
     ...table.cols.map((w) => `${pad}    <col${styleAttr({ width: w })} />`),
     `${pad}  </colgroup>`,

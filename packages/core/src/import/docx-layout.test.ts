@@ -137,7 +137,7 @@ describe('readDocxLayout', () => {
 
   it('breaks the page where Word does and keeps a label with its table', () => {
     const body =
-      p(r('before') + '<w:r><w:br w:type="page"/></w:r>' + r('after')) +
+      p(`${r('before')}<w:r><w:br w:type="page"/></w:r>${r('after')}`) +
       p(r('表1：')) +
       `<w:tbl><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid><w:tr>${tc('x')}</w:tr><w:tr>${tc('y')}</w:tr></w:tbl>` +
       p(r('next'), '<w:pageBreakBefore/>');
@@ -291,7 +291,7 @@ describe('no text is lost', () => {
 
   it('shows a Wingdings box as a box', () => {
     const [para] = blocks(
-      docx(p('<w:r><w:sym w:font="Wingdings" w:char="F0A8"/></w:r>' + r('申請'))),
+      docx(p(`<w:r><w:sym w:font="Wingdings" w:char="F0A8"/></w:r>${r('申請')}`)),
     ) as LParagraph[];
     expect(para.runs[0]).toMatchObject({ kind: 'text', text: '□' });
   });
@@ -507,7 +507,7 @@ describe('compatibility', () => {
         p(r('W'), '<w:framePr w:dropCap="drop" w:lines="3"/>') +
           p(r('ord opens the paragraph.')) +
           p('<w:hyperlink w:anchor="sec"><w:r><w:t>see below</w:t></w:r></w:hyperlink>') +
-          p('<w:bookmarkStart w:id="1" w:name="sec"/>' + r('Target')) +
+          p(`<w:bookmarkStart w:id="1" w:name="sec"/>${r('Target')}`) +
           p(r('שלום', '<w:rtl/>'), '<w:bidi/><w:jc w:val="right"/>'),
         '',
         '<w:sectPr><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/><w:cols w:num="2" w:space="720"/></w:sectPr>',
@@ -549,5 +549,32 @@ describe('compatibility', () => {
     expect(layout.warnings).toContain(
       '1 passage(s) of hidden text left out, as Word does when printing',
     );
+  });
+});
+
+describe('generated source marks', () => {
+  it('never underlines a whole paragraph a run inside it must escape', () => {
+    const layout = readDocxLayout(
+      docx(p(r('（') + r('填表人屬營利事業、非營利之法人', '<w:u w:val="single"/>'))),
+    );
+    const { source } = generateLayoutSource(layout, { docId: 'x', createdAt: 'x' });
+    const line = source.split('\n').find((l) => l.includes('填表人')) ?? '';
+    expect(line).toMatch(/^\s*<p style=\{\{(?![^}]*textDecoration)/);
+    expect(line).toContain("<span style={{ textDecoration: 'underline' }}>填表人");
+  });
+
+  it('tags tables and rows with their Word index, and text Word draws itself', () => {
+    const layout = readDocxLayout(
+      docx(
+        `<w:tbl><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid><w:tr>${tc('a')}</w:tr><w:tr>${tc('b')}</w:tr></w:tbl>` +
+          p(
+            '<w:sdt><w:sdtPr><w14:checkbox xmlns:w14="w14"/></w:sdtPr><w:sdtContent></w:sdtContent></w:sdt>',
+          ),
+      ),
+    );
+    const { source } = generateLayoutSource(layout, { docId: 'x', createdAt: 'x' });
+    expect(source).toContain('data-od-source-table="0"');
+    expect(source).toContain('<tr data-od-source-row="1">');
+    expect(source).toContain('<span data-od-generated="">☐</span>');
   });
 });
