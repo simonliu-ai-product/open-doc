@@ -206,10 +206,30 @@ const CJK_FONT_RE =
  */
 function lineFactor(name: string | undefined): number {
   if (!name) return 1.17;
-  if (KAI_RE.test(name)) return 1.1;
-  if (CJK_FONT_RE.test(name)) return 1.3;
+  for (const [re, factor] of LINE_FACTORS) if (re.test(name)) return factor;
+  if (KAI_RE.test(name)) return LINE_KAI;
+  if (CJK_FONT_RE.test(name)) return LINE_CJK;
   return 1.17;
 }
+
+/**
+ * Single line spacing as a multiple of the font size — the font's ascent,
+ * descent and line gap, which is what Word sets a "single" line to. Measured
+ * from the fonts' metrics; the CJK defaults are calibrated against the line
+ * breaks Word recorded in real files (scripts/docx-corpus.mjs).
+ */
+const LINE_FACTORS: Array<[RegExp, number]> = [
+  [/calibri|verdana/i, 1.22],
+  [/tahoma/i, 1.21],
+  [/segoe/i, 1.33],
+  [/aptos/i, 1.2],
+  [/cambria|courier|consolas/i, 1.17],
+  [/times|arial|helvetica|georgia|garamond|liberation/i, 1.15],
+  [/ms (p)?(mincho|gothic)|ｍｓ/i, 1.0],
+  [/jhenghei|yahei|正黑|雅黑/i, 1.3],
+];
+const LINE_KAI = 1.1;
+const LINE_CJK = 1.3;
 
 const STACKS = {
   serif:
@@ -1215,16 +1235,10 @@ class LayoutReader {
     }
     const lines = (value: number | undefined) =>
       value ? (value / 100) * (this.grid || fontPx * 1.2) : 0;
-    const before = p.beforeAuto
-      ? 14
-      : p.beforeLines !== undefined
-        ? lines(p.beforeLines)
-        : px(p.before ?? 0);
-    const after = p.afterAuto
-      ? 14
-      : p.afterLines !== undefined
-        ? lines(p.afterLines)
-        : px(p.after ?? 0);
+    // As with indents, the twips Word writes beside a line-unit spacing are
+    // what it laid the paragraph out with.
+    const before = p.beforeAuto ? 14 : p.before !== undefined ? px(p.before) : lines(p.beforeLines);
+    const after = p.afterAuto ? 14 : p.after !== undefined ? px(p.after) : lines(p.afterLines);
     css.margin = `${round(before)}px ${round(right)}px ${round(after)}px ${round(left)}px`;
     // A hanging first line in a cell would print over the cell to its left.
     const firstLine = top ? indent : Math.max(indent, -left);
@@ -2212,7 +2226,6 @@ function setSpace(p: LParagraph, index: number, value: number) {
   const parts = String(p.css.margin ?? '0px 0px 0px 0px').split(' ');
   parts[index] = `${value}px`;
   p.css.margin = parts.join(' ');
-  if (index === 0) delete p.css.paddingTop;
 }
 
 /**

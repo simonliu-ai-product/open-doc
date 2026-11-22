@@ -578,3 +578,31 @@ describe('generated source marks', () => {
     expect(source).toContain('<span data-od-generated="">☐</span>');
   });
 });
+
+describe('calibrated against Word’s recorded page breaks', () => {
+  it('takes the twips Word wrote beside a line-unit spacing', () => {
+    const [para] = blocks(
+      docx(
+        p(
+          r('x'),
+          '<w:spacing w:beforeLines="100" w:before="360" w:afterLines="50" w:after="120"/>',
+        ),
+      ),
+    ) as LParagraph[];
+    expect(para.css.margin).toMatch(/^24px .* 8px /);
+  });
+
+  it('sets a single line by the font’s own metrics', () => {
+    const [calibri, times] = blocks(
+      docx(
+        p(r('a', '<w:rFonts w:ascii="Calibri"/>'), '<w:rPr><w:rFonts w:ascii="Calibri"/></w:rPr>') +
+          p(
+            r('b', '<w:rFonts w:ascii="Times New Roman"/>'),
+            '<w:rPr><w:rFonts w:ascii="Times New Roman"/></w:rPr>',
+          ),
+      ),
+    ) as LParagraph[];
+    expect(calibri.css.lineHeight).toBe(1.22);
+    expect(times.css.lineHeight).toBe(1.15);
+  });
+});
