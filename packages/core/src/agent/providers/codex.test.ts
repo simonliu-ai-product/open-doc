@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProviderEvent } from '../provider.ts';
+import { effortLabel } from '../types.ts';
 import { createCodexMapper, parseCodexModelsCache } from './codex.ts';
 import type { CodexThreadEvent } from './sdk-types.ts';
 
@@ -135,7 +136,12 @@ describe('parseCodexModelsCache', () => {
           slug: 'gpt-b',
           display_name: 'GPT B',
           priority: 2,
-          supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }, { effort: 'bogus' }],
+          supported_reasoning_levels: [
+            { effort: 'low' },
+            { effort: 'ultra' },
+            { effort: 'Not a level!' },
+            {},
+          ],
         },
         { slug: 'gpt-hidden', visibility: 'hide', priority: 0 },
         { slug: 'gpt-a', priority: 1, supported_reasoning_levels: ['medium'] },
@@ -144,9 +150,17 @@ describe('parseCodexModelsCache', () => {
     });
     expect(models).toEqual([
       { id: 'gpt-a', label: 'gpt-a', efforts: ['medium'] },
-      { id: 'gpt-b', label: 'GPT B', efforts: ['low', 'high'] },
+      // A level the panel has no word for yet (ultra) still shows; malformed ones do not.
+      { id: 'gpt-b', label: 'GPT B', efforts: ['low', 'ultra'] },
     ]);
     expect(parseCodexModelsCache(null)).toEqual([]);
     expect(parseCodexModelsCache({ models: 'x' })).toEqual([]);
+  });
+});
+
+describe('effortLabel', () => {
+  it('uses the panel’s words, else the level’s own name', () => {
+    expect(effortLabel('xhigh', { xhigh: 'Extra high' })).toBe('Extra high');
+    expect(effortLabel('ultra', { xhigh: 'Extra high' })).toBe('Ultra');
   });
 });

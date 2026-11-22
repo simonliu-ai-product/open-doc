@@ -6,16 +6,23 @@ export const AGENT_PROVIDER_IDS = ['codex', 'antigravity'] as const;
 
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 
+// The levels the panel has words for. A model may offer others (a new level such
+// as 'ultra'): those pass through as given and show under their own name.
 export const AGENT_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
-export type AgentEffort = (typeof AGENT_EFFORTS)[number];
+export type AgentEffort = string;
 
 export function isAgentProviderId(value: unknown): value is AgentProviderId {
   return typeof value === 'string' && (AGENT_PROVIDER_IDS as readonly string[]).includes(value);
 }
 
 export function isAgentEffort(value: unknown): value is AgentEffort {
-  return typeof value === 'string' && (AGENT_EFFORTS as readonly string[]).includes(value);
+  return typeof value === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(value);
+}
+
+/** Words for a reasoning level: the translation when the panel has one, else its own name. */
+export function effortLabel(effort: string, words: Partial<Record<string, string>>): string {
+  return words[effort] ?? effort.charAt(0).toUpperCase() + effort.slice(1);
 }
 
 export type AgentModelOption = {
