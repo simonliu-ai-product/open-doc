@@ -57,7 +57,7 @@ Scaffolder 內建這些 skill：
 /plugin install open-doc --marketplace simonliu-ai-product/open-doc
 
 # Google Antigravity（IDE、App 或 agy CLI）
-agy plugin install https://github.com/simonliu-ai-product/open-doc
+agy plugin install https://github.com/simonliu-ai-product/open-doc/tree/latest
 ```
 
 寫的工作交給 agent；瀏覽器仍是你閱讀、留言、調整設計的地方。兩邊透過檔案接力——留言是原始碼裡的 `@doc-comment` 標記，你正在看的頁面記在 `current.json`——所以在頁面上留的一句話，就是 agent 的下一個修改。詳見 [plugins/open-doc](plugins/open-doc)。
