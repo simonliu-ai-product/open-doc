@@ -1,5 +1,16 @@
 # @open-document/mcp
 
+## 0.10.0
+
+### Minor Changes
+
+- [#97](https://github.com/simonliu-ai-product/open-doc/pull/97) [`ece70c6`](https://github.com/simonliu-ai-product/open-doc/commit/ece70c6e1d189c6e9f222f1096e7e96f6c5a47f0) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Work on part of a long document without reading it whole: `outline_document` (line count, top-level blocks with their line ranges, h1–h3 with their lines), `read_document` with `fromLine`/`toLine`, `search_document` (every line containing some text) and `edit_document` (exact find-and-replace, within `fromLine`/`toLine` when the same text appears elsewhere, `all` for every occurrence; text copied with its JSON escapes still matches). Whatever an agent reads is sent again on each later model call, so this cuts its token use on long documents. `read_document` without a range still returns the whole file.
+
+### Patch Changes
+
+- Updated dependencies [[`ece70c6`](https://github.com/simonliu-ai-product/open-doc/commit/ece70c6e1d189c6e9f222f1096e7e96f6c5a47f0), [`ece70c6`](https://github.com/simonliu-ai-product/open-doc/commit/ece70c6e1d189c6e9f222f1096e7e96f6c5a47f0), [`ece70c6`](https://github.com/simonliu-ai-product/open-doc/commit/ece70c6e1d189c6e9f222f1096e7e96f6c5a47f0), [`ece70c6`](https://github.com/simonliu-ai-product/open-doc/commit/ece70c6e1d189c6e9f222f1096e7e96f6c5a47f0)]:
+  - @open-document/core@0.16.0
+
 ## 0.9.0
 
 ### Minor Changes
