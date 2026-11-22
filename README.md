@@ -57,7 +57,7 @@ Install open-doc into your agent once and every workspace gets the skills and th
 /plugin install open-doc --marketplace simonliu-ai-product/open-doc
 
 # Google Antigravity (IDE, App, or the agy CLI)
-agy plugin install https://github.com/simonliu-ai-product/open-doc
+agy plugin install https://github.com/simonliu-ai-product/open-doc/tree/latest
 ```
 
 Your agent does the writing; the browser stays where you read, comment, and tweak the design. They meet in the files — comments are `@doc-comment` markers in the source, and the page you are on is in `current.json` — so a note left on the page becomes the agent's next edit. See [plugins/open-doc](plugins/open-doc).

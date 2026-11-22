@@ -1,11 +1,19 @@
 {
   "name": "open-doc",
-  "owner": { "name": "Simon Liu", "url": "https://github.com/LiuYuWei" },
+  "owner": {
+    "name": "Simon Liu",
+    "url": "https://github.com/LiuYuWei"
+  },
   "description": "open-doc — print-ready documents as React, for coding agents.",
   "plugins": [
     {
       "name": "open-doc",
-      "source": "./plugins/open-doc",
+      "source": {
+        "source": "git-subdir",
+        "url": "simonliu-ai-product/open-doc",
+        "path": "plugins/open-doc",
+        "ref": "latest"
+      },
       "description": "Skills and an MCP server for writing open-doc documents: pagination, themes, layout checks, and export."
     }
   ]

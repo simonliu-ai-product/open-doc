@@ -32,7 +32,7 @@ pnpm test:e2e     # playwright (builds core first, boots the e2e fixture project
 
 Filter to one package: `pnpm core <script>` / `pnpm cli <script>` / `pnpm mcp <script>`.
 
-Branches and releases follow the `release-flow` skill (`.claude/skills/release-flow/`): work on `feat/`, `fix/`, `chore/` branches from `nightly`, pull requests into `nightly` with a changeset when `packages/*` change; `nightly` is merged into `main` only when the maintainer decides to release, and CI publishes from `main`. Never bump versions or edit `CHANGELOG.md` by hand.
+Branches and releases follow the `release-flow` skill (`.claude/skills/release-flow/`): work on `feat/`, `fix/`, `chore/` branches from `main` and open pull requests back into `main` with a changeset when `packages/*` change. Changes collect on `main`; the maintainer releases by merging the "chore: release packages" pull request, after which CI publishes with trusted publishing and moves the `latest` branch to the release (the agent plugin installs from `latest`). Never bump versions or edit `CHANGELOG.md` by hand.
 
 **After changing `packages/core/src`, rebuild it (`pnpm core build`) before testing the demo** — documents import the published `dist` bundle, not the source.
 

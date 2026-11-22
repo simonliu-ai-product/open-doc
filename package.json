@@ -21,7 +21,7 @@
     "cli": "pnpm --filter @open-document/cli",
     "mcp": "pnpm --filter @open-document/mcp",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && node scripts/sync-plugin-version.mjs packages/core plugins/open-doc",
     "release": "turbo run build --filter=@open-document/core --filter=@open-document/cli --filter=@open-document/mcp && changeset publish"
   },
   "devDependencies": {

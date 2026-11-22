@@ -63,9 +63,18 @@ describe('Antigravity plugin', () => {
 
     const marketplace = JSON.parse(
       readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'),
-    ) as { plugins: { name: string; source: string }[] };
+    ) as { plugins: { name: string; source: unknown }[] };
+    // Installed from the `latest` branch (the last release), never from main.
     expect(marketplace.plugins).toContainEqual(
-      expect.objectContaining({ name: claude.name, source: './plugins/open-doc' }),
+      expect.objectContaining({
+        name: claude.name,
+        source: {
+          source: 'git-subdir',
+          url: 'simonliu-ai-product/open-doc',
+          path: 'plugins/open-doc',
+          ref: 'latest',
+        },
+      }),
     );
   });
 });
