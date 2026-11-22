@@ -69,7 +69,7 @@ pnpm mcp <script>
 
 ## Pull request workflow
 
-1. **Fork & branch.** Branch off `main`. Keep branches focused — one logical change per PR.
+1. **Fork & branch.** Branch off `nightly` (`feat/…`, `fix/…`, `chore/…`, `docs/…`) and open the PR into `nightly`. `main` only holds released code. Keep branches focused — one logical change per PR.
 2. **Make your change.** Match the surrounding style. Don't reformat unrelated code.
 3. **Run the checks before pushing:**
    ```bash
@@ -116,7 +116,7 @@ pnpm mcp <script>
 
 ## Releases
 
-Releases are cut through [changesets](https://github.com/changesets/changesets). Landing a changeset on `main` opens (or updates) a "chore: release packages" PR; merging that PR builds `@open-document/core`, `@open-document/cli`, and `@open-document/mcp` and publishes them to npm from CI. Contributors don't need to publish anything — just land the changeset alongside your code.
+Changes collect on `nightly`; the pinned **Upcoming release** issue lists what is waiting and the versions it would publish, and every PR merged into `nightly` gets a comment saying which version it is planned for. Releases are deliberate: when the maintainer decides the set is ready, `nightly` is merged into `main`, the release workflow opens a "chore: release packages" PR through [changesets](https://github.com/changesets/changesets), and merging it publishes `@open-document/core`, `@open-document/cli` and `@open-document/mcp` to npm from CI with trusted publishing. Contributors don't need to publish anything — just land the changeset alongside your code. The full rules are in `.claude/skills/release-flow/SKILL.md`.
 
 ## Questions
 
