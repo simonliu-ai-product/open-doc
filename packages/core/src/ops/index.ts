@@ -39,8 +39,10 @@ export {
   writeDocument,
 } from './documents.ts';
 export {
+  type ImportDocxOptions,
   type ImportMarkdownOptions,
   type ImportResult,
+  importDocx,
   importMarkdown,
   slugify,
 } from './import.ts';

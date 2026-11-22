@@ -135,6 +135,8 @@ open-doc import notes.md --id q3-notes --contents
 
 多數報告一開始都是 Markdown。匯入會把它變成一份真正的文件——`flow()` 內文、封面頁、會自己填的目錄、透過樣式化 `Th`/`Td` 呈現的 GFM 表格、本地圖片複製進該文件自己的 `assets/`——而且產出的就是一般手寫的 TSX，大綱、inspector 與設計面板全都照常運作。
 
+Word 檔也一樣：`open-doc import report.docx` 會依 Word 的標題樣式讀出標題，連同清單、表格、連結與內嵌圖片，並列出沒能保留的東西（文字方塊、註腳、註解、追蹤修訂）。
+
 ### 🗂️ 是工作區，不是檔案清單
 
 <img src=".github/assets/workspace.png" alt="Documents、Themes、Assets 集中在同一個工作區，並可歸入自建的資料夾。" width="100%">
@@ -186,7 +188,7 @@ pnpm dev
 | `open-doc build` / `preview` | 靜態網站 |
 | `open-doc check [ids…]` | 回報版面問題，有錯誤時以非零狀態碼結束 |
 | `open-doc export [ids…]` | 無頭產出 PDF / HTML / PNG |
-| `open-doc import <file.md>` | Markdown → `docs/` 下的一份文件 |
+| `open-doc import <file.md\|file.docx>` | Markdown 或 Word → `docs/` 下的一份文件 |
 | `open-doc templates` | 列出新文件可以使用的範本 |
 | `open-doc new <id> --template <name>` | 用範本建立新文件（`report`、`proposal`、`meeting-notes`、`letter`、`certificate`、`blank`，或你自己的 `templates/<name>/`） |
 | `open-doc export <id> --each` | 依文件的 `records` 每一列輸出一份檔案（證書、信函、報價單） |

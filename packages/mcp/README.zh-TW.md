@@ -52,8 +52,9 @@ open-doc dev --mcp
 | `render_page` | 以真實頁面尺寸截下某一頁的 PNG。 |
 | `export_document` | 無頭寫出 pdf / html / png。 |
 | `import_markdown` | 把 Markdown 變成 `docs/` 下的一份文件。 |
+| `import_docx` | 把 Word `.docx` 變成 `docs/` 下的一份文件，Word 有而文件放不下的東西會列在 warnings。 |
 
-最後四個會在無頭瀏覽器裡算出文件，需要工作區內有 `playwright`（`pnpm add -D playwright && pnpm exec playwright install chromium`）。它們會沿用正在跑的 dev server，所以連續呼叫很便宜。
+`check_layout`、`render_page` 和 `export_document` 會在無頭瀏覽器裡算出文件，需要工作區內有 `playwright`（`pnpm add -D playwright && pnpm exec playwright install chromium`）。它們會沿用正在跑的 dev server，所以連續呼叫很便宜。
 
 ## 撰寫一份文件
 
@@ -67,7 +68,7 @@ open-doc dev --mcp
 
 4. **`check_layout`。** 你看不到自己寫出來的頁面。它會回報被頁緣裁掉的內容、空白頁、落在頁尾的孤立標題、小到印不出來的字級——每一項都附上要修的 `line:column`。報告不夠時，用 `render_page` 直接看那一頁。
 
-使用者手上已經有 Markdown？`import_markdown` 會把整份文件寫好——`flow()` 內文、封面、目錄、圖片——你從那裡開始細修。
+使用者手上已經有 Markdown？`import_markdown` 會把整份文件寫好——`flow()` 內文、封面、目錄、圖片——你從那裡開始細修。Word 檔則用 `import_docx`，做法相同。
 
 ## 同時編輯
 

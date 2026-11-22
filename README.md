@@ -135,6 +135,8 @@ open-doc import notes.md --id q3-notes --contents
 
 Most reports start life as Markdown. The importer turns one into a real document — `flow()` body, cover page, self-filling contents, GFM tables through styled `Th`/`Td`, local images copied into the document's own `assets/` — and the output is ordinary authored TSX, so the outline, the inspector, and the design panel all work on it exactly as on a hand-written page.
 
+A Word file goes the same way: `open-doc import report.docx` reads headings from Word's heading styles, lists, tables, links and embedded pictures, and lists anything it could not keep (text boxes, footnotes, comments, tracked changes).
+
 ### 🗂️ A workspace, not a file list
 
 <img src=".github/assets/workspace.png" alt="Documents, themes, and assets in one workspace, with folders you can file into." width="100%">
@@ -186,7 +188,7 @@ Open http://localhost:5273. From there, drive it through your agent — or edit 
 | `open-doc build` / `preview` | Static site |
 | `open-doc check [ids…]` | Report layout faults; non-zero exit on errors |
 | `open-doc export [ids…]` | Headless PDF / HTML / PNG |
-| `open-doc import <file.md>` | Markdown → a document under `docs/` |
+| `open-doc import <file.md\|file.docx>` | Markdown or Word → a document under `docs/` |
 | `open-doc templates` | List the templates a document can start from |
 | `open-doc new <id> --template <name>` | A new document from a template (`report`, `proposal`, `meeting-notes`, `letter`, `certificate`, `blank`, or your own `templates/<name>/`) |
 | `open-doc export <id> --each` | One file per row of the document's `records` (certificates, letters, quotes) |

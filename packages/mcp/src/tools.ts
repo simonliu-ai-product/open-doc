@@ -17,6 +17,7 @@ import {
   exportDocument,
   fileDocument,
   findAssetUsages,
+  importDocx,
   importMarkdown,
   listAssets,
   listDocuments,
@@ -712,6 +713,39 @@ export function registerTools(
     (args) =>
       run(async () => {
         const res = await importMarkdown(ctx, args);
+        notify('add', docEntry(res.id));
+        return res;
+      }),
+  );
+
+  server.registerTool(
+    'import_docx',
+    {
+      title: 'Import Word document',
+      description:
+        'Turns a Word .docx file into a real document under docs/, the same way import_markdown does — headings from Word’s heading styles, lists, tables, links, embedded pictures copied into the document’s assets. `warnings` lists what Word had that the document could not hold (text boxes, footnotes, comments, tracked changes); tell the user about them.',
+      inputSchema: z.object({
+        file: z.string().describe('path to a .docx file inside the workspace'),
+        docId: z.string().optional().describe('defaults to a slug of the title'),
+        title: z.string().optional(),
+        lang: z
+          .string()
+          .optional()
+          .describe(
+            'BCP 47 tag, e.g. zh-Hant-TW; detected for Chinese, Japanese and Korean when omitted',
+          ),
+        subtitle: z.string().optional(),
+        author: z.string().optional(),
+        theme: z.string().optional(),
+        pageSize: z.enum(PAGE_SIZE_NAMES).optional(),
+        orientation: z.enum(ORIENTATIONS).optional(),
+        cover: z.boolean().optional().describe('open with a title page; defaults to true'),
+        contents: z.boolean().optional().describe('add a self-filling contents page'),
+      }),
+    },
+    (args) =>
+      run(async () => {
+        const res = await importDocx(ctx, args);
         notify('add', docEntry(res.id));
         return res;
       }),

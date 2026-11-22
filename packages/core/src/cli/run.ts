@@ -261,7 +261,7 @@ export async function run(argv: string[]): Promise<void> {
 
   program
     .command('import <file>')
-    .description('Turn a Markdown file into a document under docs/')
+    .description('Turn a Markdown (.md) or Word (.docx) file into a document under docs/')
     .option('--id <id>', 'document id (defaults to a slug of the title)')
     .option('--title <title>', 'override the title')
     .option('--subtitle <subtitle>', 'subtitle, also used as the cover eyebrow')

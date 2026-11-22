@@ -1,6 +1,6 @@
 import path from 'node:path';
 import chalk from 'chalk';
-import { importMarkdown } from '../ops/index.ts';
+import { importDocx, importMarkdown } from '../ops/index.ts';
 import { cliContext } from './context.ts';
 
 export interface ImportOptions {
@@ -20,7 +20,8 @@ export async function importDoc(file: string, opts: ImportOptions = {}): Promise
   const ctx = await cliContext();
   const relative = path.relative(ctx.userCwd, path.resolve(ctx.userCwd, file));
 
-  const result = await importMarkdown(ctx, {
+  const read = /\.docx$/i.test(file) ? importDocx : importMarkdown;
+  const result = await read(ctx, {
     file: relative,
     ...(opts.id !== undefined ? { docId: opts.id } : {}),
     ...(opts.title !== undefined ? { title: opts.title } : {}),
@@ -42,5 +43,8 @@ export async function importDoc(file: string, opts: ImportOptions = {}): Promise
   }
   for (const missing of result.missingAssets) {
     process.stdout.write(chalk.yellow(`  ! image not found, left as written: ${missing}\n`));
+  }
+  for (const warning of result.warnings) {
+    process.stdout.write(chalk.yellow(`  ! ${warning}\n`));
   }
 }

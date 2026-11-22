@@ -49,6 +49,11 @@ describe('generateDocumentSource', () => {
     expect(source).toContain("{'<'}angles{'>'}");
   });
 
+  it('keeps an ampersand that would read as an entity literal', () => {
+    const { source } = generate('R&D wrote &copy; and &#169; here.\n');
+    expect(source).toContain("R&D wrote {'&'}copy; and {'&'}#169; here.");
+  });
+
   it('writes real heading tags so the outline picks them up', () => {
     const { source } = generate('## Findings\n\n### Detail\n', { cover: false });
     expect(source).toContain('<h2 style={h2}>Findings</h2>');

@@ -37,9 +37,12 @@ export type GeneratedDocument = {
   blockCount: number;
 };
 
-/** JSX text is written literally; only these characters have to be escaped. */
+/**
+ * JSX text is written literally; only these characters have to be escaped —
+ * and an `&` that would read as an HTML entity (`&copy;`), which JSX decodes.
+ */
 function jsxText(text: string): string {
-  return text.replace(/[{}<>]/g, (char) => `{'${char}'}`);
+  return text.replace(/[{}<>]|&(?=#?\w+;)/g, (char) => `{'${char}'}`);
 }
 
 function jsString(value: string): string {
