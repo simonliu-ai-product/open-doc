@@ -13,6 +13,7 @@ import {
   diffDocument,
   duplicateDocument,
   EXPORT_FORMATS,
+  editDocument,
   exportDocument,
   fileDocument,
   findAssetUsages,
@@ -24,12 +25,15 @@ import {
   listThemes,
   OpsError,
   ORIENTATIONS,
+  outlineDocument,
   PAGE_SIZE_NAMES,
   readDocument,
+  readDocumentLines,
   readText,
   readTheme,
   renameDocument,
   renderDocPage,
+  searchDocument,
   writeAsset,
   writeDocument,
   writeText,
@@ -110,10 +114,83 @@ export function registerTools(
     {
       title: 'Read document source',
       description:
-        'The full TSX source of a document. A document is React — read it before editing it.',
+        'The TSX source of a document. A document is React — read it before editing it. For a long document, call outline_document first and pass fromLine/toLine to read only the part you change; leave both out for the whole file.',
+      inputSchema: z.object({
+        docId: z.string(),
+        fromLine: z.number().int().positive().optional().describe('first line to read, 1-based'),
+        toLine: z.number().int().positive().optional().describe('last line to read, inclusive'),
+      }),
+    },
+    ({ docId, fromLine, toLine }) =>
+      run(() =>
+        fromLine === undefined && toLine === undefined
+          ? readDocument(ctx, docId)
+          : readDocumentLines(ctx, docId, fromLine, toLine),
+      ),
+  );
+
+  server.registerTool(
+    'outline_document',
+    {
+      title: 'Outline document source',
+      description:
+        'Where things are in a document without its source: line count, each top-level block (design, components, pages) with its line range, and every h1–h3 with its line. Start here with a long document, then read_document with fromLine/toLine.',
       inputSchema: z.object({ docId: z.string() }),
     },
-    ({ docId }) => run(() => readDocument(ctx, docId)),
+    ({ docId }) => run(() => outlineDocument(ctx, docId)),
+  );
+
+  server.registerTool(
+    'search_document',
+    {
+      title: 'Search document source',
+      description:
+        'Every line of a document’s source that contains some exact text (a colour such as #fff, a component, a phrase), with its line number. Finds what to change across a long document without reading all of it.',
+      inputSchema: z.object({
+        docId: z.string(),
+        text: z.string().describe('exact, case-sensitive text to look for'),
+      }),
+    },
+    ({ docId, text }) => run(() => searchDocument(ctx, docId, text)),
+  );
+
+  server.registerTool(
+    'edit_document',
+    {
+      title: 'Replace exact text in the source',
+      description:
+        'Change one exact piece of a document’s source: `find` (copied exactly from read_document or search_document, spacing and quotes included) becomes `replace`. `find` must occur once — pass fromLine/toLine (the range you read) when the same text appears elsewhere — unless `all` is set to change every occurrence. Use it for small changes instead of rewriting the whole file with write_document.',
+      inputSchema: z.object({
+        docId: z.string(),
+        find: z.string().describe('the exact text to change'),
+        replace: z.string().describe('what it becomes'),
+        all: z.boolean().optional().describe('change every occurrence, not just one'),
+        fromLine: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('look for `find` only from this line (1-based), e.g. the range you read'),
+        toLine: z.number().int().positive().optional().describe('…to this line, inclusive'),
+        expectedHash: z
+          .string()
+          .optional()
+          .describe(
+            'optional 16-char hash from read_document; refuses the edit if the file changed',
+          ),
+      }),
+    },
+    ({ docId, find, replace, all, expectedHash, fromLine, toLine }) =>
+      run(async () => {
+        const res = await editDocument(ctx, docId, find, replace, {
+          all,
+          expectedHash,
+          fromLine,
+          toLine,
+        });
+        notify('change', docEntry(docId));
+        return res;
+      }),
   );
 
   server.registerTool(

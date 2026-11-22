@@ -1,4 +1,5 @@
-import { type MutableRefObject, useCallback, useEffect, useState } from 'react';
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { getHost, hostCan } from '../../lib/host';
 import { useT } from '../../lib/i18n';
 import { useDesignPanelState } from '../design-panel/design-provider';
 import { useHistory } from '../history-provider';
@@ -87,6 +88,24 @@ export function EditSaveCard({
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [count, save, history]);
+
+  // A host app asks before it closes, reloads or quits.
+  const latest = useRef({ count, committing, save, discard });
+  latest.current = { count, committing, save, discard };
+  useEffect(() => {
+    const host = getHost();
+    if (!host?.guardUnsaved || !hostCan(host, 'guardUnsaved')) return;
+    return host.guardUnsaved({
+      status: () => ({ drafts: latest.current.count > 0, pending: latest.current.committing }),
+      settle: async (action) => {
+        if (action === 'save' && latest.current.count > 0) {
+          return (await latest.current.save()) ? { ok: true } : { ok: false, error: 'not saved' };
+        }
+        latest.current.discard();
+        return { ok: true };
+      },
+    });
+  }, []);
 
   useEffect(() => {
     if (!design.dirty) return;

@@ -33,7 +33,10 @@ open-doc dev --mcp
 | 工具 | 用途 |
 | --- | --- |
 | `list_documents` | 列出所有文件的 id、標題、theme、資料夾。從這裡開始。 |
-| `read_document` | 單一文件的完整 TSX 原始碼。 |
+| `read_document` | 單一文件的 TSX 原始碼，整份或 `fromLine`–`toLine`。 |
+| `outline_document` | 行數、頂層區塊與所在行數、h1–h3 與所在行，不含原始碼。 |
+| `search_document` | 原始碼中含有某段文字的每一行與行號。 |
+| `edit_document` | 原始碼的精確尋找取代；`find` 須剛好出現一次（有給 `fromLine`–`toLine` 時只在範圍內找），設 `all` 則全部取代。 |
 | `create_document` | 寫入新的 `docs/<id>/index.tsx`。id 已存在則拒絕。 |
 | `write_document` | 覆寫原始碼。帶 `expected` 可啟用衝突檢查。 |
 | `rename_document` | 改寫 `meta.title`。文件 id 永遠不變。 |
@@ -67,6 +70,8 @@ open-doc dev --mcp
 使用者手上已經有 Markdown？`import_markdown` 會把整份文件寫好——`flow()` 內文、封面、目錄、圖片——你從那裡開始細修。
 
 ## 同時編輯
+
+文件很長？agent 讀到的每個工具結果，之後每次呼叫模型都會再送一次，所以先看大綱、只讀要改的那幾行：`outline_document` → 帶 `fromLine`／`toLine` 的 `read_document`（或 `search_document`）→ `edit_document`。大半內容都要改時才用 `write_document` 整份重寫。
 
 `write_document` 與 `write_text` 都接受 `expected`——也就是你上次讀到的內容。若磁碟上的內容已經不同，該次呼叫會以 `409` 被拒絕，而不是覆蓋掉另一個 agent（或瀏覽器前那個人）剛完成的修改。先讀再帶 `expected` 寫；遇到 409 就重讀並調和差異。
 

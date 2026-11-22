@@ -48,6 +48,7 @@ import type {
   AgentTurnContext,
   RespondPayload,
 } from '../../../agent/types';
+import { effortLabel } from '../../../agent/types';
 import { Composer, ContextChip } from './composer';
 import { ConnectView, PreviewBadge, ProviderConsent } from './connect-view';
 import { HistoryView } from './history-view';
@@ -451,7 +452,7 @@ function ModelMenu({
         {current?.preview && <PreviewBadge />}
         {effort && (
           <span className="shrink-0 font-normal text-muted-foreground">
-            {t.agent.efforts[effort]}
+            {effortLabel(effort, t.agent.efforts)}
           </span>
         )}
         <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
@@ -557,7 +558,7 @@ function ModelMenu({
                       checked && 'bg-background font-medium text-foreground shadow-edge',
                     )}
                   >
-                    {e ? t.agent.efforts[e] : t.agent.effortAuto}
+                    {e ? effortLabel(e, t.agent.efforts) : t.agent.effortAuto}
                   </button>
                 );
               })}

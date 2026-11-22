@@ -69,6 +69,16 @@ export {
   writeAsset,
 } from './library.ts';
 export {
+  type DocumentOutline,
+  editDocument,
+  type OutlineBlock,
+  type OutlineHeading,
+  outlineDocument,
+  outlineSource,
+  readDocumentLines,
+  searchDocument,
+} from './source.ts';
+export {
   createFromTemplate,
   listTemplates,
   suggestDocId,
