@@ -81,7 +81,21 @@ describe('readDocxLayout', () => {
     const serif = String(red.kind === 'text' && red.css.fontFamily).slice(6);
     const kaiId = String(kai.kind === 'text' && kai.css.fontFamily).slice(6);
     expect(layout.fonts.get(serif)).toMatch(/新細明體.*serif$/);
-    expect(layout.fonts.get(kaiId)).toMatch(/^"標楷體".*Kaiti TC.*serif$/);
+    expect(layout.fonts.get(kaiId)).toMatch(
+      /^"標楷體", "TW-Kai", "全字庫正楷體".*Kaiti TC.*serif$/,
+    );
+  });
+
+  it('puts a free font with the same widths right after the font it stands in for', () => {
+    const layout = readDocxLayout(
+      docx(
+        p(r('a', '<w:rFonts w:ascii="Calibri" w:eastAsia="新細明體"/>')) +
+          p(r('b', '<w:rFonts w:ascii="Cambria"/>')),
+      ),
+    );
+    const stacks = [...layout.fonts.values()];
+    expect(stacks).toContainEqual(expect.stringMatching(/^"Calibri", "Carlito", "新細明體", /));
+    expect(stacks).toContainEqual(expect.stringMatching(/^"Cambria", "Caladea", /));
   });
 
   it('turns underlined spaces and tabs into fill-in blanks as wide as Word draws them', () => {

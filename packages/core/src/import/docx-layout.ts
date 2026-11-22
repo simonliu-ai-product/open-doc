@@ -231,10 +231,30 @@ const LINE_FACTORS: Array<[RegExp, number]> = [
 const LINE_KAI = 1.1;
 const LINE_CJK = 1.3;
 
+/**
+ * Free fonts drawn to another font's widths, so lines break where they did in
+ * Word when the original is not installed. Each goes right after the font it
+ * stands in for. 全字庫正楷體 (TW-Kai) is close to 標楷體 but not exact; nothing
+ * free matches 新細明體's widths.
+ */
+const METRIC_TWINS: Array<[RegExp, string[]]> = [
+  [/^calibri$/i, ['Carlito']],
+  [/^cambria$/i, ['Caladea']],
+  [/^arial$/i, ['Liberation Sans', 'Arimo']],
+  [/^times new roman$/i, ['Liberation Serif', 'Tinos']],
+  [/^courier new$/i, ['Liberation Mono', 'Cousine']],
+  [/^(標楷體|dfkai-sb|biaukai)$/i, ['TW-Kai', '全字庫正楷體']],
+];
+
+function withTwins(name: string): string[] {
+  for (const [re, twins] of METRIC_TWINS) if (re.test(name.trim())) return [name, ...twins];
+  return [name];
+}
+
 const STACKS = {
   serif:
     '"PMingLiU", "MingLiU", "Apple LiSung", "Songti TC", "LiSong Pro", "STSong", "Noto Serif CJK TC", "Noto Serif TC", "Times New Roman", serif',
-  kai: '"DFKai-SB", "Kaiti TC", "BiauKaiTC", "BiauKai", "STKaiti", "KaiTi", "Noto Serif CJK TC", serif',
+  kai: '"DFKai-SB", "TW-Kai", "Kaiti TC", "BiauKaiTC", "BiauKai", "STKaiti", "KaiTi", "Noto Serif CJK TC", serif',
   sans: '"Microsoft JhengHei", "PingFang TC", "PingFang SC", "Noto Sans CJK TC", "Helvetica Neue", Arial, sans-serif',
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 } as const;
@@ -926,7 +946,9 @@ class LayoutReader {
     const primary = this.cjk ? (eastAsia ?? ascii) : (ascii ?? eastAsia);
     const kind =
       fontClass(ascii) === 'mono' ? 'mono' : (fontClass(primary) ?? (this.cjk ? 'serif' : 'sans'));
-    const named = [...new Set([ascii, eastAsia].filter((name): name is string => !!name))];
+    const named = [
+      ...new Set([ascii, eastAsia].filter((name): name is string => !!name).flatMap(withTwins)),
+    ];
     const stack = [...named.map((name) => `"${name.replace(/"/g, '')}"`), STACKS[kind]].join(', ');
     for (const [id, existing] of this.fonts) if (existing === stack) return id;
     const base = `font${kind[0].toUpperCase()}${kind.slice(1)}`;
