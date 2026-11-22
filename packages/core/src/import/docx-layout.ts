@@ -1,6 +1,14 @@
 import { isSafeHref } from '../app/lib/href.ts';
 import { PAGE_SIZE_NAMES, PAGE_SIZES, type PageSizeName } from '../app/lib/sdk.ts';
-import { type DocxPackage, num, on, openDocx, resolvePart, val } from './docx-package.ts';
+import {
+  type DocxPackage,
+  num,
+  on,
+  openDocx,
+  resolvePart,
+  symbolText,
+  val,
+} from './docx-package.ts';
 import { child, descendants, elements, textContent, type XmlElement } from './xml.ts';
 
 /**
@@ -20,7 +28,18 @@ export type LRun =
   | { kind: 'blank'; width: string; css: Css }
   | { kind: 'marker'; text: string; css: Css; width: number }
   | { kind: 'break' }
-  | { kind: 'image'; src: string; alt: string; width: number; height: number };
+  | { kind: 'image'; src: string; alt: string; width: number; height: number }
+  | { kind: 'ruby'; base: string; rt: string; css: Css }
+  | {
+      /** A text box Word positioned against the paragraph; absolute here too. */
+      kind: 'box';
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+      css: Css;
+      blocks: LBlock[];
+    };
 
 type BlockFlags = { keepNext?: boolean; breakBefore?: boolean };
 
@@ -85,6 +104,7 @@ type RunProps = {
   caps?: boolean;
   vanish?: boolean;
   spacing?: number;
+  bdr?: Border;
 };
 
 type ParaProps = {
@@ -141,11 +161,27 @@ const KAI_RE = /楷|kai|biaukai/i;
 const MONO_RE =
   /courier|consolas|menlo|monaco|mono|source code|lucida console|inconsolata|fira code|cascadia/i;
 const SANS_SERIF_RE = /sans/i;
+const FONT_REF = '@font:';
+const CJK_FONT_RE =
+  /[\u3000-\u9fff\uac00-\ud7af]|ming|song|hei|kai|mincho|gothic|batang|gulim|dotum|simsun|yahei|meiryo|fangsong/i;
+
+/**
+ * Word's single line is the font's own line height, not a fixed 1.2. It
+ * matters most under a line grid, where a line one hair taller than the
+ * pitch takes two grid lines: 新細明體 jumps there from 14pt on 18pt grids,
+ * while 標楷體's tighter metrics keep 16pt on one line.
+ */
+function lineFactor(name: string | undefined): number {
+  if (!name) return 1.17;
+  if (KAI_RE.test(name)) return 1.1;
+  if (CJK_FONT_RE.test(name)) return 1.3;
+  return 1.17;
+}
 
 const STACKS = {
   serif:
-    '"PMingLiU", "MingLiU", "Songti TC", "Songti SC", "STSong", "Noto Serif CJK TC", "Noto Serif TC", "Times New Roman", serif',
-  kai: '"DFKai-SB", "BiauKai", "Kaiti TC", "STKaiti", "KaiTi", "Noto Serif CJK TC", serif',
+    '"PMingLiU", "MingLiU", "Apple LiSung", "Songti TC", "LiSong Pro", "STSong", "Noto Serif CJK TC", "Noto Serif TC", "Times New Roman", serif',
+  kai: '"DFKai-SB", "Kaiti TC", "BiauKaiTC", "BiauKai", "STKaiti", "KaiTi", "Noto Serif CJK TC", serif',
   sans: '"Microsoft JhengHei", "PingFang TC", "PingFang SC", "Noto Sans CJK TC", "Helvetica Neue", Arial, sans-serif',
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 } as const;
@@ -183,6 +219,11 @@ const WARNINGS: Record<string, (n: number) => string> = {
   unshowable: (n) => `${n} image(s) in a format browsers cannot show (EMF, WMF, TIFF) not imported`,
   missingImage: (n) => `${n} image(s) missing from the file not imported`,
   headerFooter: () => 'Word headers and footers were not imported',
+  orientation: (n) =>
+    `${n} section(s) in the other page orientation printed in the document's own; wide tables there are scaled to fit`,
+  tableScaled: (n) => `${n} table(s) wider than the page scaled down to fit`,
+  embeddedFonts: () =>
+    "the document's embedded fonts were not imported; text falls back to similar installed fonts",
   altChunk: (n) => `${n} embedded document part(s) not imported`,
 };
 
@@ -283,6 +324,8 @@ function readRPr(rPr: XmlElement | undefined): RunProps {
   if (vanish !== undefined) r.vanish = vanish;
   const spacing = num(val(child(rPr, 'w:spacing')));
   if (spacing !== undefined) r.spacing = spacing;
+  const bdr = readBorder(child(rPr, 'w:bdr'));
+  if (bdr) r.bdr = bdr;
   return r;
 }
 
@@ -460,24 +503,6 @@ function formatNumber(n: number, fmt: string): string {
   }
 }
 
-/** A symbol-font bullet (Wingdings, Symbol) lives in the private use area; show it as a plain bullet. */
-function bulletText(text: string): string {
-  return [...text]
-    .map((char) => {
-      const code = char.codePointAt(0) ?? 0;
-      if (code >= 0xf000 && code <= 0xf0ff) {
-        const low = code - 0xf000;
-        if (low === 0xa7 || low === 0x6e) return '▪';
-        if (low === 0xd8) return '➢';
-        if (low === 0xfc) return '✓';
-        if (low === 0x76) return '❖';
-        return '•';
-      }
-      return char;
-    })
-    .join('');
-}
-
 export function readDocxLayout(bytes: Uint8Array): DocxLayout {
   const pkg = openDocx(bytes);
   return new LayoutReader(pkg).read();
@@ -516,6 +541,9 @@ class LayoutReader {
     this.readStyles(pkg.partOf('/styles', 'styles.xml'));
     this.readNumbering(pkg.partOf('/numbering', 'numbering.xml'));
     this.readTheme(pkg.partOf('/theme', 'theme/theme1.xml'));
+    if (Object.keys(pkg.files).some((name) => /\.odttf$/i.test(name))) {
+      this.counts.set('embeddedFonts', 1);
+    }
     const settings = pkg.partOf('/settings', 'settings.xml');
     this.tabStop = num(val(child(settings, 'w:defaultTabStop'))) ?? 720;
     this.cjk = CJK_RE.test(textContent(pkg.body).slice(0, 4000));
@@ -564,11 +592,19 @@ class LayoutReader {
       this.padding = padding;
       this.insetLeft = round(left - padding);
       this.insetRight = round(right - padding);
-      const blocks = this.readBlocks(group.nodes, true);
+      const sectSz = child(sectPr, 'w:pgSz');
+      const sectLandscape =
+        sectSz?.attrs['w:orient'] === 'landscape' ||
+        (num(sectSz?.attrs['w:w']) ?? 0) > (num(sectSz?.attrs['w:h']) ?? Number.POSITIVE_INFINITY);
+      if (sectSz && sectLandscape !== landscape) this.count('orientation');
+      this.pendingBreak = false;
+      const blocks = collapseBlankPages(this.readBlocks(group.nodes, true));
       // Empty paragraphs at the end of a section print nothing; they only
       // risk pushing a blank sheet out of a page that was full to the margin.
       while (blocks.length > 0 && isEmptyParagraph(blocks[blocks.length - 1])) blocks.pop();
       const previous = sections[sections.length - 1];
+      // A section already starts a new sheet; a break on its first block would leave one blank.
+      if (blocks[0] && !(continuous && previous)) blocks[0].breakBefore = false;
       if (continuous && previous) previous.blocks.push(...blocks);
       else sections.push({ padding: round(padding), blocks });
     }
@@ -815,20 +851,29 @@ class LayoutReader {
     if (highlight ?? shade) css.background = (highlight ?? shade) as string;
     if (r.caps) css.textTransform = 'uppercase';
     if (r.spacing) css.letterSpacing = px(r.spacing);
+    const border = borderCss(r.bdr);
+    if (border && border !== 'none') css.border = border;
     return css;
   }
 
-  private lineHeight(p: ParaProps, fontPx: number): string | number {
+  private lineHeight(p: ParaProps, fontPx: number, factor: number): string | number {
     const line = p.line ?? 240;
     const rule = p.lineRule ?? 'auto';
     if (rule === 'exact') return `${px(line)}px`;
-    if (rule === 'atLeast') return `${round(Math.max(px(line), fontPx * 1.3))}px`;
+    if (rule === 'atLeast') return `${round(Math.max(px(line), fontPx * factor))}px`;
     const multiple = line / 240;
     if (this.grid > 0 && p.snapToGrid !== false) {
-      const lines = Math.max(1, Math.ceil((fontPx * 1.3) / this.grid - 0.05));
+      const lines = Math.max(1, Math.ceil((fontPx * factor) / this.grid - 0.001));
       return `${round(lines * this.grid * multiple)}px`;
     }
-    return round(1.2 * multiple * 100) / 100;
+    return Math.round(factor * multiple * 100) / 100;
+  }
+
+  /** The font a paragraph's lines are measured in: East Asian in a CJK document. */
+  private primaryFont(r: RunProps): string | undefined {
+    const ascii = this.themed(r.ascii);
+    const eastAsia = this.themed(r.eastAsia);
+    return this.cjk ? (eastAsia ?? ascii) : (ascii ?? eastAsia);
   }
 
   private readBlocks(
@@ -849,11 +894,9 @@ class LayoutReader {
         case 'w:p':
           for (const block of this.readParagraph(node, top, inherited)) push(block);
           break;
-        case 'w:tbl': {
-          const table = this.readTable(node, top);
-          if (table) push(table);
+        case 'w:tbl':
+          for (const table of this.readTable(node, top)) push(table);
           break;
-        }
         case 'w:sdt':
           for (const block of this.readBlocks(
             elements(child(node, 'w:sdtContent') ?? node),
@@ -921,6 +964,8 @@ class LayoutReader {
     const segments: LRun[][] = [[]];
     const breaks: number[] = [];
     this.readInline(p, baseR, undefined, segments, breaks, extra);
+    // An instruction that never reached its result would hide everything after it.
+    this.fields = this.fields.filter((field) => field.result);
 
     const fontPx = round(((markR.sz ?? baseR.sz ?? 20) * 2) / 3);
     const blocks: LBlock[] = [];
@@ -928,7 +973,7 @@ class LayoutReader {
       if (index > 0 && runs.length === 0 && index === segments.length - 1) return;
       const block: LParagraph = {
         kind: 'p',
-        css: this.paragraphCss(props, runs, fontPx, top),
+        css: this.paragraphCss(props, runs, ...this.tallest(runs, fontPx, markR), top),
         mark: this.runCss(markR),
         runs,
         ...(styleId ? { style: styleId } : {}),
@@ -946,8 +991,11 @@ class LayoutReader {
         const marker = this.marker(numId as string, ilvl, level, markerR, props, fontPx);
         if (marker) block.runs.unshift(marker);
       }
+      const indent = props.left !== undefined ? this.hx(props.left) : 0;
       for (const run of runs) {
         if (run.kind === 'text') this.tally(run);
+        // A box is placed from the text column; the paragraph it sits in starts at its indent.
+        if (run.kind === 'box') run.left = round(run.left - (top ? indent : Math.max(0, indent)));
       }
       blocks.push(block);
     });
@@ -978,7 +1026,7 @@ class LayoutReader {
     counters[ilvl] = (counters[ilvl] ?? level.start - 1) + 1;
     this.counters.set(numId, counters);
     let text: string;
-    if (level.fmt === 'bullet') text = bulletText(level.text);
+    if (level.fmt === 'bullet') text = symbolText(level.text);
     else {
       text = level.text.replace(/%(\d)/g, (_, d: string) => {
         const at = Number(d) - 1;
@@ -998,7 +1046,30 @@ class LayoutReader {
     return { kind: 'marker', text, css, width: level.suff === 'tab' ? round(hanging) : 0 };
   }
 
-  private paragraphCss(p: ParaProps, runs: LRun[], fontPx: number, top: boolean): Css {
+  /** A line is as tall as its tallest run, in that run's own font. */
+  private tallest(runs: LRun[], markPx: number, markR: RunProps): [number, number] {
+    let size = markPx;
+    let factor = lineFactor(this.primaryFont(markR));
+    for (const run of runs) {
+      if (run.kind !== 'text' || !run.text.trim()) continue;
+      const px = Number(run.css.fontSize);
+      const stack = this.fonts.get(String(run.css.fontFamily).slice(FONT_REF.length)) ?? '';
+      const f = lineFactor(stack.match(/^"([^"]+)"/)?.[1]);
+      if (px * f > size * factor) {
+        size = px;
+        factor = f;
+      }
+    }
+    return [size, factor];
+  }
+
+  private paragraphCss(
+    p: ParaProps,
+    runs: LRun[],
+    fontPx: number,
+    factor: number,
+    top: boolean,
+  ): Css {
     const css: Css = {};
     const align = p.jc;
     if (align === 'center') css.textAlign = 'center';
@@ -1043,7 +1114,7 @@ class LayoutReader {
     // A hanging first line in a cell would print over the cell to its left.
     const firstLine = top ? indent : Math.max(indent, -left);
     if (firstLine) css.textIndent = round(firstLine);
-    css.lineHeight = this.lineHeight(p, fontPx);
+    css.lineHeight = this.lineHeight(p, fontPx, factor);
     if (p.shd) css.background = p.shd;
     const sides = p.borders;
     if (sides) {
@@ -1133,7 +1204,14 @@ class LayoutReader {
           if (choice) this.readInline(choice, baseR, href, segments, breaks, extra);
           break;
         }
+        case 'w:pPr':
+        case 'w:rPr':
+          break;
         default:
+          // Any other wrapper Word may put around runs (w:sdtContent,
+          // w:permStart's siblings, a vendor's custom element) still holds
+          // text that must not be lost.
+          this.readInline(entry, baseR, href, segments, breaks, extra);
           break;
       }
     }
@@ -1200,7 +1278,7 @@ class LayoutReader {
           break;
         case 'w:sym': {
           const code = parseInt(node.attrs['w:char'] ?? '', 16);
-          if (Number.isFinite(code)) push(bulletText(String.fromCodePoint(code)));
+          if (Number.isFinite(code)) push(symbolText(String.fromCodePoint(code), true));
           break;
         }
         case 'w:br': {
@@ -1243,6 +1321,19 @@ class LayoutReader {
           if (this.fields.length > 0)
             this.fields[this.fields.length - 1].instr += textContent(node);
           break;
+        case 'w:ruby': {
+          const text = (name: string) =>
+            descendants(child(node, name) ?? node, 'w:t')
+              .map(textContent)
+              .join('');
+          const base = text('w:rubyBase');
+          const rt = text('w:rt');
+          if (base && !this.fields.some((field) => !field.result)) {
+            this.text.push(base, rt);
+            out().push({ kind: 'ruby', base, rt, css });
+          }
+          break;
+        }
         case 'mc:AlternateContent': {
           const choice = child(node, 'mc:Choice') ?? child(node, 'mc:Fallback');
           if (choice)
@@ -1256,19 +1347,38 @@ class LayoutReader {
             );
           break;
         }
+        case 'w:rPr':
+        case 'w:delText':
+          break;
         default:
+          if (descendants(node, 'w:t').length > 0) {
+            this.readRun(
+              { ...run, children: [...(rPr ? [rPr] : []), ...node.children] },
+              baseR,
+              href,
+              segments,
+              breaks,
+              extra,
+            );
+          }
           break;
       }
     }
   }
 
+  /**
+   * How wide a run of underlined spaces draws. A half-width space is a
+   * quarter em — even in a CJK face: forms laid out in 標楷體 only fit their
+   * lines with Word's blanks at that width, whatever the font's own space.
+   */
   private blankWidth(space: string): string {
+    const half = 0.25;
     let em = 0;
     let tabs = 0;
     for (const char of space) {
       if (char === '\t') tabs++;
-      else if (char === '　') em += 1;
-      else em += 0.5;
+      else if (char === '\u3000') em += 1;
+      else em += half;
     }
     const tabPx = tabs * this.hx(this.tabStop);
     if (tabPx && em) return `calc(${round(em)}em + ${round(tabPx)}px)`;
@@ -1296,7 +1406,12 @@ class LayoutReader {
   }
 
   private readDrawing(el: XmlElement, out: LRun[], extra: LBlock[]) {
+    const anchor = descendants(el, 'wp:anchor')[0];
     const boxes = descendants(el, 'w:txbxContent');
+    if (anchor && boxes.length > 0) {
+      this.anchoredBox(anchor, boxes[0], out);
+      return;
+    }
     for (const box of boxes) {
       this.count('textbox');
       extra.push(...this.readBlocks(elements(box), false).map((block) => this.inset(block)));
@@ -1343,6 +1458,62 @@ class LayoutReader {
     }
   }
 
+  /**
+   * A text box Word floats at an offset from its paragraph (`wp:anchor`):
+   * placed the same way here, absolutely inside the paragraph, with its own
+   * border, fill and insets. One with no text, border or fill draws nothing.
+   */
+  private anchoredBox(anchor: XmlElement, content: XmlElement, out: LRun[]) {
+    const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
+    const extent = child(anchor, 'wp:extent');
+    const width = emu(extent?.attrs.cx);
+    const height = emu(extent?.attrs.cy);
+    const axis = (name: string, size: number, room: number) => {
+      const position = child(anchor, name);
+      const from = position?.attrs.relativeFrom ?? 'column';
+      const offset = child(position, 'wp:posOffset');
+      const align = textContent(
+        child(position, 'wp:align') ?? { name: '', attrs: {}, children: [] },
+      );
+      let value = offset ? emu(textContent(offset)) : 0;
+      if (!offset && align) {
+        if (align === 'center') value = (room - size) / 2;
+        else if (align === 'right' || align === 'bottom' || align === 'outside')
+          value = room - size;
+      }
+      return { value, from };
+    };
+    const h = axis('wp:positionH', width, this.textWidth);
+    const v = axis('wp:positionV', height, 0);
+    let left = h.value;
+    // Offsets measured from the page or its left margin, not the text column.
+    if (h.from === 'page') left -= this.padding + this.insetLeft;
+    else if (h.from === 'leftMargin') left -= this.insetLeft + this.padding;
+    const spPr = descendants(anchor, 'wps:spPr')[0];
+    const line = child(spPr, 'a:ln');
+    const lineFill = child(line, 'a:solidFill');
+    const color = (fill: XmlElement | undefined) => {
+      const rgb = child(fill, 'a:srgbClr')?.attrs.val;
+      return rgb ? `#${rgb}` : '#000000';
+    };
+    const css: Css = {};
+    if (line && !child(line, 'a:noFill') && (lineFill || child(line, 'a:prstDash'))) {
+      css.border = `${Math.max(0.5, emu(line.attrs.w ?? '9525'))}px solid ${color(lineFill)}`;
+    }
+    const fillEl = child(spPr, 'a:solidFill');
+    if (fillEl) css.background = color(fillEl);
+    const body = descendants(anchor, 'wps:bodyPr')[0]?.attrs ?? {};
+    const inset = (key: string, fallback: number) => emu(body[key] ?? String(fallback));
+    css.padding = `${inset('tIns', 45720)}px ${inset('rIns', 91440)}px ${inset('bIns', 45720)}px ${inset('lIns', 91440)}px`;
+    const blocks = this.readBlocks(elements(content), false);
+    const text = textContent(content).trim();
+    if (!text && !css.border && !css.background) return;
+    // A one-line label ("附表一") sized to fit Word's font must not wrap in a
+    // fallback face a hair wider.
+    if (text.length <= 12 && blocks.length === 1) css.whiteSpace = 'nowrap';
+    out.push({ kind: 'box', left, top: v.value, width, height, css, blocks });
+  }
+
   private inset(block: LBlock): LBlock {
     if (block.kind !== 'p') return block;
     return {
@@ -1376,7 +1547,7 @@ class LayoutReader {
     return part;
   }
 
-  private readTable(tbl: XmlElement, top: boolean): LTable | null {
+  private readTable(tbl: XmlElement, top: boolean): LTable[] {
     const tblPr = child(tbl, 'w:tblPr');
     const styleId = val(child(tblPr, 'w:tblStyle')) ?? this.defaultTable;
     const styled = this.chain(styleId);
@@ -1414,7 +1585,7 @@ class LayoutReader {
       this.hx(num(col.attrs['w:w']) ?? 0),
     );
     const trs = elements(tbl, 'w:tr');
-    if (trs.length === 0) return null;
+    if (trs.length === 0) return [];
 
     type Slot = {
       cell: LCell;
@@ -1527,7 +1698,14 @@ class LayoutReader {
         : wValue / 50;
       width = round((this.textWidth * percent) / 100);
     }
-    const widthPx = typeof width === 'number' ? width : gridWidth;
+    let widthPx = typeof width === 'number' ? width : gridWidth;
+    const room = this.textWidth + this.insetLeft + this.insetRight + 2 * this.padding;
+    // Wider than the sheet itself — usually a landscape section's table on a
+    // portrait page. Word would print past the paper; fit it to the column.
+    if (top && widthPx > room) {
+      this.count('tableScaled');
+      widthPx = round(this.textWidth);
+    }
     const jc = val(pick('w:jc'));
     const indent = this.hx(num(pick('w:tblInd')?.attrs['w:w']) ?? 0);
     let left = indent;
@@ -1535,7 +1713,6 @@ class LayoutReader {
       if (jc === 'center') left = (this.textWidth - widthPx) / 2;
       else if (jc === 'right' || jc === 'end') left = this.textWidth - widthPx;
       left += this.insetLeft;
-      const room = this.textWidth + this.insetLeft + this.insetRight + 2 * this.padding;
       left = Math.max(-this.padding, Math.min(left, room - this.padding - widthPx));
     } else if (jc === 'center') left = 0;
     const css: Css = {
@@ -1549,14 +1726,57 @@ class LayoutReader {
           : `0 0 0 ${round(left)}px`,
     };
     const scale = gridWidth > 0 ? widthPx / gridWidth : 1;
-    return {
+    const widths = cols.map((w) => round(w * scale));
+    const table = (part: LRow[], splittable: boolean, first: boolean): LTable => ({
       kind: 'table',
-      css,
-      cols: cols.map((w) => round(w * scale)),
-      rows,
-      splittable: !anyRowSpan && rows.length > 1 && top,
-    };
+      // Pieces of one table meet edge to edge, so the seam draws one rule.
+      css: first ? css : { ...css, margin: `-1px 0 0 ${round(left)}px` },
+      cols: widths,
+      rows: part,
+      splittable: splittable && part.length > 1,
+    });
+    if (!top || !anyRowSpan) return [table(rows, top && !anyRowSpan, true)];
+
+    // Merged rows cannot be cut apart, but the table can break between them:
+    // each run of rows a merge holds together is its own piece, and rows no
+    // merge crosses are one splittable piece.
+    const parts: Array<{ rows: LRow[]; simple: boolean }> = [];
+    let group: LRow[] = [];
+    let open = -1;
+    rows.forEach((row, r) => {
+      group.push(row);
+      for (const cell of row.cells) open = Math.max(open, r + cell.rowSpan - 1);
+      if (open > r) return;
+      const simple = group.length === 1;
+      const last = parts[parts.length - 1];
+      if (simple && last?.simple) last.rows.push(...group);
+      else parts.push({ rows: group, simple });
+      group = [];
+    });
+    if (group.length > 0) parts.push({ rows: group, simple: false });
+    return parts.map((part, index) => table(part.rows, part.simple, index === 0));
   }
+}
+
+/** Every character the layout prints, in order — what an import must never lose. */
+export function layoutText(layout: DocxLayout): string {
+  const out: string[] = [];
+  const walk = (blocks: LBlock[]) => {
+    for (const block of blocks) {
+      if (block.kind === 'table') {
+        for (const row of block.rows) for (const cell of row.cells) walk(cell.blocks);
+        continue;
+      }
+      for (const run of block.runs) {
+        if (run.kind === 'text' || run.kind === 'marker') out.push(run.text);
+        else if (run.kind === 'ruby') out.push(run.base, run.rt);
+        else if (run.kind === 'box') walk(run.blocks);
+      }
+      out.push('\n');
+    }
+  };
+  for (const section of layout.sections) walk(section.blocks);
+  return out.join('');
 }
 
 /** Rewrites one side of a `margin: top right bottom left` shorthand. */
@@ -1564,6 +1784,39 @@ function setSpace(p: LParagraph, index: number, value: number) {
   const parts = String(p.css.margin ?? '0px 0px 0px 0px').split(' ');
   parts[index] = `${value}px`;
   p.css.margin = parts.join(' ');
+}
+
+/**
+ * A page break whose page would hold nothing but empty paragraphs (two
+ * breaks in a row, a break just before a section break) prints a blank
+ * sheet; Word's reader never sees one, so neither does ours.
+ */
+function collapseBlankPages(blocks: LBlock[]): LBlock[] {
+  const out: LBlock[] = [];
+  let i = 0;
+  while (i < blocks.length) {
+    const block = blocks[i];
+    if (block.breakBefore && isBlank(block)) {
+      let j = i;
+      while (j < blocks.length && isBlank(blocks[j]) && (j === i || !blocks[j].breakBefore)) j++;
+      if (j === blocks.length || blocks[j].breakBefore) {
+        i = j;
+        continue;
+      }
+    }
+    out.push(block);
+    i++;
+  }
+  return out;
+}
+
+function isBlank(block: LBlock): boolean {
+  return (
+    block.kind === 'p' &&
+    block.runs.every(
+      (run) => (run.kind === 'text' && run.text.trim() === '') || run.kind === 'break',
+    )
+  );
 }
 
 function isEmptyParagraph(block: LBlock): boolean {

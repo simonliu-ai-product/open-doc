@@ -99,3 +99,37 @@ export function openDocx(bytes: Uint8Array): DocxPackage {
   };
   return { files, body, mainDir, rels, partOf, xmlPart };
 }
+
+const SYMBOLS: Record<number, string> = {
+  108: '●',
+  110: '■',
+  111: '□',
+  113: '❑',
+  118: '❖',
+  120: '☒',
+  159: '•',
+  161: '○',
+  167: '▪',
+  168: '□',
+  216: '➢',
+  252: '✓',
+  253: '☒',
+  254: '☑',
+};
+
+/**
+ * A symbol-font glyph (Wingdings, Symbol) lives in the private use area, or
+ * below 0x100 when `w:sym` names the font; show the Unicode look-alike. Forms
+ * use Wingdings' box for "tick one", so it must stay a box.
+ */
+export function symbolText(text: string, symbolFont = false): string {
+  return [...text]
+    .map((char) => {
+      const code = char.codePointAt(0) ?? 0;
+      const low =
+        code >= 0xf000 && code <= 0xf0ff ? code - 0xf000 : symbolFont && code < 0x100 ? code : -1;
+      if (low < 0) return char;
+      return SYMBOLS[low] ?? '•';
+    })
+    .join('');
+}

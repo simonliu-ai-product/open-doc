@@ -1,6 +1,8 @@
-import { strToU8, zipSync } from 'fflate';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { type LParagraph, type LTable, readDocxLayout } from './docx-layout.ts';
+import { type LParagraph, type LTable, layoutText, readDocxLayout } from './docx-layout.ts';
 import { generateLayoutSource } from './layout-to-tsx.ts';
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -82,13 +84,23 @@ describe('readDocxLayout', () => {
     expect(layout.fonts.get(kaiId)).toMatch(/^"標楷體".*Kaiti TC.*serif$/);
   });
 
-  it('turns underlined spaces and tabs into fill-in blanks', () => {
+  it('turns underlined spaces and tabs into fill-in blanks as wide as Word draws them', () => {
+    const kai = '<w:rFonts w:ascii="標楷體" w:eastAsia="標楷體"/>';
     const [para] = blocks(
-      docx(p(r('姓名：') + r('      ', '<w:u w:val="single"/>') + r('　　', '<w:u/>'))),
+      docx(
+        p(
+          r('姓名：') +
+            r('        ', '<w:u w:val="single"/>') +
+            r('\u3000\u3000', '<w:u/>') +
+            r('      ', `${kai}<w:u/>`),
+        ),
+      ),
     ) as LParagraph[];
-    expect(para.runs.map((run) => run.kind)).toEqual(['text', 'blank', 'blank']);
-    expect(para.runs[1]).toMatchObject({ width: '3em' });
+    expect(para.runs.map((run) => run.kind)).toEqual(['text', 'blank', 'blank', 'blank']);
+    // A half-width space is a quarter em in any font; a full-width space a whole one.
+    expect(para.runs[1]).toMatchObject({ width: '2em' });
     expect(para.runs[2]).toMatchObject({ width: '2em' });
+    expect(para.runs[3]).toMatchObject({ width: '1.5em' });
   });
 
   it('maps gridSpan and vMerge to colSpan and rowSpan, with borders, shading and widths', () => {
@@ -179,7 +191,7 @@ describe('generateLayoutSource', () => {
     expect(source).toContain("textAlign: 'right'");
     expect(source).toContain("<span style={{ color: '#FF0000' }}>紅</span><strong>粗</strong>");
     expect(source).toContain(
-      "<span style={{ display: 'inline-block', width: '2em', borderBottom: '1px solid currentColor' }} />",
+      "<span style={{ display: 'inline-block', width: '1em', borderBottom: '1px solid currentColor' }} />",
     );
     expect(source).toContain('<td rowSpan={2}');
     expect(source).toContain("pageSize: 'A4',");
@@ -199,5 +211,215 @@ describe('generateLayoutSource', () => {
     expect(source).toContain('<thead>');
     expect(source).toContain('<Rows>');
     expect(source).toContain('useTableSlice,');
+  });
+});
+
+/** Every character Word prints from document.xml, read without the importer's walker. */
+function wordText(bytes: Uint8Array): string {
+  const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+  const body = xml
+    .replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, '')
+    .replace(/<w:(del|moveFrom)\b[^>]*>[\s\S]*?<\/w:\1>/g, '')
+    .replace(/<w:r>(?:(?!<\/w:r>)[\s\S])*?<w:vanish\/>[\s\S]*?<\/w:r>/g, '');
+  return [...body.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)]
+    .map((match) => match[1])
+    .join('')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/** The characters of `expected` the output does not carry, counted as a multiset. */
+function missing(expected: string, actual: string): string {
+  const have = new Map<string, number>();
+  for (const char of actual) if (char.trim()) have.set(char, (have.get(char) ?? 0) + 1);
+  let out = '';
+  for (const char of expected) {
+    if (!char.trim()) continue;
+    const n = have.get(char) ?? 0;
+    if (n > 0) have.set(char, n - 1);
+    else out += char;
+  }
+  return out;
+}
+
+/** The JSX text of the generated flow sections, tags and style objects stripped. */
+function sourceText(source: string): string {
+  const body = source.slice(source.indexOf('const Section1'), source.indexOf('export const meta'));
+  return body.replace(/<[^>]*>/g, '').replace(/\{'([^']*)'\}/g, '$1');
+}
+
+function expectNoLostText(bytes: Uint8Array) {
+  const layout = readDocxLayout(bytes);
+  const expected = wordText(bytes);
+  expect(missing(expected, layoutText(layout))).toBe('');
+  const { source } = generateLayoutSource(layout, { docId: 'x', createdAt: 'x' });
+  expect(missing(expected, sourceText(source))).toBe('');
+}
+
+describe('no text is lost', () => {
+  it('reads text inside every wrapper Word puts around runs', () => {
+    const bytes = docx(
+      p(
+        r('如') +
+          '<w:r><w:ruby><w:rubyPr/><w:rt><w:r><w:t>ㄏㄜˊ</w:t></w:r></w:rt><w:rubyBase><w:r><w:t>和</w:t></w:r></w:rubyBase></w:ruby></w:r>' +
+          `<w:sdt><w:sdtPr/><w:sdtContent>${r('內容控制')}</w:sdtContent></w:sdt>` +
+          `<w:smartTag w:element="date">${r('智慧標籤')}</w:smartTag>` +
+          `<w:customXml w:element="x">${r('自訂')}</w:customXml>` +
+          `<w:fldSimple w:instr=" PAGE ">${r('7')}</w:fldSimple>` +
+          `<w:hyperlink w:anchor="a">${r('連結')}</w:hyperlink>` +
+          `<w:ins w:id="1">${r('插入')}</w:ins><w:moveTo w:id="2">${r('移入')}</w:moveTo>` +
+          `<w:del w:id="3"><w:r><w:delText>刪除</w:delText></w:r></w:del>` +
+          `<w:permStart w:id="9"/><w:vendor:wrap xmlns:w="x">${r('未知包裝')}</w:vendor:wrap>` +
+          `<mc:AlternateContent xmlns:mc="mc"><mc:Fallback>${r('備援')}</mc:Fallback></mc:AlternateContent>` +
+          '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> DATE </w:instrText></w:r>',
+      ) + p(r('下一段')),
+    );
+    expectNoLostText(bytes);
+    const text = layoutText(readDocxLayout(bytes));
+    expect(text).toContain('和');
+    expect(text).toContain('備援');
+    expect(text).toContain('下一段');
+    expect(text).not.toContain('刪除');
+  });
+
+  it('shows a Wingdings box as a box', () => {
+    const [para] = blocks(
+      docx(p('<w:r><w:sym w:font="Wingdings" w:char="F0A8"/></w:r>' + r('申請'))),
+    ) as LParagraph[];
+    expect(para.runs[0]).toMatchObject({ kind: 'text', text: '□' });
+  });
+
+  // Real files are not committed; point OPEN_DOC_DOCX_SAMPLES at a folder of .docx to check them.
+  const samples = process.env.OPEN_DOC_DOCX_SAMPLES;
+  it.skipIf(!samples)('keeps every character of the sample files', () => {
+    const dir = samples as string;
+    const files = readdirSync(dir).filter((name) => name.endsWith('.docx'));
+    expect(files.length).toBeGreaterThan(0);
+    for (const name of files) {
+      const bytes = new Uint8Array(readFileSync(join(dir, name)));
+      try {
+        expectNoLostText(bytes);
+      } catch (err) {
+        throw new Error(`${name}: ${(err as Error).message}`);
+      }
+    }
+  });
+});
+
+describe('layout fidelity', () => {
+  it('fits a 標楷體 16pt line on an 18pt grid, but not 新細明體 at 14pt', () => {
+    const grid =
+      '<w:sectPr><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/><w:docGrid w:type="lines" w:linePitch="360"/></w:sectPr>';
+    const [kai, ming, off] = blocks(
+      docx(
+        p(r('楷書', '<w:rFonts w:eastAsia="標楷體"/><w:sz w:val="32"/>')) +
+          p(r('明體', '<w:rFonts w:eastAsia="新細明體"/><w:sz w:val="28"/>')) +
+          p(
+            r('不對齊', '<w:rFonts w:eastAsia="新細明體"/><w:sz w:val="28"/>'),
+            '<w:snapToGrid w:val="0"/>',
+          ),
+        '',
+        grid,
+      ),
+    ) as LParagraph[];
+    expect(kai.css.lineHeight).toBe('24px');
+    expect(ming.css.lineHeight).toBe('48px');
+    expect(off.css.lineHeight).toBe(1.3);
+  });
+
+  it('places an anchored text box at its offset, with its border, and drops empty ones', () => {
+    const anchor = (text: string, line: string) =>
+      `<w:r><w:drawing><wp:anchor xmlns:wp="wp"><wp:positionH relativeFrom="column"><wp:posOffset>5369560</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>-370840</wp:posOffset></wp:positionV><wp:extent cx="666750" cy="311150"/><a:graphic xmlns:a="a"><a:graphicData><wps:wsp xmlns:wps="wps"><wps:spPr>${line}</wps:spPr><wps:txbx><w:txbxContent>${p(text ? r(text) : '')}</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
+    const [para] = blocks(
+      docx(
+        p(
+          anchor(
+            '附表二',
+            '<a:ln w="12700"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>',
+          ) + anchor('', '<a:noFill/><a:ln><a:noFill/></a:ln>'),
+        ),
+      ),
+    ) as LParagraph[];
+    expect(para.runs).toHaveLength(1);
+    expect(para.runs[0]).toMatchObject({
+      kind: 'box',
+      left: 563.73,
+      top: -38.93,
+      width: 70,
+      css: { border: '1.33px solid #000000', whiteSpace: 'nowrap' },
+    });
+    const { source } = generateLayoutSource(readDocxLayout(docx(p(anchor('附表二', '')))), {
+      docId: 'x',
+      createdAt: 'x',
+    });
+    expect(source).toContain("position: 'relative'");
+    expect(source).toContain("<div style={{ position: 'absolute', left: ");
+  });
+
+  it('prints no blank sheet for a page break before a section break or a second break', () => {
+    const brk = '<w:r><w:br w:type="page"/></w:r>';
+    const layout = readDocxLayout(
+      docx(
+        p(r('one') + brk) +
+          p(
+            '',
+            '<w:sectPr><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>',
+          ) +
+          p(r('two') + brk) +
+          p(brk) +
+          p(r('three')),
+      ),
+    );
+    expect(layout.sections).toHaveLength(2);
+    const [first, second] = layout.sections;
+    expect(first.blocks.some((block) => block.breakBefore)).toBe(false);
+    expect(second.blocks[0].breakBefore).toBeFalsy();
+    expect(second.blocks.filter((block) => block.breakBefore)).toHaveLength(1);
+    expect(layoutText(layout).replace(/\s/g, '')).toBe('onetwothree');
+  });
+
+  it('splits a table with merged rows between the merges, and fits one wider than the sheet', () => {
+    const cell = (text: string, tcPr = '') => tc(text, tcPr);
+    const merged = (n: number) =>
+      `<w:tr>${cell(`m${n}`, '<w:vMerge w:val="restart"/>')}${cell('a')}</w:tr><w:tr>${cell('', '<w:vMerge/>')}${cell('b')}</w:tr>`;
+    const plain = (n: number) => `<w:tr>${cell(`p${n}`)}${cell('c')}</w:tr>`;
+    const pieces = blocks(
+      docx(
+        `<w:tbl><w:tblGrid><w:gridCol w:w="9000"/><w:gridCol w:w="9000"/></w:tblGrid>${plain(1)}${plain(2)}${merged(1)}${plain(3)}${merged(2)}</w:tbl>`,
+      ),
+    ) as LTable[];
+    expect(pieces.map((t) => [t.rows.length, t.splittable])).toEqual([
+      [2, true],
+      [2, false],
+      [1, false],
+      [2, false],
+    ]);
+    // 18000 twips is 1200px, wider than A4; it shrinks to the 578px text column.
+    expect(pieces[0].css.width).toBe(578);
+    expect(pieces[1].css.margin).toMatch(/^-1px /);
+    expect(
+      readDocxLayout(
+        docx(`<w:tbl><w:tblGrid><w:gridCol w:w="18000"/></w:tblGrid>${plain(1)}</w:tbl>`),
+      ).warnings,
+    ).toContain('1 table(s) wider than the page scaled down to fit');
+  });
+
+  it('keeps a run highlight on the words, not the paragraph, and draws ruby', () => {
+    const layout = readDocxLayout(
+      docx(
+        p(
+          r('黃色底', '<w:highlight w:val="yellow"/>') +
+            '<w:r><w:ruby><w:rubyPr/><w:rt><w:r><w:t>ㄏㄜˊ</w:t></w:r></w:rt><w:rubyBase><w:r><w:t>和</w:t></w:r></w:rubyBase></w:ruby></w:r>',
+        ),
+      ),
+    );
+    const { source } = generateLayoutSource(layout, { docId: 'x', createdAt: 'x' });
+    expect(source).toMatch(
+      /<p style=\{\{[^}]*\}\}><span style=\{\{ background: '#ffff00' \}\}>黃色底<\/span>/,
+    );
+    expect(source).toContain('<ruby>和<rt>ㄏㄜˊ</rt></ruby>');
   });
 });

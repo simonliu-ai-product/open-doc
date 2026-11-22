@@ -75,7 +75,9 @@ function dominant(p: LParagraph): Css {
       most = n;
     }
   }
-  return best;
+  // A highlight or a box belongs to the words, not to the whole line width.
+  const { background: _background, border: _border, ...hoisted } = best;
+  return hoisted;
 }
 
 function diff(run: Css, base: Css): Css {
@@ -164,6 +166,23 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
             borderBottom: '1px solid currentColor',
             ...diff(pick(run.css, ['fontSize']), pick(base, ['fontSize'])),
           })} />`;
+        case 'ruby':
+          return wrapRun(
+            `<ruby>${textJsx(run.base)}<rt>${textJsx(run.rt)}</rt></ruby>`,
+            solid(diff(run.css, base), p),
+          );
+        case 'box':
+          return `<div${styleAttr({
+            position: 'absolute',
+            left: run.left,
+            top: run.top,
+            width: run.width,
+            minHeight: run.height,
+            boxSizing: 'border-box',
+            textIndent: 0,
+            textAlign: 'left',
+            ...run.css,
+          })}>${run.blocks.map((block) => renderBlock(block, ctx, '')).join('')}</div>`;
         case 'marker':
           return `<span${styleAttr({
             display: 'inline-block',
@@ -209,10 +228,17 @@ function flags(block: LBlock): string {
 
 function renderParagraph(p: LParagraph, ctx: Context, pad: string): string {
   const heading = !!p.heading;
-  const tag = heading ? `h${Math.min(p.heading ?? 1, 4)}` : 'p';
+  const boxed = p.runs.some((run) => run.kind === 'box');
+  // A floating box holds paragraphs of its own, which a <p> may not contain.
+  const tag = heading ? `h${Math.min(p.heading ?? 1, 4)}` : boxed ? 'div' : 'p';
   const base = dominant(p);
-  const css = { ...ownRunCss(base, ctx, heading), ...p.css };
-  const content = p.runs.length > 0 ? renderRuns(p, base, ctx) : '<br />';
+  const css = {
+    ...ownRunCss(base, ctx, heading),
+    ...p.css,
+    ...(boxed ? { position: 'relative' } : {}),
+  };
+  const inline = p.runs.some((run) => run.kind !== 'box');
+  const content = `${renderRuns(p, base, ctx)}${inline ? '' : '<br />'}`;
   return `${pad}<${tag}${styleAttr(css)}${flags(p)}>${content}</${tag}>`;
 }
 
@@ -273,7 +299,10 @@ export function collectLayoutImages(layout: DocxLayout): string[] {
   const walk = (blocks: LBlock[]) => {
     for (const block of blocks) {
       if (block.kind === 'p') {
-        for (const run of block.runs) if (run.kind === 'image') out.push(run.src);
+        for (const run of block.runs) {
+          if (run.kind === 'image') out.push(run.src);
+          else if (run.kind === 'box') walk(run.blocks);
+        }
       } else {
         for (const row of block.rows) for (const cell of row.cells) walk(cell.blocks);
       }

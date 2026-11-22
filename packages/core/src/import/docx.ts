@@ -1,5 +1,5 @@
 import { isSafeHref } from '../app/lib/href.ts';
-import { DocxError, num, on, openDocx, resolvePart, val } from './docx-package.ts';
+import { DocxError, num, on, openDocx, resolvePart, symbolText, val } from './docx-package.ts';
 import type { Block, Inline, ParsedMarkdown, TableAlign } from './markdown.ts';
 
 export { DocxError };
@@ -369,7 +369,31 @@ export function parseDocx(bytes: Uint8Array): ParsedDocx {
           if (choice) readRun({ ...run, children: choice.children }, para, href, out);
           break;
         }
+        case 'w:ruby':
+          push(
+            descendants(child(node, 'w:rubyBase') ?? node, 'w:t')
+              .map(textContent)
+              .join(''),
+          );
+          break;
+        case 'w:sym': {
+          const code = parseInt(node.attrs['w:char'] ?? '', 16);
+          if (Number.isFinite(code)) push(symbolText(String.fromCodePoint(code), true));
+          break;
+        }
+        case 'w:rPr':
+        case 'w:delText':
+          break;
         default:
+          if (descendants(node, 'w:t').length > 0) {
+            const rPr = child(run, 'w:rPr');
+            readRun(
+              { ...run, children: [...(rPr ? [rPr] : []), ...node.children] },
+              para,
+              href,
+              out,
+            );
+          }
           break;
       }
     }
@@ -424,7 +448,10 @@ export function parseDocx(bytes: Uint8Array): ParsedDocx {
           if (choice) readInline(choice, para, href, out);
           break;
         }
+        case 'w:pPr':
+          break;
         default:
+          readInline(entry, para, href, out);
           break;
       }
     }
