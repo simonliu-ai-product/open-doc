@@ -100,6 +100,8 @@ export type LRun =
       clear?: number;
       /** A spanning box set lower than the text: the paragraph ends this far past its last line. */
       after?: number;
+      /** Set in the line like a picture, not floated: it takes its own room. */
+      inline?: true;
       css: Css;
       blocks: LBlock[];
     };
@@ -2015,6 +2017,29 @@ class LayoutReader {
       if (drawn === 0 && boxes.length === 0) this.count('drawing');
       return;
     }
+    // A text box set in the line (a shaded call-out) keeps its box and look.
+    const inlineShapes = descendants(el, 'wp:inline').flatMap((inline) =>
+      descendants(inline, 'wps:wsp').map((shape) => ({ inline, shape })),
+    );
+    if (!anchor && boxes.length > 0 && inlineShapes.length > 0) {
+      let drawn = 0;
+      for (const { inline, shape } of inlineShapes) {
+        const ext = child(inline, 'wp:extent');
+        const w = round((num(ext?.attrs.cx) ?? 0) / 9525);
+        const h = round((num(ext?.attrs.cy) ?? 0) / 9525);
+        const before = out.length;
+        const content = descendants(shape, 'w:txbxContent')[0];
+        if (this.shapeBox(shape, child(shape, 'wps:spPr'), content, { x: 0, y: 0, w, h }, out)) {
+          const run = out[before];
+          if (run?.kind === 'box') {
+            run.inline = true;
+            delete run.css.height;
+          }
+          drawn++;
+        }
+      }
+      if (drawn > 0) return;
+    }
     for (const box of boxes) {
       this.count('textbox');
       extra.push(...this.readBlocks(elements(box), false).map((block) => this.inset(block)));
@@ -2025,7 +2050,20 @@ class LayoutReader {
     const height = round((num(extent?.attrs.cy) ?? 0) / 9525);
     const docPr = descendants(el, 'wp:docPr')[0];
     const alt = (docPr?.attrs.descr || docPr?.attrs.title || '').trim();
-    const blips = descendants(el, 'a:blip');
+    // A picture Word stores twice (a Mac PDF with a PNG fallback) counts once:
+    // the preferred copy when a browser can show it, else the fallback.
+    let blips = descendants(el, 'a:blip');
+    for (const alt of descendants(el, 'mc:AlternateContent')) {
+      const choice = descendants(child(alt, 'mc:Choice') ?? alt, 'a:blip');
+      const fallback = descendants(child(alt, 'mc:Fallback') ?? alt, 'a:blip');
+      if (choice.length === 0 || fallback.length === 0) continue;
+      const showable = (blip: XmlElement) => {
+        const target = this.rel(blip.attrs['r:embed'] ?? blip.attrs['r:link'])?.target ?? '';
+        return !/\.(pdf|tiff?|wdp)$/i.test(target);
+      };
+      const drop = choice.every(showable) ? fallback : choice;
+      blips = blips.filter((blip) => !drop.includes(blip));
+    }
     let found = 0;
     // Pictures Word grouped (a logo cut into pieces) keep their places on
     // the group's own grid; sized by the group alone, they would each fill it.

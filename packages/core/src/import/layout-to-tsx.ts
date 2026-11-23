@@ -296,6 +296,18 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
           return `<Footnote>${body}</Footnote>`;
         }
         case 'box':
+          if (run.inline) {
+            return `<div${styleAttr({
+              display: 'inline-block',
+              verticalAlign: 'top',
+              width: run.width,
+              minHeight: run.height,
+              boxSizing: 'border-box',
+              textIndent: 0,
+              textAlign: 'left',
+              ...run.css,
+            })}>${run.blocks.map((block) => renderBlock(block, ctx, '')).join('')}</div>`;
+          }
           return `<div${styleAttr({
             position: 'absolute',
             left: run.left,
