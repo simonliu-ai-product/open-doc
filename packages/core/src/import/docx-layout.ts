@@ -83,6 +83,8 @@ export type LRun =
   | { kind: 'note'; blocks: LParagraph[] }
   /** A drawn shape with no text or picture in it: a rule across the page, a bar of colour. */
   | { kind: 'shape'; css: Css }
+  /** A Word chart, kept as data: open-doc draws it, and it stays editable. */
+  | { kind: 'chart'; chart: LChart }
   | {
       /** A text box Word positioned against the paragraph; absolute here too. */
       kind: 'box';
@@ -135,6 +137,19 @@ export type LTable = BlockFlags & {
 };
 
 export type LBlock = LParagraph | LTable;
+
+export type LChart = {
+  type: 'bar' | 'horizontal-bar' | 'line' | 'pie' | 'area';
+  /** One row per category: `category`, then a key per series. */
+  data: Array<Record<string, string | number>>;
+  series: Array<{ key: string; name: string }>;
+  stacked: boolean;
+  values: boolean;
+  colors: string[];
+  width: number;
+  height: number;
+  title?: string;
+};
 
 /** A header or footer: what Word prints in the margin band of every sheet. */
 export type LRunning = {
@@ -974,6 +989,88 @@ class LayoutReader {
       this.partDir = undefined;
       this.inRunning = false;
     }
+  }
+
+  /** A chart part's type, series and cached values; null for a kind open-doc cannot draw. */
+  private readChart(relId: string | undefined, width: number, height: number): LChart | null {
+    const rel = this.rel(relId);
+    if (!rel || rel.external) return null;
+    const xml = this.pkg.xmlPart(resolvePart(this.partDir ?? this.pkg.mainDir, rel.target));
+    const plot = xml && descendants(xml, 'c:plotArea')[0];
+    if (!plot) return null;
+    const kinds: Array<[string, LChart['type']]> = [
+      ['c:barChart', 'bar'],
+      ['c:bar3DChart', 'bar'],
+      ['c:lineChart', 'line'],
+      ['c:line3DChart', 'line'],
+      ['c:pieChart', 'pie'],
+      ['c:pie3DChart', 'pie'],
+      ['c:doughnutChart', 'pie'],
+      ['c:areaChart', 'area'],
+      ['c:area3DChart', 'area'],
+    ];
+    const found = kinds.find(([name]) => elements(plot, name).length > 0);
+    if (!found) return null;
+    const group = elements(plot, found[0])[0];
+    let type = found[1];
+    if (type === 'bar' && val(child(group, 'c:barDir')) === 'bar') type = 'horizontal-bar';
+    const grouping = val(child(group, 'c:grouping')) ?? '';
+    const points = (el: XmlElement | undefined): string[] => {
+      const cache =
+        el && descendants(el, 'c:strCache')[0]
+          ? descendants(el, 'c:strCache')[0]
+          : el && descendants(el, 'c:numCache')[0];
+      const lit = el && (child(el, 'c:strLit') ?? child(el, 'c:numLit'));
+      const source = cache ?? lit;
+      if (!source) return [];
+      const out: string[] = [];
+      for (const pt of elements(source, 'c:pt')) {
+        out[num(pt.attrs.idx) ?? out.length] = textContent(child(pt, 'c:v') ?? pt);
+      }
+      return out;
+    };
+    const series = elements(group, 'c:ser');
+    if (series.length === 0) return null;
+    const categories = points(child(series[0], 'c:cat'));
+    const rows: Array<Record<string, string | number>> = [];
+    const named: LChart['series'] = [];
+    const colors: string[] = [];
+    series.forEach((ser, index) => {
+      const key = `s${index + 1}`;
+      const tx = child(ser, 'c:tx');
+      const name =
+        (tx && (points(tx)[0] ?? textContent(child(tx, 'c:v') ?? tx))) || `Series ${index + 1}`;
+      named.push({ key, name: name.trim() });
+      const values = points(child(ser, 'c:val'));
+      values.forEach((value, i) => {
+        rows[i] ??= { category: categories[i] ?? String(i + 1) };
+        rows[i][key] = Number(value) || 0;
+      });
+      const fill = child(child(ser, 'c:spPr'), 'a:solidFill');
+      const color = this.drawingColor(fill);
+      if (color && type !== 'pie') colors.push(color);
+    });
+    if (type === 'pie') {
+      // A pie colours its slices, one data point at a time.
+      for (const dPt of elements(series[0], 'c:dPt')) {
+        const color = this.drawingColor(child(child(dPt, 'c:spPr'), 'a:solidFill'));
+        if (color) colors[num(val(child(dPt, 'c:idx'))) ?? colors.length] = color;
+      }
+    }
+    const labels = descendants(group, 'c:showVal')[0];
+    const titleEl = descendants(xml, 'c:title')[0];
+    const title = titleEl ? descendants(titleEl, 'a:t').map(textContent).join('').trim() : '';
+    return {
+      type,
+      data: rows.filter(Boolean),
+      series: named,
+      stacked: grouping === 'stacked' || grouping === 'percentStacked',
+      values: !!on(labels),
+      colors: colors.filter(Boolean),
+      width,
+      height,
+      ...(title ? { title } : {}),
+    };
   }
 
   private pageField(instr: string): 'page' | 'pages' | undefined {
@@ -1859,6 +1956,20 @@ class LayoutReader {
       // and cannot is reported.
       if (!this.anchoredBox(anchor, out) && boxes.length === 0) this.count('drawing');
       return;
+    }
+    // A chart comes across as its data, drawn by open-doc.
+    const chartRef = descendants(el, 'c:chart')[0];
+    if (chartRef) {
+      const extentEl = descendants(el, 'wp:extent')[0];
+      const chart = this.readChart(
+        chartRef.attrs['r:id'],
+        round((num(extentEl?.attrs.cx) ?? 0) / 9525),
+        round((num(extentEl?.attrs.cy) ?? 0) / 9525),
+      );
+      if (chart) {
+        out.push({ kind: 'chart', chart });
+        return;
+      }
     }
     // The horizontal line Word inserts from HTML: a thin bar across the column.
     const rule = descendants(el, 'v:rect').find((rect) => rect.attrs['o:hr'] === 't');

@@ -722,7 +722,7 @@ describe('compatibility', () => {
     const hr = `<w:r><w:pict ${V}><v:rect style="width:0;height:2.25pt" o:hralign="center" o:hrstd="t" o:hr="t" fillcolor="gray" stroked="f"/></w:pict></w:r>`;
     const circle = `<w:r><w:drawing><wp:anchor xmlns:wp="wp"><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="476250" cy="476250"/><wp:wrapNone/><a:graphic xmlns:a="a"><a:graphicData><wps:wsp xmlns:wps="wps"><wps:spPr><a:prstGeom prst="ellipse"/><a:solidFill><a:srgbClr val="00AA00"/></a:solidFill></wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
     const layout = readDocxLayout(
-      docx(p(hr) + p(circle + r('圓')) + p('<w:r><w:pict/></w:r>' + r('空'))),
+      docx(p(hr) + p(circle + r('圓')) + p(`<w:r><w:pict/></w:r>${r('空')}`)),
     );
     const [rule, round, empty] = layout.sections[0].blocks as LParagraph[];
     expect(rule.runs[0]).toMatchObject({
@@ -736,6 +736,54 @@ describe('compatibility', () => {
     });
     expect(empty.runs.map((run) => run.kind)).toEqual(['text']);
     expect(layout.warnings.join(' ')).not.toMatch(/shape/);
+  });
+
+  it('keeps a Word chart as its data, drawn by open-doc', () => {
+    const C =
+      'xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+    const cache = (tag: string, values: string[]) =>
+      `<c:${tag}><c:ptCount val="${values.length}"/>${values.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join('')}</c:${tag}>`;
+    const ser = (i: number, name: string, values: string[], rgb: string) =>
+      `<c:ser><c:idx val="${i}"/><c:tx><c:strRef><c:f>S!B1</c:f>${cache('strCache', [name])}</c:strRef></c:tx><c:spPr><a:solidFill><a:srgbClr val="${rgb}"/></a:solidFill></c:spPr><c:cat><c:strRef><c:f>S!A2</c:f>${cache('strCache', ['北區', '南區'])}</c:strRef></c:cat><c:val><c:numRef><c:f>S!B2</c:f>${cache('numCache', values)}</c:numRef></c:val></c:ser>`;
+    const files = unzipSync(
+      docx(
+        p(
+          '<w:r><w:drawing><wp:inline xmlns:wp="wp"><wp:extent cx="4572000" cy="2743200"/><wp:docPr id="1" name="Chart 1"/><a:graphic xmlns:a="a"><a:graphicData><c:chart xmlns:c="c" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rIdC"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>',
+        ),
+      ),
+    );
+    files['word/_rels/document.xml.rels'] = strToU8(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdC" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="charts/chart1.xml"/></Relationships>',
+    );
+    files['word/charts/chart1.xml'] = strToU8(
+      `<c:chartSpace ${C}><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>年度營收</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>${ser(0, '2025', ['10', '20'], '4472C4')}${ser(1, '2026', ['15', '25'], 'ED7D31')}<c:dLbls><c:showVal val="1"/></c:dLbls></c:barChart></c:plotArea></c:chart></c:chartSpace>`,
+    );
+    const layout = readDocxLayout(zipSync(files));
+    const [para] = layout.sections[0].blocks as LParagraph[];
+    expect(para.runs[0]).toMatchObject({
+      kind: 'chart',
+      chart: {
+        type: 'bar',
+        data: [
+          { category: '北區', s1: 10, s2: 15 },
+          { category: '南區', s1: 20, s2: 25 },
+        ],
+        series: [
+          { key: 's1', name: '2025' },
+          { key: 's2', name: '2026' },
+        ],
+        values: true,
+        colors: ['#4472C4', '#ED7D31'],
+        width: 480,
+        title: '年度營收',
+      },
+    });
+    const { source } = generateLayoutSource(layout, {
+      docId: 'c',
+      createdAt: '2026-11-23T00:00:00.000Z',
+    });
+    expect(source).toContain('<Chart type="bar"');
+    expect(source).toMatch(/\bChart,/);
   });
 
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {

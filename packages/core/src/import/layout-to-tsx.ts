@@ -67,6 +67,7 @@ type Context = {
   /** Page fields the header or footer being written shows. */
   fields: Set<'page' | 'pages'>;
   usesFootnotes: boolean;
+  usesChart: boolean;
 };
 
 /** The run style most of the paragraph's text is set in; the paragraph carries it, runs only differ. */
@@ -266,6 +267,26 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
           );
         case 'shape':
           return `<span${styleAttr(run.css)} />`;
+        case 'chart': {
+          ctx.usesChart = true;
+          const { chart } = run;
+          const props = [
+            `type="${chart.type}"`,
+            `data={${JSON.stringify(chart.data)}}`,
+            'x="category"',
+            `y={${JSON.stringify(chart.series.map((s) => s.key))}}`,
+            `labels={${JSON.stringify(Object.fromEntries(chart.series.map((s) => [s.key, s.name])))}}`,
+            ...(chart.stacked ? ['stacked'] : []),
+            ...(chart.values ? ['values'] : []),
+            ...(chart.colors.length ? [`colors={${JSON.stringify(chart.colors)}}`] : []),
+            ...(chart.width ? [`width={${chart.width}}`] : []),
+            ...(chart.height ? [`height={${chart.height}}`] : []),
+          ].join(' ');
+          const title = chart.title
+            ? `<div${styleAttr({ textAlign: 'center', fontWeight: 700, marginBottom: 4 })}>${textJsx(chart.title)}</div>`
+            : '';
+          return `<div${styleAttr({ display: 'inline-block', verticalAlign: 'bottom', textIndent: 0 })}>${title}<Chart ${props} /></div>`;
+        }
         case 'note': {
           ctx.usesFootnotes = true;
           const body = run.blocks
@@ -339,7 +360,10 @@ function flags(block: LBlock): string {
 function renderParagraph(p: LParagraph, ctx: Context, pad: string): string {
   const heading = !!p.heading;
   const boxed = p.runs.some(
-    (run) => run.kind === 'box' || (run.kind === 'image' && run.place?.mode === 'over'),
+    (run) =>
+      run.kind === 'box' ||
+      run.kind === 'chart' ||
+      (run.kind === 'image' && run.place?.mode === 'over'),
   );
   // A floating box holds paragraphs of its own, which a <p> may not contain.
   const tag = heading ? `h${Math.min(p.heading ?? 1, 4)}` : boxed ? 'div' : 'p';
@@ -453,6 +477,7 @@ export function generateLayoutSource(
     usesRows: false,
     fields: new Set(),
     usesFootnotes: false,
+    usesChart: false,
   };
   const title = opts.title ?? layout.title ?? opts.docId.replace(/-/g, ' ');
 
@@ -548,6 +573,7 @@ export function generateLayoutSource(
     'type DocEntry',
     'type DocMeta',
     'flow',
+    ...(ctx.usesChart ? ['Chart'] : []),
     ...(ctx.usesFootnotes ? ['Footnote'] : []),
     ...(pageHooks.has('pages') ? ['useDocPageCount'] : []),
     ...(pageHooks.has('page') ? ['useDocPageNumber'] : []),
