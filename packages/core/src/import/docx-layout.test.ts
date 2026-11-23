@@ -647,6 +647,25 @@ describe('compatibility', () => {
     expect(run).toMatchObject({ kind: 'box', height: 100, clear: 110 });
   });
 
+  it('prints a footnote at the foot of its page, numbered by the document', () => {
+    const files = unzipSync(
+      docx(p(`${r('本文')}<w:r><w:footnoteReference w:id="2"/></w:r>${r('結束')}`)),
+    );
+    files['word/footnotes.xml'] = strToU8(
+      `<w:footnotes ${W}><w:footnote w:id="2">${p(`<w:r><w:footnoteRef/></w:r>${r(' 資料來源：主計總處')}`)}</w:footnote></w:footnotes>`,
+    );
+    const layout = readDocxLayout(zipSync(files));
+    const [para] = layout.sections[0].blocks as LParagraph[];
+    expect(para.runs.map((run) => run.kind)).toEqual(['text', 'note', 'text']);
+    expect(layout.warnings.join(' ')).not.toMatch(/footnote/);
+    const { source } = generateLayoutSource(layout, {
+      docId: 'notes',
+      createdAt: '2026-11-23T00:00:00.000Z',
+    });
+    expect(source).toMatch(/本文<Footnote>.*資料來源：主計總處.*<\/Footnote>結束/);
+    expect(source).toMatch(/\bFootnote,/);
+  });
+
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {
     const [para] = blocks(
       docx(

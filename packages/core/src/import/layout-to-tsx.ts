@@ -67,6 +67,7 @@ type Context = {
   usesRows: boolean;
   /** Page fields the header or footer being written shows. */
   fields: Set<'page' | 'pages'>;
+  usesFootnotes: boolean;
 };
 
 /** The run style most of the paragraph's text is set in; the paragraph carries it, runs only differ. */
@@ -243,6 +244,14 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
             `<ruby>${textJsx(run.base)}<rt>${textJsx(run.rt)}</rt></ruby>`,
             solid(diff(run.css, base), p),
           );
+        case 'note': {
+          ctx.usesFootnotes = true;
+          const body = run.blocks
+            .map((block) => renderRuns(block, dominant(block), ctx).trim())
+            .filter(Boolean)
+            .join('<br />');
+          return `<Footnote>${body}</Footnote>`;
+        }
         case 'box':
           return `<div${styleAttr({
             position: 'absolute',
@@ -419,6 +428,7 @@ export function generateLayoutSource(
     baseFont: layout.baseFont,
     usesRows: false,
     fields: new Set(),
+    usesFootnotes: false,
   };
   const title = opts.title ?? layout.title ?? opts.docId.replace(/-/g, ' ');
 
@@ -515,6 +525,7 @@ export function generateLayoutSource(
     'type DocEntry',
     'type DocMeta',
     'flow',
+    ...(ctx.usesFootnotes ? ['Footnote'] : []),
     ...(pageHooks.has('pages') ? ['useDocPageCount'] : []),
     ...(pageHooks.has('page') ? ['useDocPageNumber'] : []),
     ...(ctx.usesRows ? ['useTableSlice'] : []),

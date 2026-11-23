@@ -7,7 +7,7 @@ Import Word documents. `open-doc import form.docx` turns a `.docx` into an ordin
 
 Add `--plain` (MCP `plain: true`) to import only the structure in the house style instead, like Markdown import: headings, lists, tables and links, with a cover from Word's Title and Subtitle.
 
-Either way, embedded pictures are copied into the document's `assets/`, the language is detected as for Markdown, and what a document cannot hold is reported instead of silently lost: text boxes are kept as paragraphs, footnotes and endnotes move to the end, tracked changes are accepted, and comments, charts and EMF/WMF pictures are listed as warnings in the command's output.
+Either way, embedded pictures are copied into the document's `assets/`, the language is detected as for Markdown, and what a document cannot hold is reported instead of silently lost: footnotes print at the foot of their page and endnotes after the text, tracked changes are accepted, and comments, charts and EMF/WMF pictures are listed as warnings in the command's output.
 
 AI agents get the same through the new `import_docx` MCP tool. Documents can also use `useTableSlice` from `@open-document/core` to print only a split table's rows on each page.
 

@@ -66,6 +66,8 @@ export type LRun =
   | { kind: 'drop'; text: string; css: Css }
   /** A bookmark an internal hyperlink points at. */
   | { kind: 'anchor'; id: string }
+  /** A footnote: its marker here, its text at the foot of whichever page this lands on. */
+  | { kind: 'note'; blocks: LParagraph[] }
   | {
       /** A text box Word positioned against the paragraph; absolute here too. */
       kind: 'box';
@@ -325,7 +327,6 @@ const UNSHOWABLE_IMAGE_RE = /\.(?:emf|wmf|tiff?|wdp|pdf)$/i;
 const WARNINGS: Record<string, (n: number) => string> = {
   textbox: (n) => `${n} text box(es) kept as paragraphs after the text they sit beside`,
   floating: (n) => `${n} floating picture(s) placed in line with the text`,
-  note: (n) => `${n} footnote(s) or endnote(s) moved to the end of the document`,
   comment: (n) => `${n} comment(s) not imported`,
   insertion: (n) => `${n} tracked insertion(s) accepted`,
   deletion: (n) => `${n} tracked deletion(s) accepted (their text is gone)`,
@@ -1745,7 +1746,15 @@ class LayoutReader {
         (el) => el.attrs['w:id'] === node.attrs['w:id'],
       );
     if (!note) return;
-    this.count('note');
+    if (!endnote) {
+      // The page's own foot, numbered by the document: flow() keeps room for it.
+      const blocks = elements(note, 'w:p')
+        .flatMap((p) => this.readParagraph(p, true))
+        .filter((block): block is LParagraph => block.kind === 'p');
+      out.push({ kind: 'note', blocks });
+      return;
+    }
+    // Endnotes print after the text, where Word puts them.
     const n = this.notes.length + 1;
     out.push({ kind: 'text', text: String(n), css, vert: 'sup', generated: true });
     const paragraphs = elements(note, 'w:p').flatMap((p) => this.readParagraph(p, true));
@@ -2439,7 +2448,7 @@ export function layoutText(layout: DocxLayout): string {
       for (const run of block.runs) {
         if (run.kind === 'text' || run.kind === 'marker' || run.kind === 'drop') out.push(run.text);
         else if (run.kind === 'ruby') out.push(run.base, run.rt);
-        else if (run.kind === 'box') walk(run.blocks);
+        else if (run.kind === 'box' || run.kind === 'note') walk(run.blocks);
       }
       out.push('\n');
     }
