@@ -45,8 +45,11 @@ export type LRun =
       kind: 'blank';
       width: string;
       css: Css;
-      /** Spaces a form leaves to write in (`日期：　　年　　月`), drawn without a line. */
-      bare?: true;
+      /**
+       * Spaces a form leaves to write in (`日期：　　年　　月`): kept as the
+       * spaces themselves, so the line is as wide as Word's, without a rule.
+       */
+      bare?: string;
     }
   | { kind: 'marker'; text: string; css: Css; width: number }
   | { kind: 'break' }
@@ -1847,7 +1850,7 @@ class LayoutReader {
           const prev = (parts[i - 1] || (i === 1 ? before : '')).trimEnd();
           const next = parts[i + 1] ?? '';
           if (spaces && (/[：:]$/.test(prev) || /^[年月日時分秒份人元名件（(]/.test(next))) {
-            out().push({ kind: 'blank', width: this.blankWidth(part), css, bare: true });
+            out().push({ kind: 'blank', width: this.blankWidth(part), css, bare: part });
             return;
           }
           out().push({ kind: 'text', text: part, css, ...(vert ? { vert } : {}) });

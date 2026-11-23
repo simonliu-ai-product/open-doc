@@ -852,9 +852,9 @@ describe('compatibility', () => {
     expect(source).toContain('data-od-field="填表日期.日"');
     expect(source.match(/data-od-blank=""/g)).toHaveLength(4);
     expect(source).toContain('data-od-field="姓名"');
-    // A date's blanks are spaces to write in, not lines.
-    expect(source).toMatch(
-      /data-od-field="填表日期.年" style=\{\{ display: 'inline-block', minWidth: [^}]*textIndent/,
+    // A date's blanks keep the form's own spaces, so the line stays as wide as Word's.
+    expect(source).toContain(
+      `data-od-field="填表日期.年" style={{ whiteSpace: 'pre' }}>{'    '}</span>年`,
     );
     expect(source).not.toMatch(/data-od-field="填表日期.年"[^>]*borderBottom/);
   });

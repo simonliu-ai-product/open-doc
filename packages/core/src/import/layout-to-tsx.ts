@@ -274,10 +274,15 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
           if (before && !/^[年月日時分秒]$/.test(before)) group = before;
           const label = unit && group ? `${group}.${unit}` : before;
           written = '';
-          return `<span data-od-blank=""${label ? ` data-od-field=${attr(label)}` : ''}${styleAttr({
+          const name = label ? ` data-od-field=${attr(label)}` : '';
+          if (run.bare !== undefined) {
+            // The form's own spaces, marked: the value replaces them.
+            return `<span data-od-blank=""${name}${styleAttr({ whiteSpace: 'pre' })}>{${jsString(run.bare)}}</span>`;
+          }
+          return `<span data-od-blank=""${name}${styleAttr({
             display: 'inline-block',
             minWidth: run.width,
-            ...(run.bare ? {} : { borderBottom: '1px solid currentColor' }),
+            borderBottom: '1px solid currentColor',
             textIndent: 0,
             lineHeight: 1,
             ...diff(pick(run.css, ['fontSize']), pick(base, ['fontSize'])),
