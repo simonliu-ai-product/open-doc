@@ -169,9 +169,22 @@ function solid(own: Css, p: LParagraph): Css {
   return own;
 }
 
+/** The words just before a blank, as its field name: `姓名：___` → 姓名. */
+function labelBefore(text: string): string {
+  const tail = text.replace(/[\s：:＿_]+$/, '');
+  const word = tail.split(/[\s，。、；;,（）()：:□☐☑☒]+/).pop() ?? '';
+  return word.slice(-12);
+}
+
 function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
-  return mergeRuns(p.runs)
-    .map((run) => {
+  // The paragraph's text so far, for naming the blank that follows it.
+  let written = '';
+  // The field a run of date blanks belongs to (填表日期 for its 年, 月 and 日).
+  let group = '';
+  const runs = mergeRuns(p.runs);
+  return runs
+    .map((run, index) => {
+      if (run.kind === 'text') written += run.text;
       switch (run.kind) {
         case 'break':
           return '<br />';
@@ -250,17 +263,26 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
           }
           return `<img src=${src} alt=${attr(run.alt)}${styleAttr(size)} />`;
         }
-        case 'blank':
+        case 'blank': {
           // A line to write on: text typed into it widens it rather than
-          // wrapping, and does not take the paragraph's hanging indent.
-          return `<span data-od-blank=""${styleAttr({
+          // wrapping, and does not take the paragraph's hanging indent. It is
+          // named for the label printed before it, so a filler finds it.
+          // A date's blanks are named by the unit after them: 填表日期.年.
+          const next = runs[index + 1];
+          const unit = next?.kind === 'text' ? next.text.match(/^[年月日時分秒]/)?.[0] : undefined;
+          const before = labelBefore(written);
+          if (before && !/^[年月日時分秒]$/.test(before)) group = before;
+          const label = unit && group ? `${group}.${unit}` : before;
+          written = '';
+          return `<span data-od-blank=""${label ? ` data-od-field=${attr(label)}` : ''}${styleAttr({
             display: 'inline-block',
             minWidth: run.width,
-            borderBottom: '1px solid currentColor',
+            ...(run.bare ? {} : { borderBottom: '1px solid currentColor' }),
             textIndent: 0,
             lineHeight: 1,
             ...diff(pick(run.css, ['fontSize']), pick(base, ['fontSize'])),
           })} />`;
+        }
         case 'anchor':
           return `<span id=${attr(run.id)} />`;
         case 'drop':

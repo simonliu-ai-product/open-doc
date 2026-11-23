@@ -209,7 +209,7 @@ describe('generateLayoutSource', () => {
     expect(source).toContain("textAlign: 'right'");
     expect(source).toContain("<span style={{ color: '#FF0000' }}>紅</span><strong>粗</strong>");
     expect(source).toContain(
-      "<span data-od-blank=\"\" style={{ display: 'inline-block', minWidth: '1em', borderBottom: '1px solid currentColor', textIndent: 0, lineHeight: 1 }} />",
+      "<span data-od-blank=\"\" data-od-field=\"一般文字很多很多很多紅粗\" style={{ display: 'inline-block', minWidth: '1em', borderBottom: '1px solid currentColor', textIndent: 0, lineHeight: 1 }} />",
     );
     expect(source).toContain('<td rowSpan={2}');
     expect(source).toContain("pageSize: 'A4',");
@@ -834,6 +834,29 @@ describe('compatibility', () => {
     ]);
     expect(layout.media.get('word/fonts/Ubuntu-700.ttf')).toEqual(font);
     expect(layout.warnings.join(' ')).not.toMatch(/embedded fonts/);
+  });
+
+  it('turns the spaces a form leaves for a date into blanks named for their label', () => {
+    const layout = readDocxLayout(
+      docx(
+        p(r('填表日期：    年      月      日')) +
+          p(r('姓名：') + r('      ', '<w:u w:val="single"/>')),
+      ),
+    );
+    const { source } = generateLayoutSource(layout, {
+      docId: 'd',
+      createdAt: '2026-11-23T00:00:00.000Z',
+    });
+    expect(source).toContain('data-od-field="填表日期.年"');
+    expect(source).toContain('data-od-field="填表日期.月"');
+    expect(source).toContain('data-od-field="填表日期.日"');
+    expect(source.match(/data-od-blank=""/g)).toHaveLength(4);
+    expect(source).toContain('data-od-field="姓名"');
+    // A date's blanks are spaces to write in, not lines.
+    expect(source).toMatch(
+      /data-od-field="填表日期.年" style=\{\{ display: 'inline-block', minWidth: [^}]*textIndent/,
+    );
+    expect(source).not.toMatch(/data-od-field="填表日期.年"[^>]*borderBottom/);
   });
 
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {

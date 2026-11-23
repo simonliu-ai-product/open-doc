@@ -13,14 +13,15 @@ Ask for what you do not have; never invent a person's real details. If the user 
 
 ## Step 2 — Find the spaces
 
-Work on a copy if the user wants the blank form kept (MCP `duplicate_document`, or copy `docs/<id>/` to a new folder). Then read `docs/<id>/index.tsx` and find each space by the label printed before it:
+Work on a copy if the user wants the blank form kept (MCP `duplicate_document`, or copy `docs/<id>/` to a new folder). Then read `docs/<id>/index.tsx`. Every blank the import recognised is a `data-od-blank` span named by the label printed before it — `data-od-field="姓名"`, `data-od-field="填表日期.月"` — so search for those first; the same label in two tables appears twice, in document order.
 
 | Space | How it looks in the source | How to fill it |
 | --- | --- | --- |
-| Underlined blank (`姓名：____`) | `<span data-od-blank="" style={{ display: 'inline-block', minWidth: '4em', borderBottom: … }} />` | Put the text inside: `<span data-od-blank="" style={{ … }}>王小明</span>`. Keep the style; `minWidth` lets a long name widen the line instead of wrapping. |
+| Underlined blank (`姓名：____`) | `<span data-od-blank="" data-od-field="姓名" style={{ display: 'inline-block', minWidth: '4em', borderBottom: … }} />` | Put the text inside: `<span … >王小明</span>`. Keep the style; `minWidth` lets a long name widen the line instead of wrapping. When a label follows straight after (`姓名：___服務機關：`), end the value with a space so the two do not run together. |
+| Date or count left as spaces (`日期：　　年　　月　　日`) | `<span data-od-blank="" data-od-field="日期.年" style={{ … no border }} />` | Same: the value goes inside, the 年/月/日 stay where they are. |
 | Checkbox | `<Checkbox />` | `<Checkbox checked />` (`mark="cross"` for ☒). It is drawn, so it keeps its size in any font. Never type ☑ — CJK fonts lack it and it prints smaller than the box beside it. |
-| Empty table cell | `<td … />` or `<td …><p …><br /></p></td>` | Write the text into the cell's own `<p>` (or add one with the style of a filled cell in the same row). |
-| Run of spaces (`填表日期：    年    月    日`) | Plain spaces in a `whiteSpace: 'pre-wrap'` paragraph | Replace spaces with the value, removing about as many spaces as characters you add so the line keeps its length. |
+| Empty table cell | `<td … />` or `<td …><p …><br /></p></td>` | Write the text into the cell's own `<p>` (or add one with the style of a filled cell in the same row). An empty paragraph's `fontSize` is only the size of Word's paragraph mark — set the value in the size of the labels in the same row. Keep a cell's value on one line where you can: a `textAlign: 'justify'` cell spreads a wrapped first line, and an extra line grows the row. |
+| Other run of spaces | Plain spaces in a `whiteSpace: 'pre-wrap'` paragraph | Replace spaces with the value, removing about as many spaces as characters you add (a CJK character is two half-width spaces wide) so the line keeps its length. |
 | Space after a label (`此致機關：`) | The label, then the end of the paragraph | Type the value after the label in the same span. |
 
 The same label can appear in several tables (表1 and 表2 both have 姓名：); edit by a string that is unique in the file, and check each edit landed in the cell you meant.

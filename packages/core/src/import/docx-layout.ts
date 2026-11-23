@@ -41,7 +41,13 @@ export type LRun =
       /** In a header or footer: the sheet's number, or the document's sheet count. */
       field?: 'page' | 'pages';
     }
-  | { kind: 'blank'; width: string; css: Css }
+  | {
+      kind: 'blank';
+      width: string;
+      css: Css;
+      /** Spaces a form leaves to write in (`日期：　　年　　月`), drawn without a line. */
+      bare?: true;
+    }
   | { kind: 'marker'; text: string; css: Css; width: number }
   | { kind: 'break' }
   | {
@@ -1826,6 +1832,26 @@ class LayoutReader {
             });
           }
         }
+        return;
+      }
+      // Spaces a form leaves to write in — after a label's colon, or before
+      // the 年/月/日 they are counted in — become a blank of the same width,
+      // so the value can be typed in without guessing how many to remove.
+      if (!link && /[ 　]{3,}/.test(text)) {
+        const parts = text.split(/([ 　]{3,})/);
+        const last = out()[out().length - 1];
+        const before = last?.kind === 'text' ? last.text : '';
+        parts.forEach((part, i) => {
+          if (part === '') return;
+          const spaces = i % 2 === 1;
+          const prev = (parts[i - 1] || (i === 1 ? before : '')).trimEnd();
+          const next = parts[i + 1] ?? '';
+          if (spaces && (/[：:]$/.test(prev) || /^[年月日時分秒份人元名件（(]/.test(next))) {
+            out().push({ kind: 'blank', width: this.blankWidth(part), css, bare: true });
+            return;
+          }
+          out().push({ kind: 'text', text: part, css, ...(vert ? { vert } : {}) });
+        });
         return;
       }
       out().push({
