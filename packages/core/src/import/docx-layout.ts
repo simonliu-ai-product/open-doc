@@ -14,6 +14,7 @@ import {
   symbolText,
   val,
 } from './docx-package.ts';
+import { metafileToSvg } from './metafile.ts';
 import { child, descendants, elements, textContent, type XmlElement } from './xml.ts';
 
 /**
@@ -2431,6 +2432,17 @@ class LayoutReader {
       return null;
     }
     const part = resolvePart(this.partDir ?? this.pkg.mainDir, rel.target);
+    // A Windows metafile (an old equation, a Visio or Excel paste) is played
+    // into SVG, which a browser can show.
+    if (/\.(emf|wmf)$/i.test(part) && this.pkg.files[part]) {
+      const svgPart = part.replace(/\.(emf|wmf)$/i, '.svg');
+      if (this.media.has(svgPart)) return svgPart;
+      const svg = metafileToSvg(this.pkg.files[part]);
+      if (svg) {
+        this.media.set(svgPart, new TextEncoder().encode(svg));
+        return svgPart;
+      }
+    }
     if (UNSHOWABLE_IMAGE_RE.test(part)) {
       this.count('unshowable');
       return null;
