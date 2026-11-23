@@ -265,6 +265,8 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
             `<ruby>${textJsx(run.base)}<rt>${textJsx(run.rt)}</rt></ruby>`,
             solid(diff(run.css, base), p),
           );
+        case 'shape':
+          return `<span${styleAttr(run.css)} />`;
         case 'note': {
           ctx.usesFootnotes = true;
           const body = run.blocks

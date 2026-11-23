@@ -81,6 +81,8 @@ export type LRun =
   | { kind: 'anchor'; id: string }
   /** A footnote: its marker here, its text at the foot of whichever page this lands on. */
   | { kind: 'note'; blocks: LParagraph[] }
+  /** A drawn shape with no text or picture in it: a rule across the page, a bar of colour. */
+  | { kind: 'shape'; css: Css }
   | {
       /** A text box Word positioned against the paragraph; absolute here too. */
       kind: 'box';
@@ -1270,8 +1272,26 @@ class LayoutReader {
         };
         return [];
       }
-    } else if (frame) {
-      this.count('frame');
+    }
+    // A frame Word aligns in its band (a page number centred in the footer)
+    // lines its text up the same way; one pinned at an offset from the page
+    // stays in the text flow.
+    const frameCss: Css = {};
+    if (frame && dropCap !== 'drop' && dropCap !== 'margin') {
+      const xAlign = frame.attrs['w:xAlign'];
+      const w = num(frame.attrs['w:w']);
+      const x = num(frame.attrs['w:x']);
+      if (w) frameCss.width = this.hx(w);
+      if (xAlign === 'center' || xAlign === 'right' || xAlign === 'left') {
+        if (w) {
+          frameCss.marginLeft = xAlign === 'left' ? 0 : 'auto';
+          frameCss.marginRight = xAlign === 'right' ? 0 : 'auto';
+        } else frameCss.textAlign = xAlign;
+      } else if (x !== undefined && (frame.attrs['w:hAnchor'] ?? 'page') !== 'page') {
+        frameCss.marginLeft = this.hx(x);
+      } else if (frame.attrs['w:vAnchor'] === 'page' || frame.attrs['w:hAnchor'] === 'page') {
+        this.count('frame');
+      }
     }
     if (this.pendingDrop) {
       segments[0].unshift(this.pendingDrop);
@@ -1286,7 +1306,10 @@ class LayoutReader {
       if (index > 0 && runs.length === 0 && index === segments.length - 1) return;
       const block: LParagraph = {
         kind: 'p',
-        css: this.paragraphCss(props, runs, ...this.tallest(runs, fontPx, markR), top),
+        css: {
+          ...this.paragraphCss(props, runs, ...this.tallest(runs, fontPx, markR), top),
+          ...frameCss,
+        },
         mark: this.runCss(markR),
         runs,
         ...(styleId ? { style: styleId } : {}),
@@ -1785,19 +1808,62 @@ class LayoutReader {
   }
 
   private readDrawing(el: XmlElement, out: LRun[], extra: LBlock[]) {
+    // An empty <w:pict/> draws nothing.
+    if (elements(el).length === 0) return;
     const anchor = descendants(el, 'wp:anchor')[0];
     const boxes = descendants(el, 'w:txbxContent');
-    if (anchor && boxes.length > 0) {
-      this.anchoredBox(anchor, out);
+    // A shape drawn on its own, with no picture: a box, a circle, a line.
+    const drawnOnly =
+      descendants(el, 'wps:wsp').length > 0 &&
+      descendants(el, 'a:blip').length === 0 &&
+      descendants(el, 'pic:pic').length === 0;
+    if (anchor && (boxes.length > 0 || drawnOnly)) {
+      // An empty text box draws nothing, as in Word; a shape that should show
+      // and cannot is reported.
+      if (!this.anchoredBox(anchor, out) && boxes.length === 0) this.count('drawing');
       return;
     }
-    const vml = descendants(el, 'v:shape').filter(
-      (shape) =>
-        /position:\s*absolute/.test(shape.attrs.style ?? '') &&
-        descendants(shape, 'w:txbxContent').length > 0,
-    );
+    // The horizontal line Word inserts from HTML: a thin bar across the column.
+    const rule = descendants(el, 'v:rect').find((rect) => rect.attrs['o:hr'] === 't');
+    if (rule) {
+      const height = (rule.attrs.style ?? '').match(/height:\s*([\d.]+)pt/)?.[1];
+      const pct = num(rule.attrs['o:hrpct']);
+      const align = rule.attrs['o:hralign'] ?? 'center';
+      out.push({
+        kind: 'shape',
+        css: {
+          display: 'block',
+          width: pct ? `${pct / 10}%` : '100%',
+          height: Math.max(1, round(Number(height ?? 1.5) * (4 / 3))),
+          background: rule.attrs.fillcolor ?? '#a0a0a0',
+          ...(align === 'center'
+            ? { margin: '0 auto' }
+            : align === 'right'
+              ? { marginLeft: 'auto' }
+              : {}),
+        },
+      });
+      return;
+    }
+    const vml = elements(el)
+      .flatMap((node) => [
+        node,
+        ...descendants(node, 'v:shape'),
+        ...descendants(node, 'v:rect'),
+        ...descendants(node, 'v:oval'),
+        ...descendants(node, 'v:roundrect'),
+      ])
+      .filter(
+        (shape, i, all) =>
+          all.indexOf(shape) === i &&
+          /^v:(shape|rect|oval|roundrect)$/.test(shape.name) &&
+          /position:\s*absolute/.test(shape.attrs.style ?? '') &&
+          !descendants(shape, 'v:imagedata').length,
+      );
     if (vml.length > 0) {
-      for (const shape of vml) this.vmlBox(shape, out);
+      let drawn = 0;
+      for (const shape of vml) if (this.vmlBox(shape, out)) drawn++;
+      if (drawn === 0 && boxes.length === 0) this.count('drawing');
       return;
     }
     for (const box of boxes) {
@@ -1992,7 +2058,7 @@ class LayoutReader {
     };
   }
 
-  private anchoredBox(anchor: XmlElement, out: LRun[]) {
+  private anchoredBox(anchor: XmlElement, out: LRun[]): boolean {
     const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
     const extent = child(anchor, 'wp:extent');
     const width = emu(extent?.attrs.cx);
@@ -2012,6 +2078,7 @@ class LayoutReader {
     const [chW, chH] = point(child(gx, 'a:chExt'), 'cx', 'cy');
     const sx = chW ? extX / chW : 1;
     const sy = chH ? extY / chH : 1;
+    let drawn = 0;
     for (const shape of descendants(anchor, 'wps:wsp')) {
       const spPr = child(shape, 'wps:spPr');
       let box = { x: left, y: v.value, w: width, h: height };
@@ -2027,7 +2094,7 @@ class LayoutReader {
         };
       }
       const content = descendants(shape, 'w:txbxContent')[0];
-      this.shapeBox(shape, spPr, content, box, out);
+      if (this.shapeBox(shape, spPr, content, box, out)) drawn++;
     }
     // Text wraps around a box on its sides; one as wide as the column leaves
     // it no side, and the paragraph's text goes on under it.
@@ -2044,10 +2111,11 @@ class LayoutReader {
         if (below > 0) last.clear = below;
       } else last.after = round(height + gap);
     }
+    return drawn > 0;
   }
 
   /** An old-style (VML) text box: `v:shape` positioned by its CSS-like style. */
-  private vmlBox(shape: XmlElement, out: LRun[]) {
+  private vmlBox(shape: XmlElement, out: LRun[]): boolean {
     const style = shape.attrs.style ?? '';
     const length = (key: string) => {
       const match = style.match(new RegExp(`(?:^|;)\\s*${key}:\\s*(-?[\\d.]+)(pt|px|in|cm|mm)?`));
@@ -2072,10 +2140,12 @@ class LayoutReader {
       if (color.startsWith('#')) css.background = color;
     }
     css.padding = '3.75px 7.5px';
+    if (shape.name === 'v:oval') css.borderRadius = '50%';
+    else if (shape.name === 'v:roundrect') css.borderRadius = 8;
     const content = descendants(shape, 'w:txbxContent')[0];
-    const blocks = this.readBlocks(elements(content), false);
-    const text = textContent(content).trim();
-    if (!text && !css.border && !css.background) return;
+    const blocks = content ? this.readBlocks(elements(content), false) : [];
+    const text = content ? textContent(content).trim() : '';
+    if (!text && !css.border && !css.background) return false;
     if (text.length <= 12 && blocks.length === 1) css.whiteSpace = 'nowrap';
     out.push({
       kind: 'box',
@@ -2086,6 +2156,7 @@ class LayoutReader {
       css,
       blocks,
     });
+    return true;
   }
 
   private shapeBox(
@@ -2094,7 +2165,7 @@ class LayoutReader {
     content: XmlElement | undefined,
     box: { x: number; y: number; w: number; h: number },
     out: LRun[],
-  ) {
+  ): boolean {
     const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
     const line = child(spPr, 'a:ln');
     const lineFill = child(line, 'a:solidFill');
@@ -2113,7 +2184,17 @@ class LayoutReader {
     css.padding = `${inset('tIns', 45720)}px ${inset('rIns', 91440)}px ${inset('bIns', 45720)}px ${inset('lIns', 91440)}px`;
     const blocks = content ? this.readBlocks(elements(content), false) : [];
     const text = content ? textContent(content).trim() : '';
-    if (!text && !css.border && !css.background) return;
+    // The shape's outline: a circle rounds the box, a line keeps one edge.
+    const geometry = child(spPr, 'a:prstGeom')?.attrs.prst ?? 'rect';
+    if (geometry === 'ellipse') css.borderRadius = '50%';
+    else if (geometry === 'roundRect') css.borderRadius = Math.min(box.w, box.h) * 0.16;
+    else if (/^(line|straightConnector1)$/.test(geometry) && css.border) {
+      if (box.h > 2 && box.w > 2) return false;
+      css[box.h <= 2 ? 'borderTop' : 'borderLeft'] = css.border;
+      delete css.border;
+      css.padding = 0;
+    }
+    if (!text && !css.border && !css.background && !css.borderTop && !css.borderLeft) return false;
     // A one-line label ("附表一") sized to fit Word's font must not wrap in a
     // fallback face a hair wider.
     if (text.length <= 12 && blocks.length === 1) css.whiteSpace = 'nowrap';
@@ -2123,6 +2204,7 @@ class LayoutReader {
     const bodyPr = child(shape, 'wps:bodyPr');
     if (box.h > 0 && !child(bodyPr, 'a:spAutoFit')) css.height = box.h;
     out.push({ kind: 'box', left: box.x, top: box.y, width: box.w, height: box.h, css, blocks });
+    return true;
   }
 
   private inset(block: LBlock): LBlock {

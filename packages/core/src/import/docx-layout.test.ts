@@ -699,6 +699,45 @@ describe('compatibility', () => {
     expect(source).toMatch(/position: 'absolute', left: 200, top: 10/);
   });
 
+  it('lines a framed paragraph up where Word aligns its frame', () => {
+    const [centred, pinned] = blocks(
+      docx(
+        p(
+          r('- 3 -'),
+          '<w:framePr w:wrap="around" w:vAnchor="text" w:hAnchor="margin" w:xAlign="center" w:y="1"/>',
+        ) +
+          p(
+            r('旁註'),
+            '<w:framePr w:w="1500" w:wrap="around" w:hAnchor="margin" w:xAlign="right"/>',
+          ),
+      ),
+    ) as LParagraph[];
+    expect(centred.css.textAlign).toBe('center');
+    expect(pinned.css).toMatchObject({ width: 100, marginLeft: 'auto', marginRight: 0 });
+  });
+
+  it('draws shapes that hold no text: a rule from HTML, a circle, nothing for an empty pict', () => {
+    const V =
+      'xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"';
+    const hr = `<w:r><w:pict ${V}><v:rect style="width:0;height:2.25pt" o:hralign="center" o:hrstd="t" o:hr="t" fillcolor="gray" stroked="f"/></w:pict></w:r>`;
+    const circle = `<w:r><w:drawing><wp:anchor xmlns:wp="wp"><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="476250" cy="476250"/><wp:wrapNone/><a:graphic xmlns:a="a"><a:graphicData><wps:wsp xmlns:wps="wps"><wps:spPr><a:prstGeom prst="ellipse"/><a:solidFill><a:srgbClr val="00AA00"/></a:solidFill></wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
+    const layout = readDocxLayout(
+      docx(p(hr) + p(circle + r('圓')) + p('<w:r><w:pict/></w:r>' + r('空'))),
+    );
+    const [rule, round, empty] = layout.sections[0].blocks as LParagraph[];
+    expect(rule.runs[0]).toMatchObject({
+      kind: 'shape',
+      css: { width: '100%', height: 3, background: 'gray' },
+    });
+    expect(round.runs[0]).toMatchObject({
+      kind: 'box',
+      width: 50,
+      css: { borderRadius: '50%', background: '#00AA00' },
+    });
+    expect(empty.runs.map((run) => run.kind)).toEqual(['text']);
+    expect(layout.warnings.join(' ')).not.toMatch(/shape/);
+  });
+
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {
     const [para] = blocks(
       docx(
