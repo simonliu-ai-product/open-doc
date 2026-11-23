@@ -17,6 +17,8 @@ export type MeasurableSection = {
   /** Index-aligned with `blocks`. */
   notesByBlock: ExtractedNote[][];
   padding?: FlowPadding;
+  /** This section's own sheet, when it is turned from the document's. */
+  geometry?: PageGeometry;
   columns?: 1 | 2 | 3;
   columnGap?: number;
 };
@@ -148,7 +150,7 @@ export async function measureFlowSections(
     await Promise.resolve();
     for (const section of sections) {
       const sides = paddingOf(section);
-      const fullWidth = opts.geometry.width - sides.left - sides.right;
+      const fullWidth = (section.geometry ?? opts.geometry).width - sides.left - sides.right;
       const cols = section.columns && section.columns > 1 ? section.columns : 1;
       const gap = section.columnGap ?? 24;
       const blockWidth = cols > 1 ? (fullWidth - gap * (cols - 1)) / cols : fullWidth;
@@ -226,7 +228,7 @@ export async function measureFlowSections(
 
       return {
         metrics,
-        available: opts.geometry.height - padding.top - padding.bottom,
+        available: (section.geometry ?? opts.geometry).height - padding.top - padding.bottom,
         footnoteOverhead,
       };
     });

@@ -786,6 +786,30 @@ describe('compatibility', () => {
     expect(source).toMatch(/\bChart,/);
   });
 
+  it('turns a landscape section’s sheets instead of shrinking its tables', () => {
+    const wide = `<w:tbl><w:tblGrid><w:gridCol w:w="12000"/></w:tblGrid><w:tr>${tc('寬表')}</w:tr></w:tbl>`;
+    const layout = readDocxLayout(
+      docx(
+        p(
+          r('直向'),
+          '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>',
+        ) + wide,
+        '',
+        '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>',
+      ),
+    );
+    const [portrait, landscape] = layout.sections;
+    expect(portrait.orientation).toBeUndefined();
+    expect(landscape.orientation).toBe('landscape');
+    expect((landscape.blocks[0] as LTable).css.width).toBe(800);
+    expect(layout.warnings.join(' ')).not.toMatch(/orientation|scaled/);
+    const { source } = generateLayoutSource(layout, {
+      docId: 'l',
+      createdAt: '2026-11-23T00:00:00.000Z',
+    });
+    expect(source).toContain("orientation: 'landscape'");
+  });
+
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {
     const [para] = blocks(
       docx(

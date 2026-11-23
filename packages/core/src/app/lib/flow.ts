@@ -1,5 +1,5 @@
 import { Children, type ComponentType, Fragment, isValidElement, type ReactNode } from 'react';
-import type { DocEntry, FlowPadding, FlowSection } from './sdk';
+import type { DocEntry, FlowPadding, FlowSection, Orientation } from './sdk';
 
 export type { DocEntry, FlowSection };
 
@@ -31,6 +31,7 @@ export function flow(
     header?: ComponentType;
     footer?: ComponentType;
     padding?: FlowPadding;
+    orientation?: Orientation;
     columns?: 1 | 2 | 3;
     columnGap?: number;
   } = {},

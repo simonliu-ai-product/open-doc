@@ -47,6 +47,22 @@ export type PageGeometry = {
   css: string;
 };
 
+/** The same paper turned a quarter: a landscape section in a portrait document, or back. */
+export function turnGeometry(geometry: PageGeometry): PageGeometry {
+  const [across, down] = geometry.css.split(/\s+/);
+  return { width: geometry.height, height: geometry.width, css: `${down} ${across}` };
+}
+
+/** A flow section's sheet: the document's, turned when the section sets the other orientation. */
+export function sectionGeometry(
+  geometry: PageGeometry,
+  orientation: Orientation | undefined,
+): PageGeometry {
+  if (!orientation) return geometry;
+  const landscape = geometry.width > geometry.height;
+  return (orientation === 'landscape') === landscape ? geometry : turnGeometry(geometry);
+}
+
 export type DocPage = ComponentType;
 
 /**
@@ -79,6 +95,11 @@ export type FlowSection = {
    * Defaults to the design's `margin`.
    */
   padding?: FlowPadding;
+  /**
+   * Turns this section's sheets — a wide table's landscape pages inside a
+   * portrait document. Defaults to the document's orientation.
+   */
+  orientation?: Orientation;
   /** Number of columns for body content inside each page of this flow section. */
   columns?: 1 | 2 | 3;
   /** Gap in px between columns when `columns > 1`; defaults to 24. */

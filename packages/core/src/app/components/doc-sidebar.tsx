@@ -144,14 +144,16 @@ export function DocSidebar({
                     )}
                     style={{
                       width: THUMB_WIDTH,
-                      height: geometry.height * (THUMB_WIDTH / geometry.width),
+                      height:
+                        (entry.geometry ?? geometry).height *
+                        (THUMB_WIDTH / (entry.geometry ?? geometry).width),
                     }}
                   >
                     <PageFrame
                       index={index}
                       total={pages.length}
-                      geometry={geometry}
-                      scale={THUMB_WIDTH / geometry.width}
+                      geometry={entry.geometry ?? geometry}
+                      scale={THUMB_WIDTH / (entry.geometry ?? geometry).width}
                       design={design}
                       lang={lang}
                       flat

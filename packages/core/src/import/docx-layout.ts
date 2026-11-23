@@ -172,6 +172,8 @@ export type LSection = {
   blocks: LBlock[];
   header?: LRunning;
   footer?: LRunning;
+  /** Set when this section turns its sheets from the document's orientation. */
+  orientation?: 'portrait' | 'landscape';
   /** Word's newspaper columns, as many as `flow()` sets (up to three). */
   columns?: { count: 2 | 3; gap: number };
 };
@@ -377,8 +379,6 @@ const WARNINGS: Record<string, (n: number) => string> = {
     `${n} passage(s) of combined or vertical East Asian characters shown as ordinary text`,
   frame: (n) => `${n} framed paragraph(s) placed in the text flow`,
   columns: (n) => `${n} section(s) with more than three columns set in three`,
-  orientation: (n) =>
-    `${n} section(s) in the other page orientation printed in the document's own; wide tables there are scaled to fit`,
   tableScaled: (n) => `${n} table(s) wider than the page scaled down to fit`,
   embeddedFonts: () =>
     "the document's embedded fonts were not imported; text falls back to similar installed fonts",
@@ -784,9 +784,17 @@ class LayoutReader {
         gridType === 'lines' || gridType === 'linesAndChars'
           ? px(num(docGrid?.attrs['w:linePitch']) ?? 0)
           : 0;
-      const pageWidth = landscape ? sheet.height : sheet.width;
+      // A section may turn its sheets (a wide table's landscape pages in a
+      // portrait document); its margins are already measured on the turned page.
+      const sectSz = child(sectPr, 'w:pgSz');
+      const sectLandscape = sectSz
+        ? sectSz.attrs['w:orient'] === 'landscape' ||
+          (num(sectSz.attrs['w:w']) ?? 0) > (num(sectSz.attrs['w:h']) ?? Number.POSITIVE_INFINITY)
+        : landscape;
+      const turned = sectLandscape !== landscape;
+      const pageWidth = sectLandscape ? sheet.height : sheet.width;
       this.textWidth = pageWidth - left - right;
-      this.pageHeight = landscape ? sheet.width : sheet.height;
+      this.pageHeight = sectLandscape ? sheet.width : sheet.height;
       this.marginTop = top;
       this.marginBottom = bottom;
       // The page pads both sides with the smaller side margin, and every block
@@ -808,16 +816,18 @@ class LayoutReader {
           : 0;
       const pageTop = round(exactTop ? top : Math.max(top, reach(header)));
       const pageBottom = round(exactBottom ? bottom : Math.max(bottom, reach(footer)));
-      const sectSz = child(sectPr, 'w:pgSz');
-      const sectLandscape =
-        sectSz?.attrs['w:orient'] === 'landscape' ||
-        (num(sectSz?.attrs['w:w']) ?? 0) > (num(sectSz?.attrs['w:h']) ?? Number.POSITIVE_INFINITY);
-      if (sectSz && sectLandscape !== landscape) this.count('orientation');
       this.pendingBreak = false;
       const blocks = collapseBlankPages(this.readBlocks(group.nodes, true));
       // Empty paragraphs at the end of a section print nothing; they only
       // risk pushing a blank sheet out of a page that was full to the margin.
-      while (blocks.length > 0 && isBlank(blocks[blocks.length - 1])) blocks.pop();
+      // A numbered paragraph with nothing after its number, closing the
+      // section, is the paragraph that holds the section break: it prints a
+      // bare "一、" that only pushes a sheet over.
+      while (
+        blocks.length > 0 &&
+        (isBlank(blocks[blocks.length - 1]) || isBareMarker(blocks[blocks.length - 1]))
+      )
+        blocks.pop();
       const previous = sections[sections.length - 1];
       // The document's first sheet carries its own header (a cover's banner):
       // a taller one pushes that sheet's text down without costing the rest.
@@ -828,7 +838,8 @@ class LayoutReader {
       }
       // A section already starts a new sheet; a break on its first block would leave one blank.
       if (blocks[0] && !(continuous && previous)) blocks[0].breakBefore = false;
-      if (continuous && previous) previous.blocks.push(...blocks);
+      if (continuous && previous && !turned === !previous.orientation)
+        previous.blocks.push(...blocks);
       else {
         const cols = child(sectPr, 'w:cols');
         const count = num(cols?.attrs['w:num']) ?? 1;
@@ -843,6 +854,9 @@ class LayoutReader {
           blocks,
           ...(header ? { header } : {}),
           ...(footer ? { footer } : {}),
+          ...(turned
+            ? { orientation: sectLandscape ? ('landscape' as const) : ('portrait' as const) }
+            : {}),
           ...(count > 1
             ? {
                 columns: {
@@ -2936,6 +2950,12 @@ function collapseBlankPages(blocks: LBlock[]): LBlock[] {
     i++;
   }
   return out;
+}
+
+function isBareMarker(block: LBlock): boolean {
+  if (block.kind !== 'p') return false;
+  const marker = block.runs.findIndex((run) => run.kind === 'marker');
+  return marker !== -1 && isBlank({ ...block, runs: block.runs.filter((_, i) => i !== marker) });
 }
 
 function isBlank(block: LBlock): boolean {

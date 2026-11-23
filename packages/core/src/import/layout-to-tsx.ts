@@ -544,7 +544,7 @@ export function generateLayoutSource(
     const columns = section.columns
       ? `, columns: ${section.columns.count}, columnGap: ${section.columns.gap}`
       : '';
-    const running = `${header ? `, header: ${header}` : ''}${footer ? `, footer: ${footer}` : ''}`;
+    const running = `${header ? `, header: ${header}` : ''}${footer ? `, footer: ${footer}` : ''}${section.orientation ? `, orientation: '${section.orientation}'` : ''}`;
     const { top, right, bottom, left } = section.padding;
     const padding =
       top === right && right === bottom && bottom === left
