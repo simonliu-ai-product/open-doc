@@ -191,6 +191,8 @@ export type DocxLayout = {
   title?: string;
   text: string;
   media: Map<string, Uint8Array>;
+  /** Fonts the file carries, unscrambled into `media` under `src`. */
+  faces: Array<{ family: string; weight: 400 | 700; style: 'normal' | 'italic'; src: string }>;
   warnings: string[];
 };
 
@@ -697,6 +699,7 @@ class LayoutReader {
   private tabStop = 720;
   private counts = new Map<string, number>();
   private media = new Map<string, Uint8Array>();
+  private faces: DocxLayout['faces'] = [];
   private text: string[] = [];
   private fonts = new Map<string, string>();
   private fontUse = new Map<string, number>();
@@ -742,7 +745,8 @@ class LayoutReader {
     this.readStyles(pkg.partOf('/styles', 'styles.xml'));
     this.readNumbering(pkg.partOf('/numbering', 'numbering.xml'));
     this.readTheme(pkg.partOf('/theme', 'theme/theme1.xml'));
-    if (Object.keys(pkg.files).some((name) => /\.odttf$/i.test(name))) {
+    this.readEmbeddedFonts();
+    if (this.faces.length === 0 && Object.keys(pkg.files).some((name) => /\.odttf$/i.test(name))) {
       this.counts.set('embeddedFonts', 1);
     }
     const settings = pkg.partOf('/settings', 'settings.xml');
@@ -901,6 +905,7 @@ class LayoutReader {
       ...(title ? { title } : {}),
       text: this.text.join(' '),
       media: this.media,
+      faces: this.faces,
       warnings,
     };
   }
@@ -1210,6 +1215,43 @@ class LayoutReader {
       const color = elements(slot)[0];
       const value = color?.attrs.val ?? color?.attrs.lastClr;
       if (value) this.themeColors.set(slot.name.replace(/^a:/, ''), `#${value}`);
+    }
+  }
+
+  /**
+   * Fonts Word embedded ("Embed fonts in the file"): each is scrambled with
+   * its key over the first 32 bytes, so it is unscrambled and kept, and the
+   * document registers it under the name its text asks for.
+   */
+  private readEmbeddedFonts() {
+    const rel = [...this.pkg.rels.values()].find((entry) => entry.type.endsWith('/fontTable'));
+    const tableName = resolvePart(this.pkg.mainDir, rel?.target ?? 'fontTable.xml');
+    const table = this.pkg.xmlPart(tableName);
+    if (!table) return;
+    const rels = readRels(this.pkg.xmlPart(relsPathFor(tableName)));
+    const variants: Array<[string, 400 | 700, 'normal' | 'italic']> = [
+      ['w:embedRegular', 400, 'normal'],
+      ['w:embedBold', 700, 'normal'],
+      ['w:embedItalic', 400, 'italic'],
+      ['w:embedBoldItalic', 700, 'italic'],
+    ];
+    for (const font of elements(table, 'w:font')) {
+      const family = font.attrs['w:name'];
+      if (!family) continue;
+      for (const [name, weight, style] of variants) {
+        const embed = child(font, name);
+        const target = embed && rels.get(embed.attrs['r:id'] ?? '')?.target;
+        const data = target && this.pkg.files[resolvePart(dirOf(tableName), target)];
+        const key = (embed?.attrs['w:fontKey'] ?? '').replace(/[{}-]/g, '');
+        if (!data || key.length !== 32) continue;
+        const bytes = data.slice();
+        for (let i = 0; i < 32 && i < bytes.length; i++) {
+          bytes[i] ^= Number.parseInt(key.slice(30 - (i % 16) * 2, 32 - (i % 16) * 2), 16);
+        }
+        const src = `word/fonts/${family.replace(/[^\w-]+/g, '-')}-${weight}${style === 'italic' ? 'i' : ''}.ttf`;
+        this.media.set(src, bytes);
+        this.faces.push({ family, weight, style, src });
+      }
     }
   }
 

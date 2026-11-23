@@ -481,6 +481,7 @@ export function collectLayoutImages(layout: DocxLayout): string[] {
       }
     }
   };
+  for (const face of layout.faces ?? []) out.push(face.src);
   for (const section of layout.sections) {
     for (const running of [section.header, section.footer]) {
       if (!running) continue;
@@ -618,6 +619,29 @@ export function generateLayoutSource(
     ...images.map((image) => `import ${image.ident} from './assets/${image.filename}';`),
   ].join('\n');
 
+  // Fonts the Word file carried, under the names its text asks for, so the
+  // page sets in Word's own type wherever it opens.
+  const faceList = (layout.faces ?? [])
+    .map((face) => {
+      const image = ctx.images?.get(face.src);
+      return image
+        ? `  [${jsString(face.family)}, ${image.ident}, '${face.weight}', '${face.style}'],`
+        : '';
+    })
+    .filter(Boolean);
+  const faces = faceList.length
+    ? `// Fonts the Word file carried, registered under the names its text asks for.
+if (typeof document !== 'undefined') {
+  for (const [family, url, weight, style] of [
+${faceList.join('\n')}
+  ] as const) {
+    const face = new FontFace(family, \`url(\${url})\`, { weight, style });
+    document.fonts.add(face);
+    void face.load();
+  }
+}`
+    : '';
+
   const rows = ctx.usesRows
     ? `// When the flow breaks a table across pages, each page prints only its own rows.
 const Rows = ({ children }: { children?: ReactNode }) => {
@@ -648,6 +672,7 @@ const Rows = ({ children }: { children?: ReactNode }) => {
     ...fonts,
     '',
     ...(rows ? [rows, ''] : []),
+    ...(faces ? [faces, ''] : []),
     ...(runningDefs.length ? [runningDefs.join('\n\n'), ''] : []),
     sections.join('\n\n'),
     '',

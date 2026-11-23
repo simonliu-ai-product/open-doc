@@ -810,6 +810,32 @@ describe('compatibility', () => {
     expect(source).toContain("orientation: 'landscape'");
   });
 
+  it('unscrambles the fonts Word embedded and registers them under their names', () => {
+    const key = '3EEE3167-E5B8-4798-AE48-EA6B71E31D4D';
+    const hex = key.replace(/-/g, '');
+    const font = new Uint8Array(48).map((_, i) => (i < 4 ? [0, 1, 0, 0][i] : i));
+    const scrambled = font.slice();
+    for (let i = 0; i < 32; i++)
+      scrambled[i] ^= Number.parseInt(hex.slice(30 - (i % 16) * 2, 32 - (i % 16) * 2), 16);
+    const files = unzipSync(docx(p(r('x'))));
+    files['word/_rels/document.xml.rels'] = strToU8(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rF" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/></Relationships>',
+    );
+    files['word/fontTable.xml'] = strToU8(
+      `<w:fonts ${W} xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:font w:name="Ubuntu"><w:embedBold r:id="rId1" w:fontKey="{${key}}"/></w:font></w:fonts>`,
+    );
+    files['word/_rels/fontTable.xml.rels'] = strToU8(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/font1.odttf"/></Relationships>',
+    );
+    files['word/fonts/font1.odttf'] = scrambled;
+    const layout = readDocxLayout(zipSync(files));
+    expect(layout.faces).toEqual([
+      { family: 'Ubuntu', weight: 700, style: 'normal', src: 'word/fonts/Ubuntu-700.ttf' },
+    ]);
+    expect(layout.media.get('word/fonts/Ubuntu-700.ttf')).toEqual(font);
+    expect(layout.warnings.join(' ')).not.toMatch(/embedded fonts/);
+  });
+
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {
     const [para] = blocks(
       docx(
