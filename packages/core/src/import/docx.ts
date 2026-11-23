@@ -378,7 +378,8 @@ export function parseDocx(bytes: Uint8Array): ParsedDocx {
           break;
         case 'w:sym': {
           const code = parseInt(node.attrs['w:char'] ?? '', 16);
-          if (Number.isFinite(code)) push(symbolText(String.fromCodePoint(code), true));
+          if (Number.isFinite(code))
+            push(symbolText(String.fromCodePoint(code), true, node.attrs['w:font']));
           break;
         }
         case 'w:rPr':

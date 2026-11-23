@@ -550,6 +550,39 @@ describe('compatibility', () => {
     expect(source.match(/<img [^>]*display: 'inline-block'/g)).toHaveLength(2);
   });
 
+  it('places each picture of a group at its spot on the group grid', () => {
+    const piece = (id: string, x: number, y: number, cx: number, cy: number) =>
+      `<pic:pic xmlns:pic="pic"><pic:nvPicPr><pic:cNvPr id="${id}" name="p${id}"/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdA"/></pic:blipFill><pic:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm></pic:spPr></pic:pic>`;
+    const group = `<w:r><w:drawing><wp:inline xmlns:wp="wp"><wp:extent cx="1905000" cy="952500"/><wp:docPr id="1" name="g" descr="logo"/><a:graphic xmlns:a="a"><a:graphicData><wpg:wgp xmlns:wpg="wpg"><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="952500"/><a:chOff x="0" y="0"/><a:chExt cx="200" cy="100"/></a:xfrm></wpg:grpSpPr>${piece('2', 0, 0, 100, 100)}${piece('3', 100, 50, 100, 50)}</wpg:wgp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+    const files = unzipSync(docx(p(group)));
+    files['word/_rels/document.xml.rels'] = strToU8(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdA" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/a.png"/></Relationships>',
+    );
+    files['word/media/a.png'] = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const layout = readDocxLayout(zipSync(files));
+    const [para] = layout.sections[0].blocks as LParagraph[];
+    expect(para.runs).toHaveLength(1);
+    const [run] = para.runs;
+    expect(run).toMatchObject({ kind: 'image', width: 200, height: 100 });
+    expect(run.kind === 'image' && run.parts).toEqual([
+      expect.objectContaining({ left: 0, top: 0, width: 100, height: 100 }),
+      expect.objectContaining({ left: 100, top: 50, width: 100, height: 50 }),
+    ]);
+  });
+
+  it('reads boxes from Webdings and Wingdings 2 as boxes', () => {
+    const [para] = blocks(
+      docx(
+        p(
+          '<w:r><w:sym w:font="Webdings" w:char="F063"/></w:r>' +
+            '<w:r><w:sym w:font="Wingdings 2" w:char="F0A3"/></w:r>' +
+            '<w:r><w:sym w:font="Wingdings" w:char="F0A8"/></w:r>',
+        ),
+      ),
+    ) as LParagraph[];
+    expect(para.runs.map((run) => (run.kind === 'text' ? run.text : '')).join('')).toBe('☐□□');
+  });
+
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {
     const [para] = blocks(
       docx(

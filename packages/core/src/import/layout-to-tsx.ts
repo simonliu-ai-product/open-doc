@@ -177,8 +177,30 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
               textIndent: 0,
             })} data-od-generated="">${textJsx(run.alt || 'picture not imported')}</span>`;
           }
-          const known = ctx.images?.get(run.src);
-          const src = known ? `{${known.ident}}` : attr(run.src);
+          const srcOf = (value: string) => {
+            const known = ctx.images?.get(value);
+            return known ? `{${known.ident}}` : attr(value);
+          };
+          if (run.parts) {
+            const pieces = run.parts.map(
+              (part) =>
+                `<img src=${srcOf(part.src)} alt=${attr(part.alt)}${styleAttr({
+                  position: 'absolute',
+                  left: part.left,
+                  top: part.top,
+                  width: part.width,
+                  height: part.height,
+                })} />`,
+            );
+            return `<span role="img" aria-label=${attr(run.alt)}${styleAttr({
+              display: 'inline-block',
+              position: 'relative',
+              width: run.width,
+              height: run.height,
+              verticalAlign: 'bottom',
+            })}>${pieces.join('')}</span>`;
+          }
+          const src = srcOf(run.src);
           // In line with the text, as in Word: the page's base styles make
           // every picture a block, which would stack a row of logos.
           const size: Css = run.width
@@ -339,7 +361,8 @@ export function collectLayoutImages(layout: DocxLayout): string[] {
     for (const block of blocks) {
       if (block.kind === 'p') {
         for (const run of block.runs) {
-          if (run.kind === 'image' && run.src) out.push(run.src);
+          if (run.kind === 'image' && run.parts) out.push(...run.parts.map((part) => part.src));
+          else if (run.kind === 'image' && run.src) out.push(run.src);
           else if (run.kind === 'box') walk(run.blocks);
         }
       } else {

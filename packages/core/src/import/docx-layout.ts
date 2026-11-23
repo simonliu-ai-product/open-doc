@@ -37,7 +37,22 @@ export type LRun =
   | { kind: 'blank'; width: string; css: Css }
   | { kind: 'marker'; text: string; css: Css; width: number }
   | { kind: 'break' }
-  | { kind: 'image'; src: string; alt: string; width: number; height: number }
+  | {
+      kind: 'image';
+      src: string;
+      alt: string;
+      width: number;
+      height: number;
+      /** A picture group: each picture at its place inside the group's box. */
+      parts?: Array<{
+        src: string;
+        alt: string;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      }>;
+    }
   | { kind: 'ruby'; base: string; rt: string; css: Css }
   /** A drop capital: Word's frame, floated at the start of the paragraph it opens. */
   | { kind: 'drop'; text: string; css: Css }
@@ -1462,7 +1477,8 @@ class LayoutReader {
           break;
         case 'w:sym': {
           const code = parseInt(node.attrs['w:char'] ?? '', 16);
-          if (Number.isFinite(code)) push(symbolText(String.fromCodePoint(code), true));
+          if (Number.isFinite(code))
+            push(symbolText(String.fromCodePoint(code), true, node.attrs['w:font']));
           break;
         }
         case 'w:br': {
@@ -1625,6 +1641,45 @@ class LayoutReader {
     const alt = (docPr?.attrs.descr || docPr?.attrs.title || '').trim();
     const blips = descendants(el, 'a:blip');
     let found = 0;
+    // Pictures Word grouped (a logo cut into pieces) keep their places on
+    // the group's own grid; sized by the group alone, they would each fill it.
+    const group = descendants(el, 'wpg:wgp')[0];
+    const pictures = group ? descendants(group, 'pic:pic') : [];
+    if (pictures.length > 1 && width > 0 && height > 0) {
+      const gx = child(child(group, 'wpg:grpSpPr'), 'a:xfrm');
+      const at = (xfrm: XmlElement | undefined, name: string, a: string, b: string) => [
+        num(child(xfrm, name)?.attrs[a]) ?? 0,
+        num(child(xfrm, name)?.attrs[b]) ?? 0,
+      ];
+      const [chX, chY] = at(gx, 'a:chOff', 'x', 'y');
+      const [chW, chH] = at(gx, 'a:chExt', 'cx', 'cy');
+      const sx = chW ? width / chW : 0;
+      const sy = chH ? height / chH : 0;
+      const parts = pictures.flatMap((picture) => {
+        const blip = descendants(picture, 'a:blip')[0];
+        const src = blip && this.image(blip.attrs['r:embed'] ?? blip.attrs['r:link']);
+        const xfrm = child(child(picture, 'pic:spPr'), 'a:xfrm');
+        const [x, y] = at(xfrm, 'a:off', 'x', 'y');
+        const [cx, cy] = at(xfrm, 'a:ext', 'cx', 'cy');
+        if (!src || !cx || !cy) return [];
+        const name = descendants(picture, 'pic:cNvPr')[0]?.attrs;
+        return [
+          {
+            src,
+            alt: (name?.descr || '').trim(),
+            left: round((x - chX) * sx),
+            top: round((y - chY) * sy),
+            width: round(cx * sx),
+            height: round(cy * sy),
+          },
+        ];
+      });
+      if (parts.length > 0 && sx && sy) {
+        out.push({ kind: 'image', src: parts[0].src, alt, width, height, parts });
+        if (floating) this.count('floating', 1);
+        return;
+      }
+    }
     // A picture that cannot come across keeps its place as an empty frame,
     // so the page around it still lays out as Word's does.
     const placeholder = () => {

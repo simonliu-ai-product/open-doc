@@ -188,19 +188,26 @@ const SYMBOLS: Record<number, string> = {
   254: '☑',
 };
 
+/** The same boxes and ticks where other symbol fonts keep them. */
+const FONT_SYMBOLS: Array<[RegExp, Record<number, string>]> = [
+  [/^webdings$/i, { 97: '✓', 99: '☐', 114: '✗' }],
+  [/^wingdings 2$/i, { 80: '✓', 82: '☑', 84: '☒', 163: '□' }],
+];
+
 /**
  * A symbol-font glyph (Wingdings, Symbol) lives in the private use area, or
  * below 0x100 when `w:sym` names the font; show the Unicode look-alike. Forms
  * use Wingdings' box for "tick one", so it must stay a box.
  */
-export function symbolText(text: string, symbolFont = false): string {
+export function symbolText(text: string, symbolFont = false, font?: string): string {
+  const table = (font && FONT_SYMBOLS.find(([re]) => re.test(font.trim()))?.[1]) || SYMBOLS;
   return [...text]
     .map((char) => {
       const code = char.codePointAt(0) ?? 0;
       const low =
         code >= 0xf000 && code <= 0xf0ff ? code - 0xf000 : symbolFont && code < 0x100 ? code : -1;
       if (low < 0) return char;
-      return SYMBOLS[low] ?? '•';
+      return table[low] ?? '•';
     })
     .join('');
 }
