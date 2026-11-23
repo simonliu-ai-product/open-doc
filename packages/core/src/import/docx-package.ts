@@ -46,12 +46,12 @@ export function resolvePart(baseDir: string, target: string): string {
   return parts.join('/');
 }
 
-function dirOf(part: string): string {
+export function dirOf(part: string): string {
   const slash = part.lastIndexOf('/');
   return slash === -1 ? '' : part.slice(0, slash);
 }
 
-function relsPathFor(part: string): string {
+export function relsPathFor(part: string): string {
   const dir = dirOf(part);
   const base = part.slice(dir.length ? dir.length + 1 : 0);
   return `${dir ? `${dir}/` : ''}_rels/${base}.rels`;

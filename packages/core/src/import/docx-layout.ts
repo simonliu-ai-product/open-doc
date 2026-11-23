@@ -3,9 +3,13 @@ import { PAGE_SIZE_NAMES, PAGE_SIZES, type PageSizeName } from '../app/lib/sdk.t
 import {
   DocxError,
   type DocxPackage,
+  dirOf,
   num,
   on,
   openDocx,
+  type Rel,
+  readRels,
+  relsPathFor,
   resolvePart,
   symbolText,
   val,
@@ -33,6 +37,8 @@ export type LRun =
       vert?: 'sup' | 'sub';
       /** Text Word draws but does not store (a note number, a checkbox's box). */
       generated?: true;
+      /** In a header or footer: the sheet's number, or the document's sheet count. */
+      field?: 'page' | 'pages';
     }
   | { kind: 'blank'; width: string; css: Css }
   | { kind: 'marker'; text: string; css: Css; width: number }
@@ -43,6 +49,8 @@ export type LRun =
       alt: string;
       width: number;
       height: number;
+      /** Word floats it: it takes no room in the text, so it pushes nothing down. */
+      floating?: true;
       /** A picture group: each picture at its place inside the group's box. */
       parts?: Array<{
         src: string;
@@ -65,6 +73,13 @@ export type LRun =
       top: number;
       width: number;
       height: number;
+      /**
+       * Set when the box spans the line and wraps the text: the paragraph's
+       * text starts this far down, under the box, as Word moves it.
+       */
+      clear?: number;
+      /** A spanning box set lower than the text: the paragraph ends this far past its last line. */
+      after?: number;
       css: Css;
       blocks: LBlock[];
     };
@@ -104,9 +119,21 @@ export type LTable = BlockFlags & {
 
 export type LBlock = LParagraph | LTable;
 
-export type LSection = {
-  padding: number;
+/** A header or footer: what Word prints in the margin band of every sheet. */
+export type LRunning = {
+  /** Distance from the sheet's top edge (header) or bottom edge (footer), px. */
+  offset: number;
   blocks: LBlock[];
+  /** Different first page: what the section's first sheet prints instead. */
+  first?: LBlock[];
+};
+
+export type LSection = {
+  /** The page's padding: Word's top and bottom margins, the smaller side margin. */
+  padding: { top: number; right: number; bottom: number; left: number };
+  blocks: LBlock[];
+  header?: LRunning;
+  footer?: LRunning;
   /** Word's newspaper columns, as many as `flow()` sets (up to three). */
   columns?: { count: 2 | 3; gap: number };
 };
@@ -293,7 +320,7 @@ const HIGHLIGHT: Record<string, string> = {
   white: '#ffffff',
 };
 
-const UNSHOWABLE_IMAGE_RE = /\.(?:emf|wmf|tiff?|wdp)$/i;
+const UNSHOWABLE_IMAGE_RE = /\.(?:emf|wmf|tiff?|wdp|pdf)$/i;
 
 const WARNINGS: Record<string, (n: number) => string> = {
   textbox: (n) => `${n} text box(es) kept as paragraphs after the text they sit beside`,
@@ -304,9 +331,10 @@ const WARNINGS: Record<string, (n: number) => string> = {
   deletion: (n) => `${n} tracked deletion(s) accepted (their text is gone)`,
   math: (n) => `${n} equation(s) kept as plain text`,
   drawing: (n) => `${n} chart(s), SmartArt or shape(s) without a picture not imported`,
-  unshowable: (n) => `${n} image(s) in a format browsers cannot show (EMF, WMF, TIFF) not imported`,
+  unshowable: (n) =>
+    `${n} image(s) in a format browsers cannot show (EMF, WMF, TIFF, PDF) not imported`,
   missingImage: (n) => `${n} image(s) missing from the file not imported`,
-  headerFooter: () => 'Word headers and footers were not imported',
+  evenPages: () => 'even pages print the odd pages’ header and footer',
   hidden: (n) => `${n} passage(s) of hidden text left out, as Word does when printing`,
   eastAsianLayout: (n) =>
     `${n} passage(s) of combined or vertical East Asian characters shown as ordinary text`,
@@ -634,7 +662,22 @@ class LayoutReader {
   private fonts = new Map<string, string>();
   private fontUse = new Map<string, number>();
   private sizeUse = new Map<number, number>();
-  private fields: Array<{ instr: string; result: boolean; href?: string }> = [];
+  private fields: Array<{
+    instr: string;
+    result: boolean;
+    href?: string;
+    page?: 'page' | 'pages';
+    shown?: boolean;
+  }> = [];
+  /** The part being read and its relationships: the body, or a header or footer. */
+  private partRels?: Map<string, Rel>;
+  private partDir?: string;
+  private inRunning = false;
+  /** The headers and footers each section inherits unless it names its own. */
+  private running: Record<string, Record<string, LBlock[] | undefined>> = {
+    header: {},
+    footer: {},
+  };
   private notes: LParagraph[] = [];
   private grid = 0;
   private scaleX = 1;
@@ -681,18 +724,14 @@ class LayoutReader {
     const sections: LSection[] = [];
     for (const group of groups) {
       const sectPr = group.sectPr;
-      if (
-        sectPr &&
-        (descendants(sectPr, 'w:headerReference').length > 0 ||
-          descendants(sectPr, 'w:footerReference').length > 0)
-      ) {
-        if (this.hasHeaderFooterText(sectPr)) this.counts.set('headerFooter', 1);
-      }
       const continuous = val(child(sectPr, 'w:type')) === 'continuous';
       const margin = child(sectPr, 'w:pgMar');
       const m = (name: string, fallback: number) => num(margin?.attrs[name]) ?? fallback;
-      const top = px(m('w:top', 1440));
-      const bottom = px(m('w:bottom', 1440));
+      // A negative top or bottom is an exact margin a tall header may not push.
+      const exactTop = m('w:top', 1440) < 0;
+      const exactBottom = m('w:bottom', 1440) < 0;
+      const top = px(Math.abs(m('w:top', 1440)));
+      const bottom = px(Math.abs(m('w:bottom', 1440)));
       const left = this.hx(m('w:left', 1800));
       const right = this.hx(m('w:right', 1800));
       const docGrid = child(sectPr, 'w:docGrid');
@@ -703,12 +742,25 @@ class LayoutReader {
           : 0;
       const pageWidth = landscape ? sheet.height : sheet.width;
       this.textWidth = pageWidth - left - right;
-      // flow() pads all four sides alike, so the page takes the smallest
-      // margin and every block makes up the difference on its own sides.
-      const padding = Math.max(8, Math.min(top, bottom, left, right));
+      // The page pads both sides with the smaller side margin, and every block
+      // makes up the difference on its own side.
+      const padding = Math.max(8, Math.min(left, right));
       this.padding = padding;
       this.insetLeft = round(left - padding);
       this.insetRight = round(right - padding);
+      const header = this.readRunning(sectPr, 'header', px(m('w:header', 720)));
+      const footer = this.readRunning(sectPr, 'footer', px(m('w:footer', 720)));
+      // A header taller than its band pushes the text down, as Word does; a
+      // footer pushes it up. Floating pictures and boxes take no room. The
+      // padding holds for every sheet, so a first page's own (a cover's tall
+      // artwork) is left to that page: it would cost every other sheet room.
+      const reach = (running: LRunning | undefined, blocks = running?.blocks ?? []) =>
+        running
+          ? running.offset +
+            blocks.reduce((sum, block) => sum + estimateHeight(block, this.textWidth, true), 0)
+          : 0;
+      const pageTop = round(exactTop ? top : Math.max(top, reach(header)));
+      const pageBottom = round(exactBottom ? bottom : Math.max(bottom, reach(footer)));
       const sectSz = child(sectPr, 'w:pgSz');
       const sectLandscape =
         sectSz?.attrs['w:orient'] === 'landscape' ||
@@ -720,6 +772,13 @@ class LayoutReader {
       // risk pushing a blank sheet out of a page that was full to the margin.
       while (blocks.length > 0 && isBlank(blocks[blocks.length - 1])) blocks.pop();
       const previous = sections[sections.length - 1];
+      // The document's first sheet carries its own header (a cover's banner):
+      // a taller one pushes that sheet's text down without costing the rest.
+      if (!previous && header?.first && blocks.length > 0) {
+        const extra = round(reach(header, header.first) - pageTop);
+        if (extra > 0)
+          blocks.unshift({ kind: 'p', css: { margin: 0, height: extra }, mark: {}, runs: [] });
+      }
       // A section already starts a new sheet; a break on its first block would leave one blank.
       if (blocks[0] && !(continuous && previous)) blocks[0].breakBefore = false;
       if (continuous && previous) previous.blocks.push(...blocks);
@@ -728,8 +787,15 @@ class LayoutReader {
         const count = num(cols?.attrs['w:num']) ?? 1;
         if (count > 3) this.count('columns');
         sections.push({
-          padding: round(padding),
+          padding: {
+            top: pageTop,
+            right: round(padding),
+            bottom: pageBottom,
+            left: round(padding),
+          },
           blocks,
+          ...(header ? { header } : {}),
+          ...(footer ? { footer } : {}),
           ...(count > 1
             ? {
                 columns: {
@@ -809,17 +875,80 @@ class LayoutReader {
     return undefined;
   }
 
-  private hasHeaderFooterText(sectPr: XmlElement): boolean {
-    for (const ref of [
-      ...descendants(sectPr, 'w:headerReference'),
-      ...descendants(sectPr, 'w:footerReference'),
-    ]) {
-      const rel = this.pkg.rels.get(ref.attrs['r:id'] ?? '');
-      if (!rel) continue;
-      const part = this.pkg.xmlPart(resolvePart(this.pkg.mainDir, rel.target));
-      if (part && textContent(part).trim() !== '') return true;
+  /**
+   * A section's header or footer. A section that names none keeps the one
+   * before it, as Word does; a first-page one prints only with
+   * "different first page" set. Even pages print the odd pages' one.
+   */
+  private readRunning(
+    sectPr: XmlElement | undefined,
+    kind: 'header' | 'footer',
+    offset: number,
+  ): LRunning | undefined {
+    const memory = this.running[kind];
+    for (const ref of sectPr ? descendants(sectPr, `w:${kind}Reference`) : []) {
+      const type = ref.attrs['w:type'] ?? 'default';
+      const blocks = this.readRunningPart(ref.attrs['r:id']);
+      if (type === 'even') {
+        if (blocks.length > 0) this.count('evenPages');
+        continue;
+      }
+      memory[type] = blocks;
     }
-    return false;
+    const titlePg = sectPr ? on(child(sectPr, 'w:titlePg')) : false;
+    const blocks = memory.default ?? [];
+    const first = titlePg ? (memory.first ?? []) : undefined;
+    if (blocks.length === 0 && !first?.length) return undefined;
+    return { offset, blocks, ...(first ? { first } : {}) };
+  }
+
+  private readRunningPart(relId: string | undefined): LBlock[] {
+    const rel = relId ? this.pkg.rels.get(relId) : undefined;
+    if (!rel || rel.external) return [];
+    const partName = resolvePart(this.pkg.mainDir, rel.target);
+    const part = this.pkg.xmlPart(partName);
+    if (!part) return [];
+    const drawn =
+      descendants(part, 'w:drawing').length > 0 || descendants(part, 'w:pict').length > 0;
+    if (textContent(part).trim() === '' && !drawn) return [];
+    // What the margin prints is not body text: the body's tallies stay its own.
+    const saved = {
+      text: this.text.length,
+      fontUse: new Map(this.fontUse),
+      sizeUse: new Map(this.sizeUse),
+      fields: this.fields,
+      pendingBreak: this.pendingBreak,
+    };
+    this.partRels = readRels(this.pkg.xmlPart(relsPathFor(partName)));
+    this.partDir = dirOf(partName);
+    this.inRunning = true;
+    this.fields = [];
+    try {
+      const blocks = this.readBlocks(elements(part), false);
+      while (blocks.length > 0 && isBlank(blocks[blocks.length - 1])) blocks.pop();
+      return blocks.some((block) => !isBlank(block)) ? blocks : [];
+    } finally {
+      this.text.length = saved.text;
+      this.fontUse = saved.fontUse;
+      this.sizeUse = saved.sizeUse;
+      this.fields = saved.fields;
+      this.pendingBreak = saved.pendingBreak;
+      this.partRels = undefined;
+      this.partDir = undefined;
+      this.inRunning = false;
+    }
+  }
+
+  private pageField(instr: string): 'page' | 'pages' | undefined {
+    const name = instr.trim().split(/\s+/)[0]?.toUpperCase();
+    if (name === 'PAGE') return 'page';
+    if (name === 'NUMPAGES') return 'pages';
+    return undefined;
+  }
+
+  private rel(relId: string | undefined): Rel | undefined {
+    if (!relId) return undefined;
+    return (this.partRels ?? this.pkg.rels).get(relId);
   }
 
   /** Splits the body at each section break; the `sectPr` that ends a run of content describes it. */
@@ -1326,7 +1455,7 @@ class LayoutReader {
           this.readRun(entry, baseR, href, segments, breaks, extra);
           break;
         case 'w:hyperlink': {
-          const rel = entry.attrs['r:id'] ? this.pkg.rels.get(entry.attrs['r:id']) : undefined;
+          const rel = this.rel(entry.attrs['r:id']);
           const anchor = entry.attrs['w:anchor'];
           const target =
             rel?.external && isSafeHref(rel.target)
@@ -1366,9 +1495,16 @@ class LayoutReader {
           this.readInline(content, baseR, href, segments, breaks, extra);
           break;
         }
+        case 'w:fldSimple': {
+          const instr = entry.attrs['w:instr'] ?? '';
+          const page = this.pageField(instr);
+          this.fields.push({ instr, result: true, ...(page ? { page } : {}) });
+          this.readInline(entry, baseR, href, segments, breaks, extra);
+          this.fields.pop();
+          break;
+        }
         case 'w:smartTag':
         case 'w:customXml':
-        case 'w:fldSimple':
         case 'w:dir':
         case 'w:bdo':
         case 'm:oMathPara':
@@ -1431,6 +1567,17 @@ class LayoutReader {
     const out = () => segments[segments.length - 1];
     const push = (text: string) => {
       if (text === '' || this.fields.some((field) => !field.result)) return;
+      // A page number in a header or footer is worked out on each sheet;
+      // Word's stored result is only what the last sheet it drew showed.
+      const pageField = this.inRunning
+        ? [...this.fields].reverse().find((field) => field.page)
+        : undefined;
+      if (pageField?.page) {
+        if (pageField.shown) return;
+        pageField.shown = true;
+        out().push({ kind: 'text', text, css, field: pageField.page });
+        return;
+      }
       this.text.push(text);
       const link = href ?? this.fieldHref();
       if (underlined) {
@@ -1510,6 +1657,8 @@ class LayoutReader {
           else if (type === 'separate' && this.fields.length > 0) {
             const field = this.fields[this.fields.length - 1];
             field.result = true;
+            const page = this.pageField(field.instr);
+            if (page) field.page = page;
             const target = field.instr.match(/^\s*HYPERLINK\s+"([^"]+)"/i)?.[1];
             if (target && !/\\l/.test(field.instr.split('"')[0]) && isSafeHref(target)) {
               field.href = target;
@@ -1675,7 +1824,15 @@ class LayoutReader {
         ];
       });
       if (parts.length > 0 && sx && sy) {
-        out.push({ kind: 'image', src: parts[0].src, alt, width, height, parts });
+        out.push({
+          kind: 'image',
+          src: parts[0].src,
+          alt,
+          width,
+          height,
+          parts,
+          ...(floating ? { floating: true as const } : {}),
+        });
         if (floating) this.count('floating', 1);
         return;
       }
@@ -1683,12 +1840,27 @@ class LayoutReader {
     // A picture that cannot come across keeps its place as an empty frame,
     // so the page around it still lays out as Word's does.
     const placeholder = () => {
-      if (width > 0 && height > 0) out.push({ kind: 'image', src: '', alt, width, height });
+      if (width > 0 && height > 0)
+        out.push({
+          kind: 'image',
+          src: '',
+          alt,
+          width,
+          height,
+          ...(floating ? { floating: true as const } : {}),
+        });
     };
     for (const blip of blips) {
       const src = this.image(blip.attrs['r:embed'] ?? blip.attrs['r:link']);
       if (src) {
-        out.push({ kind: 'image', src, alt, width, height });
+        out.push({
+          kind: 'image',
+          src,
+          alt,
+          width,
+          height,
+          ...(floating ? { floating: true as const } : {}),
+        });
         found++;
       } else placeholder();
     }
@@ -1782,6 +1954,21 @@ class LayoutReader {
       const content = descendants(shape, 'w:txbxContent')[0];
       this.shapeBox(shape, spPr, content, box, out);
     }
+    // Text wraps around a box on its sides; one as wide as the column leaves
+    // it no side, and the paragraph's text goes on under it.
+    const last = out[out.length - 1];
+    const wraps =
+      !!child(anchor, 'wp:wrapTopAndBottom') ||
+      (!!child(anchor, 'wp:wrapSquare') && width >= this.textWidth * 0.8);
+    if (!group && wraps && last?.kind === 'box' && v.from === 'paragraph') {
+      const gap = emu(anchor.attrs.distB ?? '0');
+      // From the paragraph's first line, the box takes it and the text goes
+      // under; set lower, the text stays above and the box follows it.
+      if (v.value < 12) {
+        const below = round(v.value + height + gap);
+        if (below > 0) last.clear = below;
+      } else last.after = round(height + gap);
+    }
   }
 
   /** An old-style (VML) text box: `v:shape` positioned by its CSS-like style. */
@@ -1855,6 +2042,11 @@ class LayoutReader {
     // A one-line label ("附表一") sized to fit Word's font must not wrap in a
     // fallback face a hair wider.
     if (text.length <= 12 && blocks.length === 1) css.whiteSpace = 'nowrap';
+    // Without "resize shape to fit text" the box keeps Word's height, and
+    // whatever runs past it (a trailing empty line) does not stretch it over
+    // the text below.
+    const bodyPr = child(shape, 'wps:bodyPr');
+    if (box.h > 0 && !child(bodyPr, 'a:spAutoFit')) css.height = box.h;
     out.push({ kind: 'box', left: box.x, top: box.y, width: box.w, height: box.h, css, blocks });
   }
 
@@ -1867,7 +2059,7 @@ class LayoutReader {
   }
 
   private image(relId: string | undefined): string | null {
-    const rel = relId ? this.pkg.rels.get(relId) : undefined;
+    const rel = this.rel(relId);
     if (!rel) {
       this.count('missingImage');
       return null;
@@ -1877,7 +2069,7 @@ class LayoutReader {
       this.count('missingImage');
       return null;
     }
-    const part = resolvePart(this.pkg.mainDir, rel.target);
+    const part = resolvePart(this.partDir ?? this.pkg.mainDir, rel.target);
     if (UNSHOWABLE_IMAGE_RE.test(part)) {
       this.count('unshowable');
       return null;
@@ -2257,14 +2449,16 @@ export function layoutText(layout: DocxLayout): string {
 }
 
 /** A rough height for a block set in a column `width` px wide — enough to cut a row in pieces. */
-function estimateHeight(block: LBlock, width: number): number {
+function estimateHeight(block: LBlock, width: number, skipFloating = false): number {
   if (block.kind === 'table') {
     return block.rows.reduce(
       (sum, row) =>
         sum +
         Math.max(
           20,
-          ...row.cells.map((cell) => cell.blocks.reduce((h, b) => h + estimateHeight(b, width), 0)),
+          ...row.cells.map((cell) =>
+            cell.blocks.reduce((h, b) => h + estimateHeight(b, width, skipFloating), 0),
+          ),
         ),
       0,
     );
@@ -2274,7 +2468,8 @@ function estimateHeight(block: LBlock, width: number): number {
   let advance = 0;
   let pictures = 0;
   for (const run of block.runs) {
-    if (run.kind === 'image') pictures += run.height;
+    if (run.kind === 'image' && !(skipFloating && run.floating)) pictures += run.height;
+    if (run.kind === 'box') pictures += (run.clear ?? 0) + (run.after ?? 0);
     if (run.kind !== 'text') continue;
     size = Math.max(size, Number(run.css.fontSize) || 16);
     for (const char of run.text) advance += (char.codePointAt(0) ?? 0) > 0x2e80 ? 1 : 0.55;

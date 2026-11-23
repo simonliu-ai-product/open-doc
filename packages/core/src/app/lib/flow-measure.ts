@@ -7,7 +7,7 @@ import { type DesignSystem, designToCssVars } from './design';
 import type { BlockMetrics } from './flow';
 import type { ExtractedNote } from './footnotes';
 import { nextFrame, waitForFonts } from './print-ready';
-import type { PageGeometry } from './sdk';
+import { type FlowPadding, type PageGeometry, paddingSides } from './sdk';
 
 const HEADING_TAGS = new Set(['H1', 'H2', 'H3', 'H4']);
 
@@ -16,7 +16,7 @@ export type MeasurableSection = {
   blocks: ReactNode[];
   /** Index-aligned with `blocks`. */
   notesByBlock: ExtractedNote[][];
-  padding?: number;
+  padding?: FlowPadding;
   columns?: 1 | 2 | 3;
   columnGap?: number;
 };
@@ -127,7 +127,8 @@ export async function measureFlowSections(
   const blockContainers: HTMLElement[] = [];
   const noteContainers: Array<HTMLElement | null> = [];
 
-  const paddingOf = (section: MeasurableSection) => section.padding ?? opts.design?.margin ?? 76;
+  const paddingOf = (section: MeasurableSection) =>
+    paddingSides(section.padding, opts.design?.margin ?? 76);
 
   const makeContainer = (width: number): HTMLElement => {
     const container = document.createElement('div');
@@ -146,7 +147,8 @@ export async function measureFlowSections(
     // Out of the effect that called us, so `flushSync` below may commit.
     await Promise.resolve();
     for (const section of sections) {
-      const fullWidth = opts.geometry.width - paddingOf(section) * 2;
+      const sides = paddingOf(section);
+      const fullWidth = opts.geometry.width - sides.left - sides.right;
       const cols = section.columns && section.columns > 1 ? section.columns : 1;
       const gap = section.columnGap ?? 24;
       const blockWidth = cols > 1 ? (fullWidth - gap * (cols - 1)) / cols : fullWidth;
@@ -224,7 +226,7 @@ export async function measureFlowSections(
 
       return {
         metrics,
-        available: opts.geometry.height - padding * 2,
+        available: opts.geometry.height - padding.top - padding.bottom,
         footnoteOverhead,
       };
     });

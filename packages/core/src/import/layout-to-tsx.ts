@@ -1,4 +1,14 @@
-import type { Css, DocxLayout, LBlock, LCell, LParagraph, LRun, LTable } from './docx-layout.ts';
+import type {
+  Css,
+  DocxLayout,
+  LBlock,
+  LCell,
+  LParagraph,
+  LRun,
+  LRunning,
+  LSection,
+  LTable,
+} from './docx-layout.ts';
 import { attr, type GeneratedDocument, type ImportImage, jsString, jsxText } from './to-tsx.ts';
 
 export type LayoutGenerateOptions = {
@@ -55,6 +65,8 @@ type Context = {
   images?: Map<string, ImportImage>;
   baseFont: string;
   usesRows: boolean;
+  /** Page fields the header or footer being written shows. */
+  fields: Set<'page' | 'pages'>;
 };
 
 /** The run style most of the paragraph's text is set in; the paragraph carries it, runs only differ. */
@@ -130,6 +142,8 @@ function mergeRuns(runs: LRun[]): LRun[] {
       last?.kind === 'text' &&
       last.href === run.href &&
       last.vert === run.vert &&
+      last.field === run.field &&
+      !run.field &&
       JSON.stringify(last.css) === JSON.stringify(run.css)
     ) {
       out[out.length - 1] = { ...last, text: last.text + run.text };
@@ -250,6 +264,10 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
           })} data-od-generated="">${textJsx(run.text)}</span>`;
         case 'text': {
           let inner = textJsx(run.text);
+          if (run.field) {
+            ctx.fields.add(run.field);
+            inner = run.field === 'page' ? '{page}' : '{pages}';
+          }
           const own = solid(diff(run.css, base), p);
           if (run.href) {
             const linkCss: Css = {
@@ -293,11 +311,16 @@ function renderParagraph(p: LParagraph, ctx: Context, pad: string): string {
   // A floating box holds paragraphs of its own, which a <p> may not contain.
   const tag = heading ? `h${Math.min(p.heading ?? 1, 4)}` : boxed ? 'div' : 'p';
   const base = dominant(p);
-  const css = {
+  const css: Css = {
     ...ownRunCss(base, ctx, heading),
     ...p.css,
     ...(boxed ? { position: 'relative' } : {}),
   };
+  // Under a box that spans the line, the text starts below it.
+  const clear = Math.max(0, ...p.runs.map((run) => (run.kind === 'box' ? (run.clear ?? 0) : 0)));
+  if (clear > 0) css.paddingTop = clear;
+  const after = Math.max(0, ...p.runs.map((run) => (run.kind === 'box' ? (run.after ?? 0) : 0)));
+  if (after > 0) css.paddingBottom = after;
   const inline = p.runs.some((run) => run.kind !== 'box');
   const content = `${renderRuns(p, base, ctx)}${inline ? '' : '<br />'}`;
   return `${pad}<${tag}${styleAttr(css)}${flags(p)}>${content}</${tag}>`;
@@ -370,7 +393,14 @@ export function collectLayoutImages(layout: DocxLayout): string[] {
       }
     }
   };
-  for (const section of layout.sections) walk(section.blocks);
+  for (const section of layout.sections) {
+    for (const running of [section.header, section.footer]) {
+      if (!running) continue;
+      walk(running.blocks);
+      if (running.first) walk(running.first);
+    }
+    walk(section.blocks);
+  }
   return out;
 }
 
@@ -388,15 +418,69 @@ export function generateLayoutSource(
     ...(opts.images ? { images: opts.images } : {}),
     baseFont: layout.baseFont,
     usesRows: false,
+    fields: new Set(),
   };
   const title = opts.title ?? layout.title ?? opts.docId.replace(/-/g, ' ');
 
+  // Headers and footers: one component each, shared by the sections that print the same one.
+  const runningSource = new Map<string, string>();
+  const runningDefs: string[] = [];
+  const pageHooks = new Set<'page' | 'pages'>();
+  const runningComponent = (
+    kind: 'Header' | 'Footer',
+    running: LRunning | undefined,
+    section: LSection,
+    firstSection: boolean,
+  ): string | undefined => {
+    if (!running) return undefined;
+    ctx.fields = new Set();
+    const render = (blocks: LBlock[]) =>
+      blocks.map((block) => renderBlock(block, ctx, '        ')).join('\n');
+    const main = render(running.blocks);
+    // Only the document's first sheet is known to open a section here.
+    const first = running.first && firstSection ? render(running.first) : undefined;
+    const usesPage = ctx.fields.has('page') || first !== undefined;
+    const usesPages = ctx.fields.has('pages');
+    const edge = kind === 'Header' ? 'top' : 'bottom';
+    const box = styleAttr({
+      position: 'absolute',
+      [edge]: running.offset,
+      left: section.padding.left,
+      right: section.padding.right,
+    });
+    const inner =
+      first !== undefined
+        ? `      {page === 1 ? (\n        <>\n${first || '          {null}'}\n        </>\n      ) : (\n        <>\n${main || '          {null}'}\n        </>\n      )}`
+        : main;
+    const hooks = [
+      ...(usesPage ? ['  const page = useDocPageNumber();'] : []),
+      ...(usesPages ? ['  const pages = useDocPageCount();'] : []),
+    ];
+    const body = `${hooks.length ? `{\n${hooks.join('\n')}\n  return (` : '('}\n    <div data-od-running=""${box}>\n${inner}\n    </div>\n  )${hooks.length ? ';\n}' : ''}`;
+    const known = runningSource.get(body);
+    if (known) return known;
+    if (usesPage) pageHooks.add('page');
+    if (usesPages) pageHooks.add('pages');
+    const name = `${kind}${runningDefs.filter((def) => def.startsWith(`const ${kind}`)).length + 1}`;
+    runningSource.set(body, name);
+    runningDefs.push(`const ${name} = () => ${body};`);
+    return name;
+  };
+
   const sections = layout.sections.map((section, index) => {
+    const header = runningComponent('Header', section.header, section, index === 0);
+    const footer = runningComponent('Footer', section.footer, section, index === 0);
     const body = section.blocks.map((block) => renderBlock(block, ctx, '    ')).join('\n');
     const columns = section.columns
       ? `, columns: ${section.columns.count}, columnGap: ${section.columns.gap}`
       : '';
-    return `const Section${index + 1} = flow(\n  <>\n${body}\n  </>,\n  { padding: ${section.padding}${columns} },\n);`;
+    const running = `${header ? `, header: ${header}` : ''}${footer ? `, footer: ${footer}` : ''}`;
+    const { top, right, bottom, left } = section.padding;
+    const padding =
+      top === right && right === bottom && bottom === left
+        ? `${top}`
+        : `{ top: ${top}, right: ${right}, bottom: ${bottom}, left: ${left} }`;
+    return `const Section${index + 1} = flow(\n  <>\n${body}\n  </>,\n  { padding: ${padding}${columns}${running} },\n);`;
   });
 
   const baseStack = layout.fonts.get(layout.baseFont) ?? MONO_STACK;
@@ -416,7 +500,7 @@ export function generateLayoutSource(
     mono: ${jsString(MONO_STACK)},
   },
   typeScale: { title: ${r(size * 2)}, h1: ${r(size * 1.6)}, h2: ${r(size * 1.3)}, h3: ${r(size * 1.15)}, body: ${r(size)}, caption: ${r(Math.max(10, size * 0.75))} },
-  margin: ${layout.sections[0]?.padding ?? 76},
+  margin: ${layout.sections[0]?.padding.left ?? 76},
   leading: 1.2,
   radius: 0,
 };`;
@@ -431,6 +515,8 @@ export function generateLayoutSource(
     'type DocEntry',
     'type DocMeta',
     'flow',
+    ...(pageHooks.has('pages') ? ['useDocPageCount'] : []),
+    ...(pageHooks.has('page') ? ['useDocPageNumber'] : []),
     ...(ctx.usesRows ? ['useTableSlice'] : []),
   ];
   const head = [
@@ -469,6 +555,7 @@ const Rows = ({ children }: { children?: ReactNode }) => {
     ...fonts,
     '',
     ...(rows ? [rows, ''] : []),
+    ...(runningDefs.length ? [runningDefs.join('\n\n'), ''] : []),
     sections.join('\n\n'),
     '',
     `export const meta: DocMeta = {\n${metaFields.join('\n')}\n};`,

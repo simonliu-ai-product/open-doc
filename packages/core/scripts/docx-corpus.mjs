@@ -102,7 +102,7 @@ function sourceText(source) {
   // A generated span holds no tags of its own beyond <sup>/<span>, so a lazy match is enough.
   body = body
     .replace(/<span[^>]*data-od-generated=""[^>]*>[\s\S]*?<\/span>(?:<\/sup>)?/g, '')
-    .replace(/const Section\d+ = flow\(|\{ padding:[^}]*\},|^\s*\);$|<\/>,/gm, '');
+    .replace(/const Section\d+ = flow\(|^\s*\{ padding:.*$|^\s*\);$|<\/>,/gm, '');
   // Escaped characters ({'<'}) come back after the tags are stripped, or a
   // literal < would swallow the text up to the next tag.
   const kept = [];
@@ -154,7 +154,8 @@ function orderRatio(expected, actual) {
 /** Runs in the page: reads the print copy back as text, blocks, runs, tables and fonts. */
 function dumpPrintCopy(fontNames) {
   const pages = [...document.querySelectorAll('.od-print-page')];
-  const generated = (node) => !!node.parentElement?.closest('[data-od-generated]');
+  // Text the import made up, and the header and footer every sheet repeats.
+  const generated = (node) => !!node.parentElement?.closest('[data-od-generated], [data-od-running]');
   const pageTexts = [];
   const blocks = [];
   const tables = new Map();

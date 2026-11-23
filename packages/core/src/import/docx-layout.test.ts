@@ -40,7 +40,7 @@ describe('readDocxLayout', () => {
     expect(layout.pageSize).toBe('A4');
     expect(layout.orientation).toBe('portrait');
     // 1440 twips top/bottom = 96px; the wider left margin is made up per block.
-    expect(layout.sections[0].padding).toBe(96);
+    expect(layout.sections[0].padding).toEqual({ top: 96, right: 96, bottom: 96, left: 96 });
     const para = layout.sections[0].blocks[0] as LParagraph;
     expect(para.css.margin).toBe('0px 0px 0px 24px');
   });
@@ -174,7 +174,11 @@ describe('readDocxLayout', () => {
         '<w:sectPr><w:pgMar w:top="851" w:right="851" w:bottom="851" w:left="851"/></w:sectPr>',
       ),
     );
-    expect(layout.sections.map((section) => section.padding)).toEqual([49.13, 56.73]);
+    expect(layout.sections.map((section) => section.padding)).toEqual([
+      // Word's own top and bottom; the sides pad with the narrower one.
+      { top: 49.13, right: 83.13, bottom: 49.13, left: 83.13 },
+      { top: 56.73, right: 56.73, bottom: 56.73, left: 56.73 },
+    ]);
   });
 });
 
@@ -581,6 +585,66 @@ describe('compatibility', () => {
       ),
     ) as LParagraph[];
     expect(para.runs.map((run) => (run.kind === 'text' ? run.text : '')).join('')).toBe('☐□□');
+  });
+
+  it('prints headers and footers in the margin band, with live page numbers', () => {
+    const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    const sectPr = `<w:sectPr ${R}><w:headerReference w:type="default" r:id="rH"/><w:headerReference w:type="first" r:id="rF"/><w:footerReference w:type="default" r:id="rFt"/><w:titlePg/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="851" w:footer="992"/></w:sectPr>`;
+    const files = unzipSync(docx(p(r('本文')), '', sectPr));
+    const pic = `<w:r><w:drawing><wp:inline xmlns:wp="wp"><wp:extent cx="952500" cy="476250"/><wp:docPr id="1" name="p" descr="校徽"/><a:graphic xmlns:a="a"><a:graphicData><a:blip ${R} r:embed="rIdLogo"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+    files['word/header1.xml'] = strToU8(`<w:hdr ${W}>${p(pic + r('機密文件'))}</w:hdr>`);
+    files['word/header2.xml'] = strToU8(`<w:hdr ${W}>${p(r('封面頁首'))}</w:hdr>`);
+    files['word/footer1.xml'] = strToU8(
+      `<w:ftr ${W}>${p(
+        `${r('第 ')}<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r('3')}<w:r><w:fldChar w:fldCharType="end"/></w:r>${r(' 頁，共 ')}<w:fldSimple w:instr=" NUMPAGES ">${r('9')}</w:fldSimple>${r(' 頁')}`,
+        '<w:jc w:val="center"/>',
+      )}</w:ftr>`,
+    );
+    const rel = (id: string, type: string, target: string) =>
+      `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${target}"/>`;
+    files['word/_rels/document.xml.rels'] = strToU8(
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel('rH', 'header', 'header1.xml')}${rel('rF', 'header', 'header2.xml')}${rel('rFt', 'footer', 'footer1.xml')}</Relationships>`,
+    );
+    // The header's picture is named in the header's own relationships.
+    files['word/_rels/header1.xml.rels'] = strToU8(
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel('rIdLogo', 'image', 'media/logo.png')}</Relationships>`,
+    );
+    files['word/media/logo.png'] = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+
+    const layout = readDocxLayout(zipSync(files));
+    const [section] = layout.sections;
+    expect(section.header?.offset).toBeCloseTo(56.73, 1);
+    expect(section.footer?.offset).toBeCloseTo(66.13, 1);
+    expect(layout.text).not.toContain('機密文件');
+    expect(layout.warnings.join(' ')).not.toMatch(/header/i);
+    const [logo] = (section.header?.blocks[0] as LParagraph | undefined)?.runs ?? [];
+    expect(logo).toMatchObject({ kind: 'image', src: 'word/media/logo.png' });
+    const footerRuns = (section.footer?.blocks[0] as LParagraph | undefined)?.runs ?? [];
+    expect(
+      footerRuns
+        .filter((run) => run.kind === 'text' && run.field)
+        .map((run) => run.kind === 'text' && run.field),
+    ).toEqual(['page', 'pages']);
+
+    const { source } = generateLayoutSource(layout, {
+      docId: 'memo',
+      createdAt: '2026-11-23T00:00:00.000Z',
+    });
+    expect(source).toContain('const Header1 = () => {');
+    expect(source).toContain('{page === 1 ? (');
+    expect(source).toContain('封面頁首');
+    expect(source).toContain('{page}');
+    expect(source).toContain('{pages}');
+    expect(source).toMatch(/useDocPageCount,\s+useDocPageNumber,/);
+    expect(source).toContain('header: Header1, footer: Footer1 }');
+    expect(source).toMatch(/position: 'absolute', bottom: 66\.13/);
+  });
+
+  it('sets a paragraph’s text under a box that spans the line', () => {
+    const box = `<w:r><w:drawing><wp:anchor xmlns:wp="wp" distB="95250"><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="5715000" cy="952500"/><wp:wrapTopAndBottom/><a:graphic xmlns:a="a"><a:graphicData><wps:wsp xmlns:wps="wps"><wps:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:ln></wps:spPr><wps:txbx><w:txbxContent>${p(r('框內提醒'))}</w:txbxContent></wps:txbx></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
+    const [para] = blocks(docx(p(box + r('框下的字')))) as LParagraph[];
+    const run = para.runs.find((entry) => entry.kind === 'box');
+    expect(run).toMatchObject({ kind: 'box', height: 100, clear: 110 });
   });
 
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {

@@ -61,6 +61,7 @@ export type {
   DocMeta,
   DocModule,
   DocPage,
+  FlowPadding,
   FlowSection,
   Orientation,
   PageGeometry,

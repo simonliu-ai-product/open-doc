@@ -53,6 +53,19 @@ export type DocPage = ComponentType;
  * A run of continuous content the framework paginates itself. Build one with
  * `flow(...)` and put it in the page array alongside fixed pages.
  */
+export type FlowPadding = number | { top: number; right: number; bottom: number; left: number };
+
+/** A flow section's padding, side by side. */
+export function paddingSides(
+  padding: FlowPadding | undefined,
+  fallback: number,
+): { top: number; right: number; bottom: number; left: number } {
+  const value = padding ?? fallback;
+  return typeof value === 'number'
+    ? { top: value, right: value, bottom: value, left: value }
+    : value;
+}
+
 export type FlowSection = {
   readonly __odFlow: true;
   blocks: ReactNode[];
@@ -60,8 +73,12 @@ export type FlowSection = {
   header?: ComponentType;
   /** Rendered on every page the section expands into. */
   footer?: ComponentType;
-  /** Page padding override in px; defaults to the design's `margin`. */
-  padding?: number;
+  /**
+   * Page padding override in px — one number for all four sides, or each side
+   * on its own (a Word page's top and bottom margins rarely match its sides).
+   * Defaults to the design's `margin`.
+   */
+  padding?: FlowPadding;
   /** Number of columns for body content inside each page of this flow section. */
   columns?: 1 | 2 | 3;
   /** Gap in px between columns when `columns > 1`; defaults to 24. */

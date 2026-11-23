@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PAGE_SIZE_NAMES, PAGE_SIZES, resolvePageGeometry } from './sdk.ts';
+import { PAGE_SIZE_NAMES, PAGE_SIZES, paddingSides, resolvePageGeometry } from './sdk.ts';
 
 describe('resolvePageGeometry', () => {
   it('defaults to portrait A4', () => {
@@ -26,5 +26,14 @@ describe('resolvePageGeometry', () => {
   it('falls back to A4 for a page size that is no longer offered', () => {
     const geo = resolvePageGeometry({ pageSize: 'Letter' as never });
     expect(geo.width).toBe(PAGE_SIZES.A4.width);
+  });
+});
+
+describe('paddingSides', () => {
+  it('spreads one number to all four sides and keeps sides given one by one', () => {
+    expect(paddingSides(undefined, 76)).toEqual({ top: 76, right: 76, bottom: 76, left: 76 });
+    expect(paddingSides(40, 76)).toEqual({ top: 40, right: 40, bottom: 40, left: 40 });
+    const sides = { top: 96, right: 72, bottom: 120, left: 72 };
+    expect(paddingSides(sides, 76)).toEqual(sides);
   });
 });
