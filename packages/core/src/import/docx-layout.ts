@@ -140,6 +140,9 @@ export type LBlock = LParagraph | LTable;
 export type LRunning = {
   /** Distance from the sheet's top edge (header) or bottom edge (footer), px. */
   offset: number;
+  /** Word's left and right margins: the band's text runs between them. */
+  left: number;
+  right: number;
   blocks: LBlock[];
   /** Different first page: what the section's first sheet prints instead. */
   first?: LBlock[];
@@ -671,6 +674,8 @@ class LayoutReader {
   private numbering = new Map<string, Map<number, Level>>();
   private counters = new Map<string, number[]>();
   private theme = new Map<string, string>();
+  /** The theme's colour scheme: accent1–6, dk1, lt1, dk2, lt2, hyperlinks. */
+  private themeColors = new Map<string, string>();
   private tabStop = 720;
   private counts = new Map<string, number>();
   private media = new Map<string, Uint8Array>();
@@ -689,6 +694,11 @@ class LayoutReader {
   private partRels?: Map<string, Rel>;
   private partDir?: string;
   private inRunning = false;
+  /** While reading a header or footer: which, and its distance from the sheet's edge. */
+  private runningEdge?: { kind: 'header' | 'footer'; offset: number };
+  private pageHeight = 1123;
+  private marginTop = 96;
+  private marginBottom = 96;
   /** The headers and footers each section inherits unless it names its own. */
   private running: Record<string, Record<string, LBlock[] | undefined>> = {
     header: {},
@@ -758,6 +768,9 @@ class LayoutReader {
           : 0;
       const pageWidth = landscape ? sheet.height : sheet.width;
       this.textWidth = pageWidth - left - right;
+      this.pageHeight = landscape ? sheet.width : sheet.height;
+      this.marginTop = top;
+      this.marginBottom = bottom;
       // The page pads both sides with the smaller side margin, and every block
       // makes up the difference on its own side.
       const padding = Math.max(8, Math.min(left, right));
@@ -904,7 +917,9 @@ class LayoutReader {
     const memory = this.running[kind];
     for (const ref of sectPr ? descendants(sectPr, `w:${kind}Reference`) : []) {
       const type = ref.attrs['w:type'] ?? 'default';
+      this.runningEdge = { kind, offset };
       const blocks = this.readRunningPart(ref.attrs['r:id']);
+      this.runningEdge = undefined;
       if (type === 'even') {
         if (blocks.length > 0) this.count('evenPages');
         continue;
@@ -915,7 +930,13 @@ class LayoutReader {
     const blocks = memory.default ?? [];
     const first = titlePg ? (memory.first ?? []) : undefined;
     if (blocks.length === 0 && !first?.length) return undefined;
-    return { offset, blocks, ...(first ? { first } : {}) };
+    return {
+      offset,
+      left: round(this.padding + this.insetLeft),
+      right: round(this.padding + this.insetRight),
+      blocks,
+      ...(first ? { first } : {}),
+    };
   }
 
   private readRunningPart(relId: string | undefined): LBlock[] {
@@ -1070,6 +1091,22 @@ class LayoutReader {
       if (latin) this.theme.set(`${kind}Ascii`, latin);
       if (ea) this.theme.set(`${kind}EastAsia`, ea);
     }
+    const scheme = descendants(xml, 'a:clrScheme')[0];
+    for (const slot of scheme ? elements(scheme) : []) {
+      const color = elements(slot)[0];
+      const value = color?.attrs.val ?? color?.attrs.lastClr;
+      if (value) this.themeColors.set(slot.name.replace(/^a:/, ''), `#${value}`);
+    }
+  }
+
+  /** A drawing colour: written out, or the theme's, as a shape's fill or line names it. */
+  private drawingColor(fill: XmlElement | undefined): string | undefined {
+    const rgb = child(fill, 'a:srgbClr')?.attrs.val;
+    if (rgb) return `#${rgb}`;
+    const scheme = child(fill, 'a:schemeClr')?.attrs.val;
+    if (!scheme) return undefined;
+    const alias: Record<string, string> = { tx1: 'dk1', bg1: 'lt1', tx2: 'dk2', bg2: 'lt2' };
+    return this.themeColors.get(alias[scheme] ?? scheme);
   }
 
   private chain(id: string | undefined): Style[] {
@@ -1999,9 +2036,25 @@ class LayoutReader {
    */
   private anchorPlace(anchor: XmlElement, width: number, height: number) {
     const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
+    const pageWidth = this.textWidth + this.insetLeft + this.insetRight + 2 * this.padding;
     const axis = (name: string, size: number, room: number) => {
-      const position = child(anchor, name);
+      // Word 2010 writes a percentage offset inside a compatibility wrapper.
+      const wrapped = elements(anchor, 'mc:AlternateContent').flatMap((alt) =>
+        elements(alt).flatMap((branch) => elements(branch, name)),
+      );
+      const position = child(anchor, name) ?? wrapped[0];
       const from = position?.attrs.relativeFrom ?? 'column';
+      const pct = child(
+        position,
+        name === 'wp:positionH' ? 'wp14:pctPosHOffset' : 'wp14:pctPosVOffset',
+      );
+      if (pct && name === 'wp:positionH' && from === 'page') {
+        return {
+          value: round(((num(textContent(pct)) ?? 0) / 100000) * pageWidth),
+          from,
+          align: '',
+        };
+      }
       const offset = child(position, 'wp:posOffset');
       const align = textContent(
         child(position, 'wp:align') ?? { name: '', attrs: {}, children: [] },
@@ -2014,10 +2067,37 @@ class LayoutReader {
       }
       return { value, from, align };
     };
-    const pageWidth = this.textWidth + this.insetLeft + this.insetRight + 2 * this.padding;
-    const hFrom = child(anchor, 'wp:positionH')?.attrs.relativeFrom ?? 'column';
+    const hFrom =
+      (
+        child(anchor, 'wp:positionH') ??
+        elements(anchor, 'mc:AlternateContent').flatMap((alt) =>
+          elements(alt).flatMap((branch) => elements(branch, 'wp:positionH')),
+        )[0]
+      )?.attrs.relativeFrom ?? 'column';
     const h = axis('wp:positionH', width, hFrom === 'page' ? pageWidth : this.textWidth);
-    const v = axis('wp:positionV', height, 0);
+    const vFrom = (
+      child(anchor, 'wp:positionV') ??
+      elements(anchor, 'mc:AlternateContent').flatMap((alt) =>
+        elements(alt).flatMap((branch) => elements(branch, 'wp:positionV')),
+      )[0]
+    )?.attrs.relativeFrom;
+    const marginHeight = this.pageHeight - this.marginTop - this.marginBottom;
+    const v = axis(
+      'wp:positionV',
+      height,
+      vFrom === 'page' ? this.pageHeight : vFrom === 'margin' ? marginHeight : 0,
+    );
+    // An offset from the sheet or its margin, made one from the paragraph:
+    // a header's starts at its band, a body's (roughly) at the top margin.
+    if (vFrom === 'page' || vFrom === 'margin') {
+      const edge = this.runningEdge;
+      const paragraphTop = !edge
+        ? this.marginTop
+        : edge.kind === 'header'
+          ? edge.offset
+          : this.pageHeight - edge.offset - 20;
+      v.value = round(v.value + (vFrom === 'margin' ? this.marginTop : 0) - paragraphTop);
+    }
     let left = h.value;
     // Offsets measured from the page or its left margin, not the text column.
     if (h.from === 'page') left -= this.padding + this.insetLeft;
@@ -2039,7 +2119,7 @@ class LayoutReader {
       emu(anchor.attrs.distB),
       emu(anchor.attrs.distL),
     ];
-    const top = v.from === 'paragraph' || v.from === 'line' ? v.value : 0;
+    const top = v.value;
     const around = ['wp:wrapSquare', 'wp:wrapTight', 'wp:wrapThrough'].some(
       (name) => !!child(anchor, name),
     );
@@ -2061,8 +2141,24 @@ class LayoutReader {
   private anchoredBox(anchor: XmlElement, out: LRun[]): boolean {
     const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
     const extent = child(anchor, 'wp:extent');
-    const width = emu(extent?.attrs.cx);
-    const height = emu(extent?.attrs.cy);
+    let width = emu(extent?.attrs.cx);
+    let height = emu(extent?.attrs.cy);
+    // Word 2010 sizes a shape as a share of the page or margin instead.
+    const share = (name: string, pct: string, page: number, margin: number) => {
+      const rel = descendants(anchor, name)[0];
+      const value = num(textContent(child(rel, pct) ?? { name: '', attrs: {}, children: [] }));
+      if (!rel || !value) return undefined;
+      return round((value / 100000) * (rel.attrs.relativeFrom === 'page' ? page : margin));
+    };
+    const pageWidth = this.textWidth + this.insetLeft + this.insetRight + 2 * this.padding;
+    width = share('wp14:sizeRelH', 'wp14:pctWidth', pageWidth, this.textWidth) ?? width;
+    height =
+      share(
+        'wp14:sizeRelV',
+        'wp14:pctHeight',
+        this.pageHeight,
+        this.pageHeight - this.marginTop - this.marginBottom,
+      ) ?? height;
     const { left, v } = this.anchorPlace(anchor, width, height);
 
     // A group (wpg) places each shape on its own child grid, scaled to the
@@ -2169,10 +2265,7 @@ class LayoutReader {
     const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
     const line = child(spPr, 'a:ln');
     const lineFill = child(line, 'a:solidFill');
-    const color = (fill: XmlElement | undefined) => {
-      const rgb = child(fill, 'a:srgbClr')?.attrs.val;
-      return rgb ? `#${rgb}` : '#000000';
-    };
+    const color = (fill: XmlElement | undefined) => this.drawingColor(fill) ?? '#000000';
     const css: Css = {};
     if (line && !child(line, 'a:noFill') && (lineFill || child(line, 'a:prstDash'))) {
       css.border = `${Math.max(0.5, emu(line.attrs.w ?? '9525'))}px solid ${color(lineFill)}`;
@@ -2189,8 +2282,8 @@ class LayoutReader {
     if (geometry === 'ellipse') css.borderRadius = '50%';
     else if (geometry === 'roundRect') css.borderRadius = Math.min(box.w, box.h) * 0.16;
     else if (/^(line|straightConnector1)$/.test(geometry) && css.border) {
-      if (box.h > 2 && box.w > 2) return false;
-      css[box.h <= 2 ? 'borderTop' : 'borderLeft'] = css.border;
+      if (box.h > 4 && box.w > 4) return false;
+      css[box.h <= 4 ? 'borderTop' : 'borderLeft'] = css.border;
       delete css.border;
       css.padding = 0;
     }

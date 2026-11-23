@@ -6,7 +6,6 @@ import type {
   LParagraph,
   LRun,
   LRunning,
-  LSection,
   LTable,
 } from './docx-layout.ts';
 import { attr, type GeneratedDocument, type ImportImage, jsString, jsxText } from './to-tsx.ts';
@@ -464,7 +463,6 @@ export function generateLayoutSource(
   const runningComponent = (
     kind: 'Header' | 'Footer',
     running: LRunning | undefined,
-    section: LSection,
     firstSection: boolean,
   ): string | undefined => {
     if (!running) return undefined;
@@ -480,8 +478,8 @@ export function generateLayoutSource(
     const box = styleAttr({
       position: 'absolute',
       [edge]: running.offset,
-      left: section.padding.left,
-      right: section.padding.right,
+      left: running.left,
+      right: running.right,
     });
     const inner =
       first !== undefined
@@ -503,8 +501,8 @@ export function generateLayoutSource(
   };
 
   const sections = layout.sections.map((section, index) => {
-    const header = runningComponent('Header', section.header, section, index === 0);
-    const footer = runningComponent('Footer', section.footer, section, index === 0);
+    const header = runningComponent('Header', section.header, index === 0);
+    const footer = runningComponent('Footer', section.footer, index === 0);
     const body = section.blocks.map((block) => renderBlock(block, ctx, '    ')).join('\n');
     const columns = section.columns
       ? `, columns: ${section.columns.count}, columnGap: ${section.columns.gap}`
