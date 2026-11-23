@@ -226,6 +226,27 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
                 verticalAlign: 'bottom',
               }
             : { display: 'inline-block', maxWidth: '100%', verticalAlign: 'bottom' };
+          if (run.place) {
+            // Where Word floats it: over the text, beside it, or on its own line.
+            const { mode, left, top, gap, behind } = run.place;
+            const [t, r, b, l] = gap;
+            const placed: Css =
+              mode === 'over'
+                ? { position: 'absolute', left, top, zIndex: behind ? 0 : 1 }
+                : mode === 'line'
+                  ? {
+                      display: 'block',
+                      marginLeft: Math.max(0, left),
+                      marginTop: t,
+                      marginBottom: b,
+                    }
+                  : {
+                      float: mode,
+                      margin:
+                        mode === 'left' ? `${t}px ${r}px ${b}px 0px` : `${t}px 0px ${b}px ${l}px`,
+                    };
+            return `<img src=${src} alt=${attr(run.alt)}${styleAttr({ width: run.width, height: run.height, ...placed })} />`;
+          }
           return `<img src=${src} alt=${attr(run.alt)}${styleAttr(size)} />`;
         }
         case 'blank':
@@ -316,7 +337,9 @@ function flags(block: LBlock): string {
 
 function renderParagraph(p: LParagraph, ctx: Context, pad: string): string {
   const heading = !!p.heading;
-  const boxed = p.runs.some((run) => run.kind === 'box');
+  const boxed = p.runs.some(
+    (run) => run.kind === 'box' || (run.kind === 'image' && run.place?.mode === 'over'),
+  );
   // A floating box holds paragraphs of its own, which a <p> may not contain.
   const tag = heading ? `h${Math.min(p.heading ?? 1, 4)}` : boxed ? 'div' : 'p';
   const base = dominant(p);

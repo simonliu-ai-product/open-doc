@@ -666,6 +666,39 @@ describe('compatibility', () => {
     expect(source).toMatch(/\bFootnote,/);
   });
 
+  it('floats a picture where Word wraps it: beside the text, or over it', () => {
+    const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    const pic = (wrap: string, h: string) =>
+      `<w:r><w:drawing><wp:anchor xmlns:wp="wp" distT="0" distB="0" distL="114300" distR="114300" behindDoc="0"><wp:positionH relativeFrom="${h.startsWith('align') ? 'margin' : 'column'}">${h.startsWith('align') ? `<wp:align>${h.slice(6)}</wp:align>` : `<wp:posOffset>${h}</wp:posOffset>`}</wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>95250</wp:posOffset></wp:positionV><wp:extent cx="952500" cy="952500"/>${wrap}<wp:docPr id="1" name="p"/><a:graphic xmlns:a="a"><a:graphicData><a:blip ${R} r:embed="rIdA"/></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
+    const files = unzipSync(
+      docx(
+        p(pic('<wp:wrapSquare wrapText="bothSides"/>', 'align:right') + r('繞著圖的文字')) +
+          p(pic('<wp:wrapNone/>', '1905000') + r('壓在圖上的字')),
+      ),
+    );
+    files['word/_rels/document.xml.rels'] = strToU8(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdA" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/a.png"/></Relationships>',
+    );
+    files['word/media/a.png'] = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const layout = readDocxLayout(zipSync(files));
+    const [beside, over] = layout.sections[0].blocks as LParagraph[];
+    expect(beside.runs[0]).toMatchObject({
+      kind: 'image',
+      place: { mode: 'right', gap: [0, 12, 0, 12] },
+    });
+    expect(over.runs[0]).toMatchObject({
+      kind: 'image',
+      place: { mode: 'over', left: 200, top: 10 },
+    });
+    expect(layout.warnings.join(' ')).not.toMatch(/floating/);
+    const { source } = generateLayoutSource(layout, {
+      docId: 'f',
+      createdAt: '2026-11-23T00:00:00.000Z',
+    });
+    expect(source).toContain("float: 'right'");
+    expect(source).toMatch(/position: 'absolute', left: 200, top: 10/);
+  });
+
   it('keeps a lost picture as a labelled frame and an empty checkbox control as a box', () => {
     const [para] = blocks(
       docx(

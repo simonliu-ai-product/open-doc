@@ -51,6 +51,19 @@ export type LRun =
       height: number;
       /** Word floats it: it takes no room in the text, so it pushes nothing down. */
       floating?: true;
+      /**
+       * Where a floating picture sits: over the text at an offset from the
+       * paragraph (`over`), at one side with the text running around it, or
+       * on a line of its own.
+       */
+      place?: {
+        mode: 'over' | 'left' | 'right' | 'line';
+        left: number;
+        top: number;
+        /** Space Word keeps between it and the text: top, right, bottom, left. */
+        gap: [number, number, number, number];
+        behind?: true;
+      };
       /** A picture group: each picture at its place inside the group's box. */
       parts?: Array<{
         src: string;
@@ -1859,8 +1872,15 @@ class LayoutReader {
           ...(floating ? { floating: true as const } : {}),
         });
     };
+    const place =
+      anchor && blips.length === 1 && !group ? this.floatPlace(anchor, width, height) : undefined;
     for (const blip of blips) {
       const src = this.image(blip.attrs['r:embed'] ?? blip.attrs['r:link']);
+      if (src && place) {
+        out.push({ kind: 'image', src, alt, width, height, floating: true, place });
+        found++;
+        continue;
+      }
       if (src) {
         out.push({
           kind: 'image',
@@ -1894,7 +1914,7 @@ class LayoutReader {
         found++;
       }
     }
-    if (found > 0 && floating) this.count('floating', found);
+    if (found > 0 && floating && !place) this.count('floating', found);
     if (boxes.length === 0 && blips.length === 0 && descendants(el, 'v:imagedata').length === 0) {
       this.count('drawing');
       placeholder();
@@ -1906,11 +1926,13 @@ class LayoutReader {
    * placed the same way here, absolutely inside the paragraph, with its own
    * border, fill and insets. One with no text, border or fill draws nothing.
    */
-  private anchoredBox(anchor: XmlElement, out: LRun[]) {
+  /**
+   * Where Word anchors a floating object, in px from the paragraph's left
+   * text edge and top: offsets measured from the page or its left margin are
+   * moved onto the text column.
+   */
+  private anchorPlace(anchor: XmlElement, width: number, height: number) {
     const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
-    const extent = child(anchor, 'wp:extent');
-    const width = emu(extent?.attrs.cx);
-    const height = emu(extent?.attrs.cy);
     const axis = (name: string, size: number, room: number) => {
       const position = child(anchor, name);
       const from = position?.attrs.relativeFrom ?? 'column';
@@ -1924,14 +1946,58 @@ class LayoutReader {
         else if (align === 'right' || align === 'bottom' || align === 'outside')
           value = room - size;
       }
-      return { value, from };
+      return { value, from, align };
     };
-    const h = axis('wp:positionH', width, this.textWidth);
+    const pageWidth = this.textWidth + this.insetLeft + this.insetRight + 2 * this.padding;
+    const hFrom = child(anchor, 'wp:positionH')?.attrs.relativeFrom ?? 'column';
+    const h = axis('wp:positionH', width, hFrom === 'page' ? pageWidth : this.textWidth);
     const v = axis('wp:positionV', height, 0);
     let left = h.value;
     // Offsets measured from the page or its left margin, not the text column.
     if (h.from === 'page') left -= this.padding + this.insetLeft;
     else if (h.from === 'leftMargin') left -= this.insetLeft + this.padding;
+    return { left: round(left), h, v };
+  }
+
+  /** How a floating picture sits against the text, from Word's wrapping. */
+  private floatPlace(
+    anchor: XmlElement,
+    width: number,
+    height: number,
+  ): NonNullable<Extract<LRun, { kind: 'image' }>['place']> {
+    const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
+    const { left, h, v } = this.anchorPlace(anchor, width, height);
+    const gap: [number, number, number, number] = [
+      emu(anchor.attrs.distT),
+      emu(anchor.attrs.distR),
+      emu(anchor.attrs.distB),
+      emu(anchor.attrs.distL),
+    ];
+    const top = v.from === 'paragraph' || v.from === 'line' ? v.value : 0;
+    const around = ['wp:wrapSquare', 'wp:wrapTight', 'wp:wrapThrough'].some(
+      (name) => !!child(anchor, name),
+    );
+    if (child(anchor, 'wp:wrapTopAndBottom')) return { mode: 'line', left, top, gap };
+    if (around) {
+      // The side it is nearer: text runs down the other one.
+      const right = h.align === 'right' || (!h.align && left + width / 2 > this.textWidth / 2);
+      return { mode: right ? 'right' : 'left', left, top, gap };
+    }
+    return {
+      mode: 'over',
+      left,
+      top,
+      gap,
+      ...(anchor.attrs.behindDoc === '1' ? { behind: true as const } : {}),
+    };
+  }
+
+  private anchoredBox(anchor: XmlElement, out: LRun[]) {
+    const emu = (value: string | undefined) => round((num(value) ?? 0) / 9525);
+    const extent = child(anchor, 'wp:extent');
+    const width = emu(extent?.attrs.cx);
+    const height = emu(extent?.attrs.cy);
+    const { left, v } = this.anchorPlace(anchor, width, height);
 
     // A group (wpg) places each shape on its own child grid, scaled to the
     // group's extent; a lone shape fills the anchor.
