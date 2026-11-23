@@ -111,6 +111,8 @@ function sourceText(source) {
       kept.push(s.replace(/\\'/g, "'").replace(/\\\\/g, '\\').replace(/\\t/g, '\t'));
       return `${kept.length - 1}`;
     })
+    // A drawn checkbox stands for the box character Word typed.
+    .replace(/<Checkbox\b[^>]*\/>/g, '□')
     .replace(/<[^>]*>/g, '')
     .replace(/(\d+)/g, (_, n) => kept[Number(n)])
     .replace(/&amp;/g, '&');
@@ -480,8 +482,9 @@ for (const file of collect(corpus)) {
       .join(' | ');
   } else if (word) {
     const source = readFileSync(path.join(workspace, 'docs', id, 'index.tsx'), 'utf8');
-    const expected = wordText(new Uint8Array(readFileSync(file))) ?? '';
-    const actual = sourceText(source);
+    const boxes = (text) => text.replace(/[☐☑☒]/g, '□');
+    const expected = boxes(wordText(new Uint8Array(readFileSync(file))) ?? '');
+    const actual = boxes(sourceText(source));
     const gap = multisetGap(expected, actual);
     row.content = {
       ...gap,

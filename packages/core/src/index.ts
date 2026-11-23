@@ -2,6 +2,8 @@ export type { CalloutProps, CalloutVariant } from './app/components/callout.tsx'
 export { Callout } from './app/components/callout.tsx';
 export type { ChartProps, SparklineProps } from './app/components/chart.tsx';
 export { Chart, Sparkline } from './app/components/chart.tsx';
+export type { CheckboxProps } from './app/components/checkbox.tsx';
+export { Checkbox } from './app/components/checkbox.tsx';
 export type { CodeBlockProps } from './app/components/code-block.tsx';
 export { CodeBlock } from './app/components/code-block.tsx';
 export type {

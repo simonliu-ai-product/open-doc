@@ -209,7 +209,7 @@ describe('generateLayoutSource', () => {
     expect(source).toContain("textAlign: 'right'");
     expect(source).toContain("<span style={{ color: '#FF0000' }}>紅</span><strong>粗</strong>");
     expect(source).toContain(
-      "<span style={{ display: 'inline-block', width: '1em', borderBottom: '1px solid currentColor' }} />",
+      "<span data-od-blank=\"\" style={{ display: 'inline-block', minWidth: '1em', borderBottom: '1px solid currentColor', textIndent: 0, lineHeight: 1 }} />",
     );
     expect(source).toContain('<td rowSpan={2}');
     expect(source).toContain("pageSize: 'A4',");
@@ -861,7 +861,9 @@ describe('generated source marks', () => {
     const { source } = generateLayoutSource(layout, { docId: 'x', createdAt: 'x' });
     expect(source).toContain('data-od-source-table="0"');
     expect(source).toContain('<tr data-od-source-row="1">');
-    expect(source).toContain('<span data-od-generated="">☐</span>');
+    // A content-control checkbox is drawn, so ticking it keeps its look.
+    expect(source).toContain('<span data-od-generated=""><Checkbox /></span>');
+    expect(source).toMatch(/\bCheckbox,/);
   });
 });
 

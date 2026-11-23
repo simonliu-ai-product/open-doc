@@ -27,7 +27,7 @@ A PDF has no structure to import, only positioned text. Rebuild it:
 
 ## Word keeps its look
 
-A `.docx` imports with Word's page look by default: page size and margins, fonts, alignment, colours, table grid with merged cells, borders and shading, fill-in blanks. That is usually what the user wants — a form must still look like the form. So for a Word import, **skip the theme and restyle steps below** unless the user asks for a restyle; then re-import with `--plain` (MCP `plain: true`), which keeps only the structure, and continue with the steps below. Still run the check and the proofread.
+A `.docx` imports with Word's page look by default: page size and margins, fonts, alignment, colours, table grid with merged cells, borders and shading, fill-in blanks. That is usually what the user wants — a form must still look like the form. So for a Word import, **skip the theme and restyle steps below** unless the user asks for a restyle; then re-import with `--plain` (MCP `plain: true`), which keeps only the structure, and continue with the steps below. Still run the check and the proofread. To fill an imported form in, use the `fill-form` skill.
 
 ## After a Markdown, PDF or `--plain` import
 

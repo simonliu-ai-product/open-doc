@@ -68,6 +68,7 @@ type Context = {
   fields: Set<'page' | 'pages'>;
   usesFootnotes: boolean;
   usesChart: boolean;
+  usesCheckbox: boolean;
 };
 
 /** The run style most of the paragraph's text is set in; the paragraph carries it, runs only differ. */
@@ -250,10 +251,14 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
           return `<img src=${src} alt=${attr(run.alt)}${styleAttr(size)} />`;
         }
         case 'blank':
-          return `<span${styleAttr({
+          // A line to write on: text typed into it widens it rather than
+          // wrapping, and does not take the paragraph's hanging indent.
+          return `<span data-od-blank=""${styleAttr({
             display: 'inline-block',
-            width: run.width,
+            minWidth: run.width,
             borderBottom: '1px solid currentColor',
+            textIndent: 0,
+            lineHeight: 1,
             ...diff(pick(run.css, ['fontSize']), pick(base, ['fontSize'])),
           })} />`;
         case 'anchor':
@@ -327,7 +332,21 @@ function renderRuns(p: LParagraph, base: Css, ctx: Context): string {
             ...solid(diff(run.css, base), p),
           })} data-od-generated="">${textJsx(run.text)}</span>`;
         case 'text': {
-          let inner = textJsx(run.text);
+          // A box to tick on a form is drawn, so ticking it keeps its look.
+          let inner = /[□☐☑☒]/.test(run.text)
+            ? run.text
+                .split(/([□☐☑☒])/)
+                .map((part) => {
+                  if (!/^[□☐☑☒]$/.test(part)) return part ? textJsx(part) : '';
+                  ctx.usesCheckbox = true;
+                  return part === '☑'
+                    ? '<Checkbox checked />'
+                    : part === '☒'
+                      ? '<Checkbox checked mark="cross" />'
+                      : '<Checkbox />';
+                })
+                .join('')
+            : textJsx(run.text);
           if (run.field) {
             ctx.fields.add(run.field);
             inner = run.field === 'page' ? '{page}' : '{pages}';
@@ -490,6 +509,7 @@ export function generateLayoutSource(
     fields: new Set(),
     usesFootnotes: false,
     usesChart: false,
+    usesCheckbox: false,
   };
   const title = opts.title ?? layout.title ?? opts.docId.replace(/-/g, ' ');
 
@@ -586,6 +606,7 @@ export function generateLayoutSource(
     'type DocMeta',
     'flow',
     ...(ctx.usesChart ? ['Chart'] : []),
+    ...(ctx.usesCheckbox ? ['Checkbox'] : []),
     ...(ctx.usesFootnotes ? ['Footnote'] : []),
     ...(pageHooks.has('pages') ? ['useDocPageCount'] : []),
     ...(pageHooks.has('page') ? ['useDocPageNumber'] : []),
