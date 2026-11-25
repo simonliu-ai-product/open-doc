@@ -12,7 +12,8 @@ export type LayoutRule =
   | 'oversized-block'
   | 'orphan-heading'
   | 'tiny-text'
-  | 'broken-image';
+  | 'broken-image'
+  | 'page-budget';
 
 export type LayoutSeverity = 'error' | 'warn';
 
@@ -59,7 +60,7 @@ function snippet(el: Element): string {
   return `${tag}: ${text.length > SNIPPET_MAX ? `${text.slice(0, SNIPPET_MAX)}…` : text}`;
 }
 
-function locOf(el: Element): string | undefined {
+export function locOf(el: Element): string | undefined {
   return el.closest('[data-od-loc]')?.getAttribute('data-od-loc') ?? undefined;
 }
 
@@ -81,7 +82,7 @@ function leafmost(elements: Element[]): Element[] {
   return elements.filter((el) => !elements.some((other) => other !== el && el.contains(other)));
 }
 
-function pageNumberOf(frame: Element, fallbackIndex: number): number {
+export function pageNumberOf(frame: Element, fallbackIndex: number): number {
   const declared = Number(frame.getAttribute(PAGE_INDEX_ATTR));
   return (Number.isFinite(declared) ? declared : fallbackIndex) + 1;
 }
@@ -151,8 +152,9 @@ export function diagnosePages(
     const rawText = (frame.textContent ?? '').trim();
     const text = watermarkText && rawText === watermarkText ? '' : rawText;
     // A page shell always paints — background, borders. What makes a sheet
-    // blank is that it carries neither words nor a picture.
-    if (text === '' && !hasMedia) {
+    // blank is that it carries neither words nor a picture; an empty ruled
+    // table is a form to fill in, not a blank sheet.
+    if (text === '' && !hasMedia && !frame.querySelector('td, th')) {
       findings.push({
         page,
         rule: 'blank-page',
@@ -318,6 +320,45 @@ function danglingHeadings(
       element: snippet(heading),
       loc: locOf(heading),
     });
+  }
+  return out;
+}
+
+/**
+ * How far down each sheet the body reaches, as a share of the space above the
+ * footer band — 0 for an empty sheet, about 1 for a full one. The running
+ * footer is left out, or every sheet would read as full.
+ */
+export function pageFills(root: ParentNode, geometry: PageGeometry): number[] {
+  const frames = Array.from(root.querySelectorAll<HTMLElement>(`[${PAGE_ATTR}]`));
+  return frames.map((frame) => {
+    const frameRect = frame.getBoundingClientRect();
+    const footerTop = frameRect.bottom - geometry.height * FOOTER_ZONE_RATIO;
+    let reach = frameRect.top;
+    for (const el of Array.from(frame.querySelectorAll<HTMLElement>('*'))) {
+      if (el.closest('[data-od-watermark]')) continue;
+      if (!hasOwnText(el) && !MEDIA_TAGS.has(el.tagName)) continue;
+      const rect = el.getBoundingClientRect();
+      if (!isPainted(el, rect) || rect.top >= footerTop) continue;
+      reach = Math.max(reach, Math.min(rect.bottom, footerTop));
+    }
+    const room = footerTop - frameRect.top;
+    return room > 0 ? Math.round(((reach - frameRect.top) / room) * 100) / 100 : 0;
+  });
+}
+
+/** Where each heading with an id sits down its sheet, on the same 0–1 scale as `pageFills`. */
+export function headingOffsets(root: ParentNode, geometry: PageGeometry): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const frame of Array.from(root.querySelectorAll<HTMLElement>(`[${PAGE_ATTR}]`))) {
+    const frameRect = frame.getBoundingClientRect();
+    const room = frameRect.height - geometry.height * FOOTER_ZONE_RATIO;
+    if (room <= 0) continue;
+    for (const heading of Array.from(frame.querySelectorAll<HTMLElement>(HEADING_SELECTOR))) {
+      if (!heading.id || heading.id in out) continue;
+      const top = heading.getBoundingClientRect().top - frameRect.top;
+      out[heading.id] = Math.round(Math.min(Math.max(top / room, 0), 1) * 100) / 100;
+    }
   }
   return out;
 }

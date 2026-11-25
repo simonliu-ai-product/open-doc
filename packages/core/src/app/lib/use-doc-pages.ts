@@ -11,11 +11,13 @@ import {
 import { type MeasurableSection, measureFlowSections } from './flow-measure';
 import { extractSectionFootnotes, notesForPage, type PreparedSection } from './footnotes';
 import { useRecordIndex } from './records';
-import { type DocModule, type PageGeometry, pageLang } from './sdk';
+import { type DocModule, type PageGeometry, pageLang, sectionGeometry } from './sdk';
 
 export type ExpandedPage = {
   key: string;
   content: ReactNode;
+  /** Set when this sheet is turned from the document's: a landscape section's page. */
+  geometry?: PageGeometry;
 };
 
 type Plan = {
@@ -65,10 +67,13 @@ export function useDocPages(
         blocks: prepared[index].blocks,
         notesByBlock: prepared[index].notesByBlock,
         ...(section.padding !== undefined ? { padding: section.padding } : {}),
+        ...(sectionGeometry(geometry, section.orientation) !== geometry
+          ? { geometry: sectionGeometry(geometry, section.orientation) }
+          : {}),
         ...(section.columns !== undefined ? { columns: section.columns } : {}),
         ...(section.columnGap !== undefined ? { columnGap: section.columnGap } : {}),
       })),
-    [sections, prepared],
+    [sections, prepared, geometry],
   );
 
   const [state, setState] = useState<Measured>(NOT_MEASURED);
@@ -129,6 +134,7 @@ export function useDocPages(
       const chunks: BlockSlice[][] = plan.bySection[sectionIndex] ?? [
         blocks.map((_, index) => ({ index })),
       ];
+      const turned = sectionGeometry(geometry, section.orientation);
       chunks.forEach((blockSlices, pageIndex) => {
         const blockIndices = blockSlices.map((s) => s.index);
         const noteIndices = blockSlices
@@ -136,6 +142,7 @@ export function useDocPages(
           .map((s) => s.index);
         out.push({
           key: `f${entryIndex}-${pageIndex}`,
+          ...(turned !== geometry ? { geometry: turned } : {}),
           content: createElement(FlowPage, {
             section,
             design,
@@ -149,7 +156,7 @@ export function useDocPages(
     });
 
     return out;
-  }, [entries, plan, prepared, design]);
+  }, [entries, plan, prepared, design, geometry]);
 
   return { pages, measuring, overflowing: plan.overflowing };
 }

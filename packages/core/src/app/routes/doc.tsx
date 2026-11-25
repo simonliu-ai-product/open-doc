@@ -1122,7 +1122,7 @@ export function Doc() {
                     key={page.key}
                     index={index}
                     total={pages.length}
-                    geometry={geometry}
+                    geometry={page.geometry ?? geometry}
                     scale={scale}
                     design={doc.design}
                     lang={pageLang(doc.meta)}

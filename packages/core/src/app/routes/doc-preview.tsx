@@ -86,7 +86,7 @@ export function DocPreview() {
               <PageFrame
                 index={index}
                 total={pages.length}
-                geometry={geometry}
+                geometry={entry.geometry ?? geometry}
                 scale={1}
                 design={doc.design}
                 lang={pageLang(doc.meta)}

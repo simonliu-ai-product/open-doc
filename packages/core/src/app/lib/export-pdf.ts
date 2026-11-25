@@ -7,17 +7,22 @@ import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
 import { nextFrame, sleep, waitForDataWaitfor, waitForFonts, waitForImages } from './print-ready';
 import { captureScan, restoreScan, scanDocument } from './scan';
-import { type DocModule, resolvePageGeometry } from './sdk';
+import { type DocModule, resolvePageGeometry, turnGeometry } from './sdk';
 import { scopeSvgIds } from './svg-ids';
 import type { ExpandedPage } from './use-doc-pages';
 
 export const PRINT_ROOT_ID = 'od-print-root';
 export const PRINT_PAGE_CLASS = 'od-print-page';
 const PRINT_STYLE_ID = 'od-print-style';
+/** On a print page whose sheet is turned from the document's. */
+export const TURNED_ATTR = 'data-od-turned';
 
 function printStyles(geometry: { width: number; height: number; css: string }): string {
+  const turned = turnGeometry(geometry);
   return `
 @page { size: ${geometry.css}; margin: 0; }
+/* A landscape section's sheets inside a portrait document, or the reverse. */
+@page od-turned { size: ${turned.css}; margin: 0; }
 
 @media screen {
   #${PRINT_ROOT_ID} {
@@ -54,6 +59,11 @@ function printStyles(geometry: { width: number; height: number; css: string }): 
     break-after: page;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+  #${PRINT_ROOT_ID} .${PRINT_PAGE_CLASS}[${TURNED_ATTR}] {
+    width: ${turned.width}px !important;
+    height: ${turned.height}px !important;
+    page: od-turned;
   }
   #${PRINT_ROOT_ID} .${PRINT_PAGE_CLASS}:last-child {
     page-break-after: auto;
@@ -117,8 +127,10 @@ export async function mountPrintCopy(
     host.className = PRINT_PAGE_CLASS;
     host.setAttribute(PAGE_ATTR, '');
     host.setAttribute(PAGE_INDEX_ATTR, String(i));
-    host.style.width = `${geometry.width}px`;
-    host.style.height = `${geometry.height}px`;
+    const sheet = page.geometry ?? geometry;
+    host.style.width = `${sheet.width}px`;
+    host.style.height = `${sheet.height}px`;
+    if (page.geometry) host.setAttribute(TURNED_ATTR, '');
     if (designVars) {
       for (const [k, v] of Object.entries(designVars)) host.style.setProperty(k, v);
       host.style.background = 'var(--od-bg)';

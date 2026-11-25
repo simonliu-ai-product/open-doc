@@ -17,16 +17,19 @@ import {
   exportDocument,
   fileDocument,
   findAssetUsages,
+  importDocx,
   importMarkdown,
   listAssets,
   listDocuments,
   listFolders,
   listTemplates,
   listThemes,
+  markTranslated,
   OpsError,
   ORIENTATIONS,
   outlineDocument,
   PAGE_SIZE_NAMES,
+  proofreadDocument,
   readDocument,
   readDocumentLines,
   readText,
@@ -34,6 +37,7 @@ import {
   renameDocument,
   renderDocPage,
   searchDocument,
+  translationStatus,
   writeAsset,
   writeDocument,
   writeText,
@@ -544,10 +548,63 @@ export function registerTools(
     {
       title: 'Check the layout',
       description:
-        'Renders the document at true page size and reports what is wrong with the sheets — content clipped by the page edge, a blank page, a heading stranded at the foot of a page, unreadable type, an image that failed to load. Findings carry a `loc` (line:column) pointing at the source. Run this after writing or editing a document: it is the only way to see what you actually produced.',
+        'Renders the document at true page size and reports what is wrong with the sheets — content clipped by the page edge, a blank page, a heading stranded at the foot of a page, unreadable type, an image that failed to load. Findings carry a `loc` (line:column) pointing at the source. Run this after writing or editing a document: it is the only way to see what you actually produced. With `maxPages`, going over is an error and `budget` says how many pages must go and how many each top-level section takes.',
+      inputSchema: z.object({
+        docId: z.string(),
+        maxPages: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('Page limit the document must fit in'),
+      }),
+    },
+    ({ docId, maxPages }) => run(() => checkLayout(ctx, docId, { maxPages })),
+  );
+
+  server.registerTool(
+    'translation_status',
+    {
+      title: 'Translations and what they are behind',
+      description:
+        "Every document that declares `meta.translationOf` (the source document's id) and `meta.translatedAt` (the source commit it matches), with its state: current, stale (the source changed since), unsynced (no translatedAt yet), missing-source, unknown-revision or no-git. Stale ones list the changed source files and commits. Pass `docId` with `diff: true` to get the source's changes as a unified diff — translate only those, then call mark_translated.",
+      inputSchema: z.object({
+        docId: z.string().optional().describe('One translation; omit for all'),
+        diff: z
+          .boolean()
+          .optional()
+          .describe("Include the source's unified diff since translatedAt"),
+      }),
+    },
+    ({ docId, diff }) => run(() => translationStatus(ctx, { docId, diff })),
+  );
+
+  server.registerTool(
+    'mark_translated',
+    {
+      title: 'Mark a translation as up to date',
+      description:
+        "Sets the translation's `meta.translatedAt` to the source's last commit (or `revision`). Call it after the translation has caught up with every change translation_status listed. Refuses while the source has uncommitted changes.",
+      inputSchema: z.object({
+        docId: z.string().describe('The translation, not the source'),
+        revision: z
+          .string()
+          .optional()
+          .describe('Source commit it now matches; defaults to the last one'),
+      }),
+    },
+    ({ docId, revision }) => run(() => markTranslated(ctx, docId, revision)),
+  );
+
+  server.registerTool(
+    'proofread_document',
+    {
+      title: 'Proofread the text',
+      description:
+        "Reads the text the document prints and reports consistency slips: full-width letters or digits, punctuation of the wrong width for the document's language, Simplified characters in a Traditional Chinese document (or the reverse), a doubled word, one term capitalised two ways. Each finding has a page, a snippet and a `loc` (line:column). Advice, not errors — fix what is a real slip, leave what is intended. Code is not read.",
       inputSchema: z.object({ docId: z.string() }),
     },
-    ({ docId }) => run(() => checkLayout(ctx, docId)),
+    ({ docId }) => run(() => proofreadDocument(ctx, docId)),
   );
 
   server.registerTool(
@@ -668,6 +725,46 @@ export function registerTools(
     (args) =>
       run(async () => {
         const res = await importMarkdown(ctx, args);
+        notify('add', docEntry(res.id));
+        return res;
+      }),
+  );
+
+  server.registerTool(
+    'import_docx',
+    {
+      title: 'Import Word document',
+      description:
+        'Turns a Word .docx file into a real document under docs/ that looks like the Word page: page size and margins, alignment, indents, fonts, sizes, colours, tables with their column widths, merged cells, borders and shading, fill-in blanks, page breaks. Headings in Word heading styles stay real headings. Pass `plain: true` for structure only in the house style (with a cover), like import_markdown. `warnings` lists what Word had that the document could not hold (text boxes, footnotes, comments, tracked changes); tell the user about them.',
+      inputSchema: z.object({
+        file: z.string().describe('path to a .docx file inside the workspace'),
+        docId: z.string().optional().describe('defaults to a slug of the title'),
+        title: z.string().optional(),
+        lang: z
+          .string()
+          .optional()
+          .describe(
+            'BCP 47 tag, e.g. zh-Hant-TW; detected for Chinese, Japanese and Korean when omitted',
+          ),
+        subtitle: z.string().optional(),
+        author: z.string().optional(),
+        theme: z.string().optional(),
+        pageSize: z.enum(PAGE_SIZE_NAMES).optional(),
+        orientation: z.enum(ORIENTATIONS).optional(),
+        plain: z
+          .boolean()
+          .optional()
+          .describe('structure only in the house style instead of the Word page look'),
+        cover: z
+          .boolean()
+          .optional()
+          .describe('with plain: open with a title page; defaults to true'),
+        contents: z.boolean().optional().describe('with plain: add a self-filling contents page'),
+      }),
+    },
+    (args) =>
+      run(async () => {
+        const res = await importDocx(ctx, args);
         notify('add', docEntry(res.id));
         return res;
       }),

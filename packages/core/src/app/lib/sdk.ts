@@ -47,12 +47,41 @@ export type PageGeometry = {
   css: string;
 };
 
+/** The same paper turned a quarter: a landscape section in a portrait document, or back. */
+export function turnGeometry(geometry: PageGeometry): PageGeometry {
+  const [across, down] = geometry.css.split(/\s+/);
+  return { width: geometry.height, height: geometry.width, css: `${down} ${across}` };
+}
+
+/** A flow section's sheet: the document's, turned when the section sets the other orientation. */
+export function sectionGeometry(
+  geometry: PageGeometry,
+  orientation: Orientation | undefined,
+): PageGeometry {
+  if (!orientation) return geometry;
+  const landscape = geometry.width > geometry.height;
+  return (orientation === 'landscape') === landscape ? geometry : turnGeometry(geometry);
+}
+
 export type DocPage = ComponentType;
 
 /**
  * A run of continuous content the framework paginates itself. Build one with
  * `flow(...)` and put it in the page array alongside fixed pages.
  */
+export type FlowPadding = number | { top: number; right: number; bottom: number; left: number };
+
+/** A flow section's padding, side by side. */
+export function paddingSides(
+  padding: FlowPadding | undefined,
+  fallback: number,
+): { top: number; right: number; bottom: number; left: number } {
+  const value = padding ?? fallback;
+  return typeof value === 'number'
+    ? { top: value, right: value, bottom: value, left: value }
+    : value;
+}
+
 export type FlowSection = {
   readonly __odFlow: true;
   blocks: ReactNode[];
@@ -60,8 +89,17 @@ export type FlowSection = {
   header?: ComponentType;
   /** Rendered on every page the section expands into. */
   footer?: ComponentType;
-  /** Page padding override in px; defaults to the design's `margin`. */
-  padding?: number;
+  /**
+   * Page padding override in px — one number for all four sides, or each side
+   * on its own (a Word page's top and bottom margins rarely match its sides).
+   * Defaults to the design's `margin`.
+   */
+  padding?: FlowPadding;
+  /**
+   * Turns this section's sheets — a wide table's landscape pages inside a
+   * portrait document. Defaults to the document's orientation.
+   */
+  orientation?: Orientation;
   /** Number of columns for body content inside each page of this flow section. */
   columns?: 1 | 2 | 3;
   /** Gap in px between columns when `columns > 1`; defaults to 24. */
@@ -107,6 +145,10 @@ export type DocMeta = {
   recordLabel?: string;
   /** Diagonal watermark text stamped across every sheet (e.g. 'CONFIDENTIAL', 'DRAFT'). */
   watermark?: string;
+  /** Id of the document this one translates. `open-doc translations` reports when it falls behind. */
+  translationOf?: string;
+  /** The source's commit this translation matches. Written by `open-doc translations --mark`. */
+  translatedAt?: string;
 };
 
 /**

@@ -39,12 +39,15 @@ export {
   writeDocument,
 } from './documents.ts';
 export {
+  type ImportDocxOptions,
   type ImportMarkdownOptions,
   type ImportResult,
+  importDocx,
   importMarkdown,
   slugify,
 } from './import.ts';
 export {
+  type CheckLayoutOptions,
   checkLayout,
   closeRenderSession,
   EXPORT_FORMATS,
@@ -53,6 +56,10 @@ export {
   exportDocument,
   type LayoutFinding,
   type LayoutReport,
+  type PageBudget,
+  type ProofreadFinding,
+  type ProofreadReport,
+  proofreadDocument,
   renderDocPage,
 } from './layout.ts';
 export {
@@ -85,3 +92,9 @@ export {
   type TemplateSummary,
 } from './templates.ts';
 export { addComment, type Loc, readText, writeEdits, writeText, writeTexts } from './text.ts';
+export {
+  markTranslated,
+  type TranslationState,
+  type TranslationStatus,
+  translationStatus,
+} from './translations.ts';

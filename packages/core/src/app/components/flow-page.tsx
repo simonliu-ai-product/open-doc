@@ -2,6 +2,7 @@ import { type CSSProperties, createContext, type ReactNode, useContext } from 'r
 import type { DesignSystem } from '../lib/design';
 import type { BlockSlice, FlowSection } from '../lib/flow';
 import type { ExtractedNote } from '../lib/footnotes';
+import { type FlowPadding, paddingSides } from '../lib/sdk';
 import { Footnotes } from './footnote';
 
 export const FLOW_BLOCK_ATTR = 'data-od-flow-block';
@@ -31,12 +32,16 @@ export function useTableSlice(): TableSliceRange | null {
  * than immediately under the last paragraph. The blocks stay inside one block
  * container, so their margins collapse exactly as they did when measured.
  */
-export function flowShellStyle(design: DesignSystem | undefined, padding?: number): CSSProperties {
+export function flowShellStyle(
+  design: DesignSystem | undefined,
+  padding?: FlowPadding,
+): CSSProperties {
+  const sides = paddingSides(padding, design?.margin ?? 76);
   return {
     width: '100%',
     height: '100%',
     boxSizing: 'border-box',
-    padding: padding ?? design?.margin ?? 76,
+    padding: `${sides.top}px ${sides.right}px ${sides.bottom}px ${sides.left}px`,
     background: 'var(--od-bg)',
     color: 'var(--od-text)',
     fontFamily: 'var(--od-font-body)',

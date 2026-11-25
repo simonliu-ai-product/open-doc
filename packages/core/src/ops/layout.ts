@@ -2,6 +2,8 @@ import { Buffer } from 'node:buffer';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { LayoutFinding } from '../app/lib/diagnostics.ts';
+import { type PageBudget, pageBudget } from '../app/lib/page-budget.ts';
+import type { ProofreadFinding } from '../app/lib/proofread.ts';
 import {
   createRenderSession,
   type DocRenderer,
@@ -11,7 +13,7 @@ import {
 import type { ApiContext } from '../vite/routes/context.ts';
 import { OpsError, resolveEntry } from './documents.ts';
 
-export type { LayoutFinding };
+export type { LayoutFinding, PageBudget, ProofreadFinding };
 
 export type LayoutReport = {
   docId: string;
@@ -20,6 +22,25 @@ export type LayoutReport = {
   errors: number;
   warnings: number;
   findings: LayoutFinding[];
+  /** With `maxPages`: how far over the document is and which sections hold the length. */
+  budget?: PageBudget;
+};
+
+export type CheckLayoutOptions = {
+  /** Sheets the document must fit in. Going over is an error finding. */
+  maxPages?: number;
+};
+
+export type ProofreadReport = {
+  docId: string;
+  title: string;
+  /** The language the rules read the text in — `meta.lang`, else `en`. */
+  lang: string;
+  pageCount: number;
+  warnings: number;
+  findings: ProofreadFinding[];
+  /** Findings left out by the per-page and per-rule caps. */
+  omitted: number;
 };
 
 import type { ExportFormat } from '../app/lib/sdk.ts';
@@ -119,16 +140,65 @@ export async function closeRenderSession(): Promise<void> {
  * Renders the document headlessly at true page size and reports what is wrong
  * with the layout — the part of a document an agent writing React cannot see.
  */
-export async function checkLayout(ctx: ApiContext, docId: string): Promise<LayoutReport> {
+export async function checkLayout(
+  ctx: ApiContext,
+  docId: string,
+  opts: CheckLayoutOptions = {},
+): Promise<LayoutReport> {
+  const { maxPages } = opts;
+  if (maxPages !== undefined && (!Number.isInteger(maxPages) || maxPages < 1)) {
+    throw new OpsError(400, `maxPages must be a whole number of at least 1: ${maxPages}`);
+  }
   return withDoc(ctx, docId, async (renderer) => {
     const report = await renderer.diagnose();
+    const findings = [...report.findings];
+    let budget: PageBudget | undefined;
+    if (maxPages !== undefined) {
+      budget = pageBudget(
+        maxPages,
+        report.pageCount,
+        report.fills ?? [],
+        report.outline ?? [],
+        report.offsets ?? {},
+      );
+      if (budget.over > 0) {
+        findings.unshift({
+          page: 0,
+          rule: 'page-budget',
+          severity: 'error',
+          message: `${report.pageCount} pages, ${budget.over} over the ${maxPages}-page limit — about ${budget.toCut} page(s) of content must go (the last page is ${Math.round(budget.lastPageFill * 100)}% full).`,
+        });
+      }
+    }
     return {
       docId: report.docId || docId,
       title: report.title,
       pageCount: report.pageCount,
-      errors: report.findings.filter((f) => f.severity === 'error').length,
-      warnings: report.findings.filter((f) => f.severity === 'warn').length,
+      errors: findings.filter((f) => f.severity === 'error').length,
+      warnings: findings.filter((f) => f.severity === 'warn').length,
+      findings,
+      ...(budget ? { budget } : {}),
+    };
+  });
+}
+
+/**
+ * Reads the text the document prints and reports consistency slips — full-width
+ * letters, punctuation of the wrong width for the language, Simplified and
+ * Traditional characters mixed, doubled words, a term capitalised two ways.
+ * Advice, not a gate: everything is a warning.
+ */
+export async function proofreadDocument(ctx: ApiContext, docId: string): Promise<ProofreadReport> {
+  return withDoc(ctx, docId, async (renderer) => {
+    const report = await renderer.proofread();
+    return {
+      docId: report.docId || docId,
+      title: report.title,
+      lang: report.lang,
+      pageCount: report.pageCount,
+      warnings: report.findings.length,
       findings: report.findings,
+      omitted: report.omitted,
     };
   });
 }

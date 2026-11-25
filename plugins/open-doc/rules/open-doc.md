@@ -5,7 +5,7 @@ description: Working in an open-doc workspace — a project with open-doc.config
 
 # open-doc workspace
 
-- A document is `docs/<id>/index.tsx`: a React module whose default export lists the pages. Read the `doc-authoring` skill before you write one; `create-doc` walks through a new document, `create-theme` a new house style, `apply-comments` the notes left in the viewer.
+- A document is `docs/<id>/index.tsx`: a React module whose default export lists the pages. Read the `doc-authoring` skill before you write one; `create-doc` walks through a new document, `create-theme` a new house style, `apply-comments` the notes left in the viewer, `fit-pages` a page limit, `refresh-report` a recurring report's new numbers, `proofread` consistency, `sync-translation` translated copies, `import-document` an existing Word, PDF or Markdown file, and `fill-form` filling one in.
 - Prefer the `open-doc` MCP tools over raw file edits: `list_documents` first, `read_text` → `write_text` for wording changes, `create_document` / `write_document` with `expected` for whole sources, `list_themes` / `read_theme` before choosing a look.
 - You cannot see the pages. After every edit run `check_layout` (or `npx open-doc check <id>`) and fix what it reports; `render_page` shows one sheet when the report is not enough.
 - "This page" or "this document" means what the person has open in the dev server — see the `current-doc` skill.

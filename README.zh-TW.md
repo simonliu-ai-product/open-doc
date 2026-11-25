@@ -41,10 +41,11 @@ Scaffolder 內建這些 skill：
 - **`/create-doc`** — 從頭到尾起草一份文件。先確立主題、讀者與**素材來源**（它不會杜撰你的數字），問四個界定範圍的問題，規劃頁面，然後寫出來。
 - **`/doc-authoring`** — 技術參考：檔案契約、頁面畫布、列印字級、決定分頁位置的垂直預算、表格、圖表、素材。
 - **`/current-doc`** — 解析「這一頁」「這個元素」。Dev server 會把你正在讀的位置寫進 `node_modules/.open-doc/current.json`，agent 就會改你正在看的那張紙，而不是反問你指的是哪一頁。
+- **沒人想做的雜事** — `/fit-pages`（量測後刪到頁數上限）、`/refresh-report`（把這一期的數據換進定期報告，並列出每個改過的數字）、`/proofread`（校對）、`/sync-translation`（只重譯原文改過的地方）、`/import-document`（匯入 Word、PDF 或 Markdown）。
 
 ### 🔌 MCP server，任何 agent framework 都能接
 
-`open-doc dev --mcp` 會在 UI 旁邊掛上 MCP 端點——26 個工具，涵蓋文件、精準的文字編輯、版面檢查與單頁截圖、Markdown 匯入、匯出、themes、assets 與資料夾。它是無狀態的 Streamable HTTP，client 直接指向 `http://localhost:5273/mcp` 即可，不需要 session handshake。給會自己啟動 server 的 client，同一組工具也能用 `npx -p @open-document/mcp open-doc-mcp` 走 stdio。
+`open-doc dev --mcp` 會在 UI 旁邊掛上 MCP 端點——33 個工具，涵蓋文件、精準的文字編輯、版面檢查與單頁截圖、Markdown 匯入、匯出、themes、assets 與資料夾。它是無狀態的 Streamable HTTP，client 直接指向 `http://localhost:5273/mcp` 即可，不需要 session handshake。給會自己啟動 server 的 client，同一組工具也能用 `npx -p @open-document/mcp open-doc-mcp` 走 stdio。
 
 這些工具和瀏覽器共用同一份實作，所以 `write_document` / `write_text` 會接收你上次讀到的內容，遇到已被改動的檔案時回 `409` 拒絕寫入，而不是覆蓋掉先到的人。詳見 [packages/mcp](packages/mcp)。
 
@@ -118,6 +119,12 @@ q3-infra-review 9 pages — 2 error(s), 1 warning(s)
 
 被裁掉的內容、空白頁、落在頁尾的孤立標題、小到印不出來的字級、載入失敗的圖——每一項都附上原始碼的 `line:column`（inspector 本來就在那裡蓋了標記）。它以非零狀態碼結束，可以直接當 CI 關卡；agent 則呼叫同一套邏輯的 `check_layout`，需要親眼看一頁時用 `render_page`。
 
+`open-doc proofread` 也從印出來的頁面讀文字（程式碼不算），抓校對時會圈的地方：全形的 `Ａ１`、中日文旁邊的半形 `,`（以及英文字之間的 `，`）、繁體文件裡混進簡體字或反過來、`the the`，還有三頁後把 `GitHub` 寫成 `Github`。每一項都附頁碼、上下文和 `line:column`。它只是建議，所以一律以狀態碼 0 結束；agent 呼叫的是 `proofread_document`。
+
+有頁數上限時，`open-doc check --max-pages 10` 會在超頁時報錯，並量出篇幅花在哪裡：每個第一層章節占幾頁（從標題所在位置算起），以及扣掉最後一頁的空白後還要刪掉幾頁。`/fit-pages` 就是照這份報告來刪，每刪一輪就再量一次。
+
+翻譯也能追蹤。文件在 `meta.translationOf` 寫上原文的 id、在 `meta.translatedAt` 寫上對應的原文 commit，就會出現在 `open-doc translations`：顯示已同步，或落後原文——附上原文的 commit、改過的檔案，以及（`--diff`）要重譯的差異。`--mark <id>` 記下它已追上；只要有翻譯落後，指令就以非零狀態碼結束。
+
 ### ⌨️ 無頭匯出——不開瀏覽器的下載選單
 
 ```bash
@@ -134,6 +141,8 @@ open-doc import notes.md --id q3-notes --contents
 ```
 
 多數報告一開始都是 Markdown。匯入會把它變成一份真正的文件——`flow()` 內文、封面頁、會自己填的目錄、透過樣式化 `Th`/`Td` 呈現的 GFM 表格、本地圖片複製進該文件自己的 `assets/`——而且產出的就是一般手寫的 TSX，大綱、inspector 與設計面板全都照常運作。
+
+Word 檔匯入後看起來就是原本那一頁：`open-doc import form.docx` 會保留 Word 的紙張與邊界、對齊與縮排、字型、字級與顏色，表格照原本的欄寬、合併儲存格、框線與網底，連填寫用的底線空格與分頁都在——而套用標題樣式的段落仍是真正的標題。沒能保留的東西（文字方塊、註腳、註解、追蹤修訂）會列出來；加 `--plain` 則只取結構、套用文件的樣式，和 Markdown 匯入一樣。
 
 ### 🗂️ 是工作區，不是檔案清單
 
@@ -184,9 +193,11 @@ pnpm dev
 | --- | --- |
 | `open-doc dev` | 開發伺服器與檢視器（`--mcp` 會掛上 MCP 端點） |
 | `open-doc build` / `preview` | 靜態網站 |
-| `open-doc check [ids…]` | 回報版面問題，有錯誤時以非零狀態碼結束 |
+| `open-doc check [ids…]` | 回報版面問題，有錯誤時以非零狀態碼結束（`--max-pages <n>` 設頁數上限） |
+| `open-doc translations [id]` | 列出翻譯版本，以及原文是否已改動（`--diff`、`--mark <id>`） |
+| `open-doc proofread [ids…]` | 回報文字問題——全形英數、標點全半形、繁簡混用、重複字、專有名詞大小寫不一（僅供參考，狀態碼為 0） |
 | `open-doc export [ids…]` | 無頭產出 PDF / HTML / PNG |
-| `open-doc import <file.md>` | Markdown → `docs/` 下的一份文件 |
+| `open-doc import <file.md\|file.docx>` | Markdown 或 Word → `docs/` 下的一份文件 |
 | `open-doc templates` | 列出新文件可以使用的範本 |
 | `open-doc new <id> --template <name>` | 用範本建立新文件（`report`、`proposal`、`meeting-notes`、`letter`、`certificate`、`blank`，或你自己的 `templates/<name>/`） |
 | `open-doc export <id> --each` | 依文件的 `records` 每一列輸出一份檔案（證書、信函、報價單） |

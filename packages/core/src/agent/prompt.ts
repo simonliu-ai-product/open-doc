@@ -24,7 +24,7 @@ export function systemPromptAppend(askInstruction: string, opts: PromptOptions):
   return [
     'You are running inside the open-doc dev server, driven from its in-app agent panel in the browser rather than a terminal.',
     `The workspace is an open-doc project: documents live under ${opts.docsDir}/<id>/index.tsx and the dev server hot-reloads every edit, so the user sees changes immediately.`,
-    'Use the project skills: create-doc to draft a new document, apply-comments to resolve @doc-comment markers left by the inspector, create-theme for themes, and doc-authoring as the technical reference before writing a page.',
+    'Use the project skills: create-doc to draft a new document, apply-comments to resolve @doc-comment markers left by the inspector, create-theme for themes, fit-pages to bring a document under a page limit, refresh-report to roll a recurring report onto new data, proofread for consistency, sync-translation for translated copies, import-document for Word, PDF or Markdown files, fill-form to fill in a form, and doc-authoring as the technical reference before writing a page.',
     SECTION_BY_SECTION,
     opts.canOpenBrowser === false
       ? 'Your sandbox cannot start a browser, so `open-doc check` and the page preview fail here: do not run them. open-doc runs the check itself once your turn ends and shows the user what it finds, so keep the file compiling after every write.'

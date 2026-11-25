@@ -2,6 +2,8 @@ export type { CalloutProps, CalloutVariant } from './app/components/callout.tsx'
 export { Callout } from './app/components/callout.tsx';
 export type { ChartProps, SparklineProps } from './app/components/chart.tsx';
 export { Chart, Sparkline } from './app/components/chart.tsx';
+export type { CheckboxProps } from './app/components/checkbox.tsx';
+export { Checkbox } from './app/components/checkbox.tsx';
 export type { CodeBlockProps } from './app/components/code-block.tsx';
 export { CodeBlock } from './app/components/code-block.tsx';
 export type {
@@ -14,6 +16,8 @@ export type {
 export { DataTable } from './app/components/data-table.tsx';
 export type { DiagramProps, DiagramSource } from './app/components/diagram.tsx';
 export { Diagram } from './app/components/diagram.tsx';
+export type { TableSliceRange } from './app/components/flow-page.tsx';
+export { useTableSlice } from './app/components/flow-page.tsx';
 export type { FootnoteProps, FootnotesProps } from './app/components/footnote.tsx';
 export { Footnote, Footnotes } from './app/components/footnote.tsx';
 export type { ImagePlaceholderProps } from './app/components/image-placeholder.tsx';
@@ -59,6 +63,7 @@ export type {
   DocMeta,
   DocModule,
   DocPage,
+  FlowPadding,
   FlowSection,
   Orientation,
   PageGeometry,
