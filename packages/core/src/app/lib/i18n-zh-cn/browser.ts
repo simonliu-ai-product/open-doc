@@ -76,6 +76,7 @@ export const BROWSER: Record<string, string> = {
   Navigate: '导航',
   Open: '打开',
   'Go to': '转到',
+  'Recently opened': '最近打开',
   'All documents': '所有文档',
   Appearance: '外观',
   'Light theme': '浅色主题',

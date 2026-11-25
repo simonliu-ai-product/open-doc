@@ -203,6 +203,19 @@ export function shortHash(input: string): string {
   }
   return (h >>> 0).toString(36).slice(0, 6);
 }
+/** The name a browser download is saved under: the document's title, made safe for every OS. */
+export function downloadName(doc: DocModule, docId: string): string {
+  const name = (doc.meta?.title ?? '')
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it removes
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '')
+    .slice(0, 120)
+    .trim();
+  return name || docId;
+}
+
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

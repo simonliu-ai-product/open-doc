@@ -37,6 +37,7 @@ import { useAgentStatus, useCreateDoc } from '../lib/agent/use-agent';
 import { coverContent } from '../lib/doc-preview';
 import { docCreatedAt, docIds, docThemes, docTitles } from '../lib/docs';
 import { type Translate, useLocale, useT } from '../lib/i18n';
+import { readRecentDocs, recentAmong } from '../lib/recent-docs';
 import { pageLang, resolvePageGeometry } from '../lib/sdk';
 import { findTheme } from '../lib/themes';
 import { useDocModule } from '../lib/use-doc-module';
@@ -79,6 +80,9 @@ function readSort(): SortKey {
     return 'newest';
   }
 }
+
+const RECENT_COUNT = 4;
+const SECTION_LABEL = 'mb-4 font-medium text-muted-foreground text-xs uppercase tracking-wider';
 
 const titleOf = (id: string) => docTitles[id] ?? id;
 
@@ -139,6 +143,15 @@ export function Home() {
       })
       .sort(compare(sort));
   }, [sourceIds, filter, sort]);
+  // Only where it saves a search: the whole library, not filtered, and big
+  // enough that the documents in it no longer fit on one screen.
+  const recentIds = useMemo(
+    () =>
+      ctx.selectedId === ALL_DOCS_ID && !filter.trim() && docIds.length > RECENT_COUNT * 2
+        ? recentAmong(readRecentDocs(), docIds, RECENT_COUNT)
+        : [],
+    [ctx.selectedId, filter],
+  );
   const currentSort = SORTS.find((entry) => entry.key === sort) ?? SORTS[0];
 
   const heading =
@@ -231,11 +244,32 @@ export function Home() {
           {newButton && <div className="mt-4 flex justify-center">{newButton}</div>}
         </EmptyState>
       ) : (
-        <div className={CARD_GRID}>
-          {visibleIds.map((id) => (
-            <DocCard key={id} docId={id} ctx={ctx} onError={setError} />
-          ))}
-        </div>
+        <>
+          {recentIds.length > 0 && (
+            <section aria-labelledby="od-recent" className="mb-10">
+              <h2 id="od-recent" className={SECTION_LABEL}>
+                {t('Recently opened')}
+              </h2>
+              <div className={CARD_GRID}>
+                {recentIds.map((id) => (
+                  <DocCard key={id} docId={id} ctx={ctx} onError={setError} />
+                ))}
+              </div>
+            </section>
+          )}
+          <section aria-labelledby={recentIds.length > 0 ? 'od-all' : undefined}>
+            {recentIds.length > 0 && (
+              <h2 id="od-all" className={SECTION_LABEL}>
+                {t('All documents')}
+              </h2>
+            )}
+            <div className={CARD_GRID}>
+              {visibleIds.map((id) => (
+                <DocCard key={id} docId={id} ctx={ctx} onError={setError} />
+              ))}
+            </div>
+          </section>
+        </>
       )}
       {import.meta.env.DEV && (
         <NewDocumentDialog open={creating} folderId={inFolder} onClose={() => setCreating(false)} />

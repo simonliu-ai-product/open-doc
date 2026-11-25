@@ -80,6 +80,7 @@ export const BROWSER: Record<string, string> = {
   Navigate: '移動',
   Open: '開く',
   'Go to': '移動先',
+  'Recently opened': '最近開いたドキュメント',
   'All documents': 'すべてのドキュメント',
   Appearance: '外観',
   'Light theme': 'ライトテーマ',

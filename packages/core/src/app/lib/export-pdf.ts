@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { PageErrorBoundary } from '../components/page-error-boundary';
 import { SheetWatermark } from '../components/page-frame';
 import { designToCssVars } from './design';
+import { downloadName } from './export-dom';
 import { PAGE_ATTR, PAGE_INDEX_ATTR } from './outline';
 import { DocPageProvider } from './page-context';
 import { nextFrame, sleep, waitForDataWaitfor, waitForFonts, waitForImages } from './print-ready';
@@ -157,7 +158,7 @@ export async function mountPrintCopy(
 
   const previousTitle = document.title;
   const previousScan = captureScan();
-  document.title = doc.meta?.title ?? docId;
+  document.title = downloadName(doc, docId);
 
   const dispose = () => {
     document.title = previousTitle;

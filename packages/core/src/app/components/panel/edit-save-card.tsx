@@ -27,10 +27,12 @@ export function EditSaveCard({
   textCount,
   controlsRef,
   onShownChange,
+  onUnsavedChange,
 }: {
   textCount: number;
   controlsRef: MutableRefObject<InspectorControls | null>;
   onShownChange: (shown: boolean) => void;
+  onUnsavedChange?: (unsaved: boolean) => void;
 }) {
   const design = useDesignPanelState();
   const history = useHistory();
@@ -116,6 +118,7 @@ export function EditSaveCard({
 
   const shown = count > 0 || committing || history.canUndo || history.canRedo || error !== null;
   useEffect(() => onShownChange(shown), [shown, onShownChange]);
+  useEffect(() => onUnsavedChange?.(count > 0), [count, onUnsavedChange]);
 
   return (
     <SaveCard

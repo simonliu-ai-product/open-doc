@@ -14,6 +14,7 @@
 import { designToCssVars } from './design';
 import {
   downloadBlob,
+  downloadName,
   findCssAssetUrls,
   findHtmlAssetUrls,
   renderPagesToHtml,
@@ -59,10 +60,11 @@ export async function exportDocAsImages(
   report('embedding', 0, 20);
   const { css, html } = await embedAssets(pagesHtml, doc);
 
+  const baseName = downloadName(doc, docId);
   const files: { name: string; blob: Blob }[] = [];
   for (let i = 0; i < html.length; i++) {
     const svg = buildSvg(html[i] ?? '', css, geometry, doc);
-    const name = `${docId}-${String(i + 1).padStart(2, '0')}`;
+    const name = `${baseName}-${String(i + 1).padStart(2, '0')}`;
     if (format === 'svg') {
       files.push({ name: `${name}.svg`, blob: new Blob([svg], { type: 'image/svg+xml' }) });
     } else {
@@ -72,12 +74,12 @@ export async function exportDocAsImages(
   }
 
   report('done', total, 100);
-  await deliver(files, docId, format);
+  await deliver(files, baseName, format);
 }
 
 async function deliver(
   files: { name: string; blob: Blob }[],
-  docId: string,
+  baseName: string,
   format: ImageFormat,
 ): Promise<void> {
   const only = files[0];
@@ -89,7 +91,10 @@ async function deliver(
   const tree: Record<string, Uint8Array> = {};
   for (const file of files) tree[file.name] = new Uint8Array(await file.blob.arrayBuffer());
   const zip = zipSync(tree as Parameters<typeof zipSync>[0]);
-  downloadBlob(new Blob([zip as BlobPart], { type: 'application/zip' }), `${docId}-${format}.zip`);
+  downloadBlob(
+    new Blob([zip as BlobPart], { type: 'application/zip' }),
+    `${baseName}-${format}.zip`,
+  );
 }
 
 async function embedAssets(

@@ -79,6 +79,7 @@ export const BROWSER: Record<string, string> = {
   Navigate: '이동',
   Open: '열기',
   'Go to': '바로 가기',
+  'Recently opened': '최근 연 문서',
   'All documents': '모든 문서',
   Appearance: '화면 모드',
   'Light theme': '라이트 테마',
