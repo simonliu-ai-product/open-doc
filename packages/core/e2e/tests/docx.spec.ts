@@ -14,13 +14,14 @@ function partsOf(bytes: Uint8Array): Parts {
   return out;
 }
 
-async function download(page: Page, docId: string): Promise<Parts> {
+/** Downloads `docId` as Word; the file is named after the document's title. */
+async function download(page: Page, docId: string, title: string): Promise<Parts> {
   await openDoc(page, docId);
   const downloaded = page.waitForEvent('download', { timeout: 60_000 });
   await page.getByRole('button', { name: 'Download', exact: true }).click();
   await page.getByRole('menuitem', { name: /Word/ }).click();
   const file = await downloaded;
-  expect(file.suggestedFilename()).toBe(`${docId}.docx`);
+  expect(file.suggestedFilename()).toBe(`${title}.docx`);
   return partsOf(await fs.readFile(await file.path()));
 }
 
@@ -30,7 +31,7 @@ test.describe('Word export', () => {
   test('carries structure Word can flow: styles, contents, notes, lists, tables, pictures', async ({
     page,
   }) => {
-    const parts = await download(page, 'docx-sample');
+    const parts = await download(page, 'docx-sample', '平台可靠度季報');
     const doc = parts['word/document.xml'] ?? '';
 
     // The package itself.
@@ -142,7 +143,7 @@ test.describe('Word export', () => {
   });
 
   test('a fixed-page document exports too, each sheet starting a page', async ({ page }) => {
-    const parts = await download(page, 'alpha');
+    const parts = await download(page, 'alpha', 'Alpha Report');
     const doc = parts['word/document.xml'] ?? '';
     expect(doc).toContain('Alpha page one');
     expect(doc).toContain('Alpha page three');
