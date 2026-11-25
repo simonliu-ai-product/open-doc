@@ -106,16 +106,18 @@ function sourceText(source) {
   // Escaped characters ({'<'}) come back after the tags are stripped, or a
   // literal < would swallow the text up to the next tag.
   const kept = [];
-  return body
-    .replace(/\{'((?:\\'|[^'])*)'\}/g, (_, s) => {
-      kept.push(s.replace(/\\'/g, "'").replace(/\\\\/g, '\\').replace(/\\t/g, '\t'));
-      return `${kept.length - 1}`;
-    })
-    // A drawn checkbox stands for the box character Word typed.
-    .replace(/<Checkbox\b[^>]*\/>/g, '□')
-    .replace(/<[^>]*>/g, '')
-    .replace(/(\d+)/g, (_, n) => kept[Number(n)])
-    .replace(/&amp;/g, '&');
+  return (
+    body
+      .replace(/\{'((?:\\'|[^'])*)'\}/g, (_, s) => {
+        kept.push(s.replace(/\\'/g, "'").replace(/\\\\/g, '\\').replace(/\\t/g, '\t'));
+        return `${kept.length - 1}`;
+      })
+      // A drawn checkbox stands for the box character Word typed.
+      .replace(/<Checkbox\b[^>]*\/>/g, '□')
+      .replace(/<[^>]*>/g, '')
+      .replace(/(\d+)/g, (_, n) => kept[Number(n)])
+      .replace(/&amp;/g, '&')
+  );
 }
 
 function multisetGap(expected, actual) {
@@ -157,7 +159,8 @@ function orderRatio(expected, actual) {
 function dumpPrintCopy(fontNames) {
   const pages = [...document.querySelectorAll('.od-print-page')];
   // Text the import made up, and the header and footer every sheet repeats.
-  const generated = (node) => !!node.parentElement?.closest('[data-od-generated], [data-od-running]');
+  const generated = (node) =>
+    !!node.parentElement?.closest('[data-od-generated], [data-od-running]');
   const pageTexts = [];
   const blocks = [];
   const tables = new Map();
