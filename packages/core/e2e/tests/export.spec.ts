@@ -49,7 +49,7 @@ test.describe('export', () => {
     test.setTimeout(90_000);
     await openDoc(page, 'alpha');
     const file = await downloadHtml(page, 'alpha');
-    expect(file.suggestedFilename()).toBe('alpha.html');
+    expect(file.suggestedFilename()).toBe('Alpha Report.html');
 
     const stream = await file.createReadStream();
     const chunks: Buffer[] = [];

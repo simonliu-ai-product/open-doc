@@ -78,6 +78,7 @@ import {
   resolveSelection,
 } from '../lib/page-range';
 import { nextFrame, waitForFonts } from '../lib/print-ready';
+import { markDocOpened } from '../lib/recent-docs';
 import { getRecordState, setRecords, useRecordIndex } from '../lib/records';
 import { scanDocument } from '../lib/scan';
 import { pageLang, resolvePageGeometry } from '../lib/sdk';
@@ -214,7 +215,7 @@ export function Doc() {
   const state = useDocModule(docId);
   const doc = state.doc;
   const t = useT();
-  const { setLocale } = useLocale();
+  const { locale, setLocale } = useLocale();
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -262,6 +263,7 @@ export function Doc() {
   const editControlsRef = useRef<InspectorControls | null>(null);
   const [textPending, setTextPending] = useState(0);
   const [cardShown, setCardShown] = useState(false);
+  const [unsaved, setUnsaved] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewModeState] = useState<ViewMode>(() => readViewMode(docId));
   // The page the reader was on when the layout changed, to put back in view.
@@ -281,6 +283,27 @@ export function Doc() {
   useEffect(() => () => setRecords(undefined), []);
 
   const { pages, measuring, overflowing } = useDocPages(doc, geometry);
+
+  const loaded = Boolean(doc);
+  useEffect(() => {
+    if (loaded && docId) markDocOpened(docId);
+  }, [loaded, docId]);
+
+  const docTitle = doc ? (doc.meta?.title ?? docId) : undefined;
+  const showPage = pages.length > 1 && !measuring;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `t` keeps one identity across languages, so `locale` re-runs it
+  useEffect(() => {
+    if (!docTitle) return;
+    const page = showPage ? ` · ${t('p. {page}', { page: currentPage })}` : '';
+    document.title = `${unsaved ? '● ' : ''}${docTitle}${page}`;
+  }, [docTitle, showPage, currentPage, unsaved, t, locale]);
+  useEffect(
+    () => () => {
+      document.title = 'open-doc';
+    },
+    [],
+  );
+
   const recordIndex = useRecordIndex();
 
   // Read again on every reload of the document, so what an agent just wrote
@@ -1152,6 +1175,7 @@ export function Doc() {
                 textCount={textPending}
                 controlsRef={editControlsRef}
                 onShownChange={setCardShown}
+                onUnsavedChange={setUnsaved}
               />
             )}
             {agentActivity && (

@@ -3,6 +3,7 @@ import {
   collectCss,
   collectExternalStylesheetLinks,
   downloadBlob,
+  downloadName,
   escapeAttr,
   escapeHtml,
   findCssAssetUrls,
@@ -96,7 +97,11 @@ export async function exportDocAsHtml(
 ): Promise<void> {
   const bundle = await buildDocHtmlBundle(doc, docId, pages);
   if (!bundle) return;
-  downloadBlob(new Blob([bundle.bytes as BlobPart], { type: bundle.mimeType }), bundle.filename);
+  const extension = bundle.filename.slice(bundle.filename.lastIndexOf('.'));
+  downloadBlob(
+    new Blob([bundle.bytes as BlobPart], { type: bundle.mimeType }),
+    `${downloadName(doc, docId)}${extension}`,
+  );
 }
 
 function rewriteUrls(

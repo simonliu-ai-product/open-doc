@@ -24,7 +24,7 @@ import {
   PX_TO_TWIPS,
   type StyleId,
 } from './docx/ooxml';
-import { downloadBlob, withRenderedPages } from './export-dom';
+import { downloadBlob, downloadName, withRenderedPages } from './export-dom';
 import { elementToPng } from './export-image';
 import { type DocEntry, type FlowSection, isFlowSection } from './flow';
 import { DocPageProvider } from './page-context';
@@ -257,5 +257,8 @@ export async function exportDocAsDocx(
 ): Promise<void> {
   const bundle = await buildDocDocx(doc, docId, pages);
   if (!bundle) return;
-  downloadBlob(new Blob([bundle.bytes as BlobPart], { type: bundle.mimeType }), bundle.filename);
+  downloadBlob(
+    new Blob([bundle.bytes as BlobPart], { type: bundle.mimeType }),
+    `${downloadName(doc, docId)}.docx`,
+  );
 }
