@@ -1,5 +1,17 @@
 # @open-document/core
 
+## 0.17.1
+
+### Patch Changes
+
+- [#105](https://github.com/simonliu-ai-product/open-doc/pull/105) [`1fb5896`](https://github.com/simonliu-ai-product/open-doc/commit/1fb58966409843965021403feea3875ea00c722a) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The viewer fits a narrow window, such as a panel beside an agent.
+  
+  - The document's toolbar no longer runs off the right edge. The title keeps the room that is left, the zoom and page-layout controls step aside below 1024 pixels and the page counter below 640, button labels fold to icons, and on a phone-width window Changes, Comments and Copy link move into a More (⋯) menu.
+  - The document list's toolbar folds the same way, by the room the list has: the sort, Draft with agent and New document buttons keep their icons and the filter box takes what is left, so New document is never cut off.
+  - Below 768 pixels the design, comments, changes, element and agent panels float over the pages instead of squeezing them to a sliver.
+
+- [#105](https://github.com/simonliu-ai-product/open-doc/pull/105) [`1fb5896`](https://github.com/simonliu-ai-product/open-doc/commit/1fb58966409843965021403feea3875ea00c722a) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The version at the foot of the document browser no longer says `dev` or `static` to everyone. A core installed from npm shows its version alone; only a core run from a source checkout (a `link:`, `file:` or `workspace:` dependency) adds `dev`, so a framework build in progress can be told apart.
+
 ## 0.17.0
 
 ### Minor Changes

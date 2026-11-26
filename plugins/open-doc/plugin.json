@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "open-doc",
   "displayName": "open-doc",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Write print-ready documents as React — reports, proposals, memos — with A4 pagination, themes, and PDF export, in an open-doc workspace.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [
