@@ -175,7 +175,14 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
         plugins: [
           {
             name: 'open-doc:virtual-externals',
-            setup(build) {
+            // Typed by hand: esbuild is not a dependency of its own, and Vite 8
+            // no longer exports its plugin types.
+            setup(build: {
+              onResolve: (
+                options: { filter: RegExp },
+                resolve: (args: { path: string }) => { path: string; external: boolean },
+              ) => void;
+            }) {
               build.onResolve({ filter: /^virtual:open-doc\// }, (args) => ({
                 path: args.path,
                 external: true,
