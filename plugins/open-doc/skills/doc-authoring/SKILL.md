@@ -10,6 +10,16 @@ This skill is the **technical reference** for everything inside `docs/<id>/index
 - `create-doc` owns "draft a new document" — it asks the scoping questions, then delegates the *how* to this skill.
 - Any ad-hoc edit (fix a table, retitle a section, adjust margins) should also read this first.
 
+## Changing an existing document
+
+Change the lines that change, not the file; most requests touch a few, even big-sounding ones:
+
+- **A title, a sentence, a table row, one style**: edit those lines (your edit tool, or `edit_document` over MCP). Reports run 800–2000 lines: find the part first (`grep -n ": DocPage = "` or `outline_document`) and read ~150 lines around it.
+- **A new look** (other colours, fonts or spacing): change the `design` const or its theme, not every element. A quoted value turned into a token or constant loses its quotes: `color: '#1A1A1A'` becomes `color: 'var(--od-ink)'` or `color: INK`, never `color: 'INK'`.
+- **A variant** ("a shorter version of X"): duplicate the document, then edit the copy.
+- **Write the whole file** only for a new document, or when more than half of its lines change (a new structure). Rewriting a long file is slow, and every copied line can break.
+- **Renumbering costs**: a section inserted among numbered headings ("3.2") means editing every later one; prefer appending.
+
 ## Primitive references
 
 Read the matching reference **before** using a primitive:
@@ -295,18 +305,6 @@ export const meta: DocMeta = {
 };
 export default [Cover, Section] satisfies DocPage[];
 ```
-
-## Editing an existing document
-
-A finished report commonly runs 800–2000 lines. When you only need one page, **don't read the whole file** — locate it first:
-
-```bash
-grep -n ": DocPage = " docs/<id>/index.tsx
-```
-
-Then `Read` with `offset` + `limit` (~150 lines covers a page plus its helpers). Read the whole file only for cross-page work (renumbering sections, palette audit, reordering).
-
-**Renumbering is a real cost.** If sections are numbered ("3.2 Findings"), inserting a page means editing every downstream heading. Prefer appending, or use unnumbered headings when the document is still churning.
 
 ## Prose discipline
 
