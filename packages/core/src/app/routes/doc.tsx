@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   Download,
+  Ellipsis,
   Eye,
   FileCode2,
   FileImage,
@@ -846,9 +847,13 @@ export function Doc() {
           (page, zoom, layout, fullscreen), and what you do to the document
           (search, edit, design, download). The middle rail is `auto` between
           two equal `1fr` rails, so it sits at the true centre of the bar while
-          the title truncates before anything is overlapped. */}
-        <header className="grid h-12 flex-none grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-border px-3">
-          <div className="flex min-w-0 items-center gap-1">
+          the title truncates before anything is overlapped. Below xl the bar is
+          a plain row: the title takes what is left, the view controls drop out
+          by width (zoom and layout below lg, the page counter below sm), labels
+          fold to icons, and below sm Changes, Comments and Copy link move into
+          a More menu, so nothing is pushed off the edge. */}
+        <header className="flex h-12 flex-none items-center gap-2 border-b border-border px-3 xl:grid xl:grid-cols-[1fr_auto_1fr] xl:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
             <HeaderBackLink />
             <h1 className="truncate font-medium text-sm">{doc.meta?.title ?? docId}</h1>
             {doc.records && doc.records.length > 0 && (
@@ -856,50 +861,56 @@ export function Doc() {
             )}
           </div>
 
-          <div className="hidden items-center gap-2 sm:flex">
+          <div className="hidden flex-none items-center gap-2 sm:flex">
             <PageJump page={currentPage} total={pages.length} onJump={scrollToPage} />
-            <Divider />
-            <ZoomControl
-              scale={scale}
-              fit={manualScale === null ? zoomMode : null}
-              onStep={zoom}
-              onSet={setZoom}
-              onFit={fitTo}
-            />
-            <Divider />
-            <fieldset className="flex items-center gap-0.5">
-              <legend className="sr-only">{t('Page layout')}</legend>
+            <div className="hidden items-center gap-2 lg:flex">
+              <Divider />
+              <ZoomControl
+                scale={scale}
+                fit={manualScale === null ? zoomMode : null}
+                onStep={zoom}
+                onSet={setZoom}
+                onFit={fitTo}
+              />
+              <Divider />
+              <fieldset className="flex items-center gap-0.5">
+                <legend className="sr-only">{t('Page layout')}</legend>
+                <IconButton
+                  label={t('Continuous')}
+                  active={viewMode === 'continuous'}
+                  onClick={() => setViewMode('continuous')}
+                >
+                  <Rows3 className="size-3.5" />
+                </IconButton>
+                <IconButton
+                  label={t('Two-up')}
+                  active={viewMode === 'spread'}
+                  onClick={() => setViewMode('spread')}
+                >
+                  <BookOpen className="size-3.5" />
+                </IconButton>
+                <IconButton
+                  label={t('Grid')}
+                  active={viewMode === 'grid'}
+                  onClick={() => setViewMode('grid')}
+                >
+                  <LayoutGrid className="size-3.5" />
+                </IconButton>
+              </fieldset>
               <IconButton
-                label={t('Continuous')}
-                active={viewMode === 'continuous'}
-                onClick={() => setViewMode('continuous')}
+                label={isFullscreen ? t('Exit fullscreen (F)') : t('Fullscreen (F)')}
+                onClick={toggleFullscreen}
               >
-                <Rows3 className="size-3.5" />
+                {isFullscreen ? (
+                  <Minimize className="size-3.5" />
+                ) : (
+                  <Maximize className="size-3.5" />
+                )}
               </IconButton>
-              <IconButton
-                label={t('Two-up')}
-                active={viewMode === 'spread'}
-                onClick={() => setViewMode('spread')}
-              >
-                <BookOpen className="size-3.5" />
-              </IconButton>
-              <IconButton
-                label={t('Grid')}
-                active={viewMode === 'grid'}
-                onClick={() => setViewMode('grid')}
-              >
-                <LayoutGrid className="size-3.5" />
-              </IconButton>
-            </fieldset>
-            <IconButton
-              label={isFullscreen ? t('Exit fullscreen (F)') : t('Fullscreen (F)')}
-              onClick={toggleFullscreen}
-            >
-              {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
-            </IconButton>
+            </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-none items-center justify-end gap-1.5 sm:gap-2">
             <DocSearch scrollRef={scrollRef} pagesRef={pagesRef} onFoundPage={setCurrentPage} />
 
             {import.meta.env.DEV && (
@@ -935,10 +946,10 @@ export function Doc() {
                 )}
               >
                 <Palette className="size-3.5" />
-                {t('Design')}
+                <span className="hidden lg:inline">{t('Design')}</span>
                 <kbd
                   aria-hidden
-                  className="hidden rounded-sm bg-foreground/10 px-1 font-mono text-[9.5px] text-muted-foreground md:inline"
+                  className="hidden rounded-sm bg-foreground/10 px-1 font-mono text-[9.5px] text-muted-foreground lg:inline"
                 >
                   D
                 </kbd>
@@ -957,12 +968,12 @@ export function Doc() {
                 title={`${t('Changes since the last commit')} (C)`}
                 onClick={() => toggleDock('changes')}
                 className={cn(
-                  'flex flex-none items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                  'hidden flex-none sm:flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
                   changesOpen && 'bg-accent',
                 )}
               >
                 <GitCompare className="size-3.5" />
-                <span className="hidden lg:inline">{t('Changes')}</span>
+                <span className="hidden xl:inline">{t('Changes')}</span>
                 {changeItems.length > 0 && (
                   <span
                     aria-hidden
@@ -987,12 +998,12 @@ export function Doc() {
                 title={`${t('Comments')} (M)`}
                 onClick={() => toggleDock('comments')}
                 className={cn(
-                  'flex flex-none items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
+                  'hidden flex-none sm:flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-accent',
                   commentsOpen && 'bg-accent',
                 )}
               >
                 <MessageSquare className="size-3.5" />
-                <span className="hidden lg:inline">{t('Comments')}</span>
+                <span className="hidden xl:inline">{t('Comments')}</span>
                 {commentList.length > 0 && (
                   <span
                     aria-hidden
@@ -1023,7 +1034,29 @@ export function Doc() {
               </button>
             )}
 
-            <CopyLink />
+            <div className="hidden sm:contents">
+              <CopyLink />
+            </div>
+            <MoreMenu
+              changes={
+                import.meta.env.DEV
+                  ? {
+                      open: changesOpen,
+                      count: changeItems.length,
+                      toggle: () => toggleDock('changes'),
+                    }
+                  : null
+              }
+              comments={
+                import.meta.env.DEV
+                  ? {
+                      open: commentsOpen,
+                      count: commentList.length,
+                      toggle: () => toggleDock('comments'),
+                    }
+                  : null
+              }
+            />
 
             {/* The document browser normally carries this. A viewer mounted with
             `showDocBrowser: false` never shows that shell, and without it a
@@ -1036,6 +1069,8 @@ export function Doc() {
                 <button
                   type="button"
                   disabled={download !== null}
+                  aria-label={download ? undefined : t('Download')}
+                  title={t('Download')}
                   className="flex flex-none items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-2.5 py-1.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 disabled:opacity-70 aria-expanded:opacity-90"
                   {...props}
                 >
@@ -1046,9 +1081,11 @@ export function Doc() {
                   ) : (
                     <Download className="size-3.5" />
                   )}
-                  {download
-                    ? `${t(DOWNLOAD_LABEL[download.format])} ${Math.round(download.percent)}%`
-                    : t('Download')}
+                  {download ? (
+                    `${t(DOWNLOAD_LABEL[download.format])} ${Math.round(download.percent)}%`
+                  ) : (
+                    <span className="hidden md:inline">{t('Download')}</span>
+                  )}
                 </button>
               )}
             >
@@ -1097,7 +1134,8 @@ export function Doc() {
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1">
+        {/* Positioned: below md the right dock floats over the pages from here. */}
+        <div className="relative flex min-h-0 flex-1">
           <DocSidebar
             docId={docId ?? ''}
             pages={pages}
@@ -1585,6 +1623,80 @@ function ZoomControl({
 }
 
 /** The page as it is — document, and the reader's place in it — on the clipboard. */
+type DockToggle = { open: boolean; count: number; toggle: () => void } | null;
+
+/** Below sm the header has no room for Changes, Comments and Copy link; they live here. */
+function MoreMenu({ changes, comments }: { changes: DockToggle; comments: DockToggle }) {
+  const t = useT();
+  const item = 'size-4 flex-none text-muted-foreground';
+  return (
+    <div className="sm:hidden">
+      <Menu
+        className="w-48 p-1.5"
+        trigger={(props) => (
+          <button
+            type="button"
+            aria-label={t('More')}
+            title={t('More')}
+            className="flex size-8 flex-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground"
+            {...props}
+          >
+            <Ellipsis className="size-4" />
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
+            {changes && (
+              <MenuItem
+                active={changes.open}
+                onClick={() => {
+                  close();
+                  changes.toggle();
+                }}
+              >
+                <GitCompare className={item} />
+                <span className="flex-1">{t('Changes')}</span>
+                {changes.count > 0 && (
+                  <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                    {changes.count}
+                  </span>
+                )}
+              </MenuItem>
+            )}
+            {comments && (
+              <MenuItem
+                active={comments.open}
+                onClick={() => {
+                  close();
+                  comments.toggle();
+                }}
+              >
+                <MessageSquare className={item} />
+                <span className="flex-1">{t('Comments')}</span>
+                {comments.count > 0 && (
+                  <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                    {comments.count}
+                  </span>
+                )}
+              </MenuItem>
+            )}
+            <MenuItem
+              onClick={() => {
+                close();
+                navigator.clipboard.writeText(window.location.href).catch(() => {});
+              }}
+            >
+              <Link2 className={item} />
+              <span className="flex-1">{t('Copy link')}</span>
+            </MenuItem>
+          </>
+        )}
+      </Menu>
+    </div>
+  );
+}
+
 function CopyLink() {
   const t = useT();
   const [copied, setCopied] = useState(false);

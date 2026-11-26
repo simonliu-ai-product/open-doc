@@ -26,6 +26,6 @@ declare module 'virtual:open-doc/config' {
   import type { OpenDocConfig } from '../config';
 
   type ResolvedBuild = { showDocBrowser: boolean; allowHtmlExport: boolean };
-  const config: OpenDocConfig & { build: ResolvedBuild; version: string };
+  const config: OpenDocConfig & { build: ResolvedBuild; version: string; fromSource: boolean };
   export default config;
 }

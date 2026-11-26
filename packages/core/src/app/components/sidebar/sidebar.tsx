@@ -251,7 +251,8 @@ export function Sidebar({
       <div className="flex items-center justify-between gap-2 px-4 py-3 text-[11px] text-muted-foreground">
         <span>
           v{config.version}
-          <span className="ml-2 font-mono">{import.meta.env.DEV ? 'dev' : 'static'}</span>
+          {/* Only a core run from a checkout says so; an npm install shows its version alone. */}
+          {config.fromSource && <span className="ml-2 font-mono">dev</span>}
         </span>
         <div className="-mr-1.5 flex items-center gap-0.5">
           <LanguageToggle />
