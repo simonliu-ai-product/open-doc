@@ -1,7 +1,7 @@
 {
   "name": "open-doc",
   "displayName": "open-doc",
-  "version": "0.17.1",
+  "version": "0.17.2",
   "description": "Write print-ready documents as React — reports, proposals, memos — with A4 pagination, themes, and PDF export, in an open-doc workspace.",
   "author": {
     "name": "Simon Liu",

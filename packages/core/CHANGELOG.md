@@ -1,5 +1,11 @@
 # @open-document/core
 
+## 0.17.2
+
+### Patch Changes
+
+- [#108](https://github.com/simonliu-ai-product/open-doc/pull/108) [`d3276e4`](https://github.com/simonliu-ai-product/open-doc/commit/d3276e4ffe40d48e891dbb36d6820a786a17581b) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - The authoring skill now opens with how to change an existing item: edit the lines that change, restyle through the palette, design or theme, and write the whole file only for a new item or a new structure.
+
 ## 0.17.1
 
 ### Patch Changes
