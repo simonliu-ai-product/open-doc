@@ -112,10 +112,12 @@ export function Home() {
       <button
         type="button"
         onClick={() => setCreating(true)}
-        className="flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
+        aria-label={t('New document')}
+        title={t('New document')}
+        className="flex h-8 flex-none items-center gap-1.5 rounded-md bg-primary px-2.5 text-primary-foreground text-xs transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
       >
         <Plus className="size-3.5" />
-        {t('New document')}
+        <span className="hidden @md:inline">{t('New document')}</span>
       </button>
     </>
   );
@@ -178,11 +180,12 @@ export function Home() {
                   <button
                     type="button"
                     aria-label={t('Sort: {label}', { label: t(currentSort.label) })}
-                    className="flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs transition-colors hover:bg-accent aria-expanded:bg-accent"
+                    title={t(currentSort.label)}
+                    className="flex h-8 flex-none items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs transition-colors hover:bg-accent aria-expanded:bg-accent"
                     {...props}
                   >
                     <currentSort.icon className="size-3.5 text-muted-foreground" />
-                    {t(currentSort.label)}
+                    <span className="hidden @lg:inline">{t(currentSort.label)}</span>
                     <ChevronDown className="size-3 text-muted-foreground" />
                   </button>
                 )}
@@ -204,7 +207,7 @@ export function Home() {
                   ))
                 }
               </Menu>
-              <label className="flex h-8 w-56 items-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs focus-within:border-foreground focus-within:ring-2 focus-within:ring-primary/30">
+              <label className="flex h-8 min-w-0 flex-1 items-center gap-2 @2xl:w-56 @2xl:flex-none rounded-md border border-border bg-background px-2.5 text-xs focus-within:border-foreground focus-within:ring-2 focus-within:ring-primary/30">
                 <Search className="size-3.5 flex-none text-muted-foreground" />
                 <input
                   type="search"
@@ -478,19 +481,20 @@ function DraftWithAgentButton() {
     <button
       type="button"
       onClick={() => void start()}
+      aria-label={t.agent.createDoc}
       title={
         provider
           ? format(t.agent.createDocWith, { provider: provider.name })
           : t.agent.quickCreateHint
       }
-      className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
+      className="flex h-8 flex-none items-center gap-1.5 rounded-md border border-border px-2.5 text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
     >
       {provider ? (
         <ProviderLogo provider={provider.id} className="size-3.5" />
       ) : (
         <Sparkles className="size-3.5" />
       )}
-      {t.agent.createDoc}
+      <span className="hidden @lg:inline">{t.agent.createDoc}</span>
     </button>
   );
 }

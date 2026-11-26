@@ -26,7 +26,9 @@ export function PanelShell({
     <aside
       ref={panelRef}
       aria-label={label}
-      className="od-panel-in flex w-72 flex-none flex-col border-border border-l bg-background"
+      // Below md there is no room beside the pages: the panel floats over them
+      // instead of squeezing them to a sliver.
+      className="od-panel-in flex w-72 flex-none flex-col border-border border-l bg-background max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[min(18rem,calc(100%-2.5rem))] max-md:shadow-2xl"
     >
       <header className="flex h-10 flex-none items-center justify-between gap-2 border-border border-b px-3">
         <div className="flex min-w-0 items-center gap-2">{header}</div>

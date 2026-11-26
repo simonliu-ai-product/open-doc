@@ -74,7 +74,9 @@ export function PageHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="mb-8">
+    // A container, so the actions fold by the room the page has, not the window:
+    // the sidebar takes part of a wide window and none of a narrow one.
+    <header className="@container mb-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2.5 font-medium text-lg tracking-tight">
@@ -90,7 +92,11 @@ export function PageHeader({
             <p className="mt-1 max-w-2xl text-muted-foreground text-sm">{description}</p>
           )}
         </div>
-        {actions && <div className="flex flex-none items-center gap-2">{actions}</div>}
+        {actions && (
+          <div className="flex w-full min-w-0 items-center gap-2 @2xl:w-auto @2xl:flex-none">
+            {actions}
+          </div>
+        )}
       </div>
       {children && <div className="mt-5">{children}</div>}
     </header>

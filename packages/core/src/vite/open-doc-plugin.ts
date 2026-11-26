@@ -39,6 +39,8 @@ export type OpenDocPluginOptions = {
   userCwd: string;
   config: OpenDocConfig;
   coreVersion: string;
+  /** Core runs from a source checkout; the browser marks its version `dev`. */
+  coreFromSource?: boolean;
 };
 
 function resolved(id: string): string {
@@ -196,7 +198,7 @@ ${cases}
 }
 
 export function openDocPlugin(opts: OpenDocPluginOptions): Plugin {
-  const { userCwd, config, coreVersion } = opts;
+  const { userCwd, config, coreVersion, coreFromSource = false } = opts;
   const docsDir = config.docsDir ?? 'docs';
   const docsRoot = path.resolve(userCwd, docsDir);
   const foldersManifestPath = path.join(docsRoot, '.folders.json');
@@ -275,7 +277,7 @@ export function openDocPlugin(opts: OpenDocPluginOptions): Plugin {
               showDocBrowser: userBuild.showDocBrowser ?? true,
               allowHtmlExport: userBuild.allowHtmlExport ?? true,
             };
-        return `export default ${JSON.stringify({ ...config, build, version: coreVersion })};\n`;
+        return `export default ${JSON.stringify({ ...config, build, version: coreVersion, fromSource: coreFromSource })};\n`;
       }
       if (id === resolved(FOLDERS_VMOD)) {
         const manifest = await readFoldersManifest(foldersManifestPath);

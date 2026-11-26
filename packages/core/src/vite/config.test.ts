@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Alias } from 'vite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createViteConfig } from './config.ts';
+import { createViteConfig, isSourceCheckout } from './config.ts';
 
 const dirs: string[] = [];
 
@@ -40,5 +40,22 @@ describe('createViteConfig in a workspace that installed nothing', () => {
     process.env.OPEN_DOC_CACHE_DIR = '/shared/cache';
     const hosted = await createViteConfig({ userCwd: cwd, config: {}, headless: true });
     expect(hosted.cacheDir).toBe(path.join('/shared/cache', 'open-doc-headless'));
+  });
+});
+
+describe('isSourceCheckout', () => {
+  it('is false for a package installed from npm, including through pnpm', () => {
+    expect(isSourceCheckout('/p/node_modules/@open-document/core')).toBe(false);
+    expect(
+      isSourceCheckout(
+        '/p/node_modules/.pnpm/@open-document+core@0.17.0/node_modules/@open-document/core',
+      ),
+    ).toBe(false);
+    expect(isSourceCheckout('C:\\p\\node_modules\\@open-document\\core')).toBe(false);
+  });
+
+  it('is true for a checkout linked in or run from the repo', () => {
+    expect(isSourceCheckout('/work/open-doc/packages/core')).toBe(true);
+    expect(isSourceCheckout('C:\\work\\open-doc\\packages\\core')).toBe(true);
   });
 });

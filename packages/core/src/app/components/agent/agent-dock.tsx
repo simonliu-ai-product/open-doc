@@ -56,7 +56,7 @@ export function AgentDockFrame({ children }: { children: ReactNode }) {
   return (
     <div
       data-agent-dock
-      className="relative flex h-full max-w-[60vw] shrink-0 border-border border-l bg-sidebar"
+      className="relative flex h-full max-w-[60vw] shrink-0 border-border border-l bg-sidebar max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-[min(24rem,calc(100%-2.5rem))]! max-md:max-w-none max-md:shadow-2xl"
       style={{ width }}
     >
       <ResizeHandle

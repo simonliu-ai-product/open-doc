@@ -61,6 +61,7 @@ export const DOC: Record<string, string> = {
   'Actual size (100%)': '實際大小 (100%)',
   'Link copied': '已複製連結',
   'Copy link': '複製連結',
+  More: '更多',
   Record: '資料列',
   'Previous record': '上一筆資料',
   'Next record': '下一筆資料',

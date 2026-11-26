@@ -37,6 +37,18 @@ function readCoreVersion(): string {
 
 const CORE_VERSION = readCoreVersion();
 
+/**
+ * Whether this core runs from a source checkout (a `link:`, `file:` or `workspace:`
+ * dependency, or this repo's own demo) rather than a package installed from npm.
+ * An install always lives under a `node_modules` folder, even through pnpm's links,
+ * because the path is the resolved file's; a checkout never does.
+ */
+export function isSourceCheckout(pkgRoot: string): boolean {
+  return !pkgRoot.split(/[\\/]/).includes('node_modules');
+}
+
+const CORE_FROM_SOURCE = isSourceCheckout(PKG_ROOT);
+
 function safeRealpath(target: string): string | null {
   try {
     return existsSync(target) ? realpathSync(target) : null;
@@ -102,7 +114,12 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
       locTagsPlugin({ userCwd, docsDir }),
       react(),
       tailwindcss(),
-      openDocPlugin({ userCwd, config, coreVersion: CORE_VERSION }),
+      openDocPlugin({
+        userCwd,
+        config,
+        coreVersion: CORE_VERSION,
+        coreFromSource: CORE_FROM_SOURCE,
+      }),
       themesPlugin({ userCwd, config }),
       designPlugin({ userCwd, docsDir }),
       apiPlugin({
