@@ -1,5 +1,13 @@
 # @open-document/mcp
 
+## 0.11.1
+
+### Patch Changes
+
+- [#106](https://github.com/simonliu-ai-product/open-doc/pull/106) [`0aba872`](https://github.com/simonliu-ai-product/open-doc/commit/0aba872e0e150eb9dd1082482051755f2b355381) Thanks [@LiuYuWei](https://github.com/LiuYuWei)! - Update the MCP SDK: `@modelcontextprotocol/server` 2.4 and `@modelcontextprotocol/node` 2.1.2.
+- Updated dependencies [[`1fb5896`](https://github.com/simonliu-ai-product/open-doc/commit/1fb58966409843965021403feea3875ea00c722a), [`1fb5896`](https://github.com/simonliu-ai-product/open-doc/commit/1fb58966409843965021403feea3875ea00c722a)]:
+  - @open-document/core@0.17.1
+
 ## 0.11.0
 
 ### Minor Changes
